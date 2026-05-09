@@ -26,8 +26,10 @@ export const PrescriptionView = () => {
     };
 
     const StatusBadge = ({ status }: { status: RxStatus }) => {
-        const colors = {
+        const colors: Record<RxStatus, { bg: string; text: string; border: string }> = {
+            new: { bg: '#fff7ed', text: '#9a3412', border: '#ffedd5' },
             pending: { bg: '#fff7ed', text: '#9a3412', border: '#ffedd5' },
+            processing: { bg: '#eff6ff', text: '#1d4ed8', border: '#dbeafe' },
             dispensed: { bg: '#ecfdf5', text: '#065f46', border: '#d1fae5' },
             cancelled: { bg: '#fef2f2', text: '#991b1b', border: '#fee2e2' }
         };
