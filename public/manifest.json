@@ -1,0 +1,22 @@
+{
+    "name": "One OS - Business Operating System",
+    "short_name": "One OS",
+    "description": "All-in-one business operating system for restaurants, supermarkets, and retail",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "theme_color": "#0a0a0f",
+    "background_color": "#0a0a0f",
+    "icons": [
+        {
+            "src": "/vite.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "business",
+        "productivity"
+    ]
+}

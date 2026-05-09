@@ -1,0 +1,49 @@
+:root {
+    /* One OS Core Palette - High Contrast Dark Mode */
+    --primary: #3b82f6;
+    /* Blue 500 */
+    --secondary: #94a3b8;
+    /* Slate 400 */
+    --accent: #10b981;
+    /* Emerald 500 */
+
+    /* State Colors */
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+    --info: #3b82f6;
+
+    /* Surfaces - Enterprise Dark */
+    --bg-base: #050505;
+    --surface-100: #0a0a0a;
+    --surface-200: #121212;
+    --surface-300: #1a1a1a;
+    --surface-400: #262626;
+    --surface-500: #404040;
+
+    /* Foreground / Text */
+    --fg-primary: #ffffff;
+    --fg-secondary: #a3a3a3;
+    --fg-muted: #737373;
+    --fg-on-primary: #ffffff;
+
+    /* Interaction Glows */
+    --primary-glow: rgba(59, 130, 246, 0.15);
+    --success-glow: rgba(16, 185, 129, 0.15);
+    --warning-glow: rgba(245, 158, 11, 0.15);
+    --error-glow: rgba(239, 68, 68, 0.15);
+    --purple-glow: rgba(168, 85, 247, 0.15);
+
+    /* Shadows & Glassmorphism */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.7);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.8);
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-blur: 16px;
+
+    /* Typography */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+}

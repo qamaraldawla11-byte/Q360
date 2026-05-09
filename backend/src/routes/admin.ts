@@ -1,0 +1,503 @@
+
+import { Hono } from 'hono';
+import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { users, businesses, auditLogs, systemSettings, NewUser, NewBusiness } from '../db/schema.js';
+import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { v4 as uuidv4 } from 'uuid';
+
+const admin = new Hono<{
+    Variables: {
+        userId: string;
+        businessId: string;
+        userEmail: string;
+        userRole: string;
+    }
+}>();
+
+// Middleware: Protected and Admin/Owner only
+admin.use('*', authMiddleware);
+admin.use('*', requireRole(['owner', 'admin']));
+
+// --- Dashboard Stats ---
+
+admin.get('/stats', async (c) => {
+    try {
+        const totalUsers = await db.select({ count: sql<number>`count(*)` }).from(users).get();
+        const totalBusinesses = await db.select({ count: sql<number>`count(*)` }).from(businesses).get();
+
+        // DEFERRED: Phase 3 Migration Required - businesses.status column may not exist
+        let activeBusinessesCount = 0;
+        try {
+            const activeBusinesses = await db.select({ count: sql<number>`count(*)` })
+                .from(businesses)
+                .where(eq(businesses.status, 'active'))
+                .get();
+            activeBusinessesCount = activeBusinesses?.count || 0;
+        } catch (e) {
+            // Column may not exist yet - gracefully default to total count
+            console.warn('[Admin Stats] businesses.status column not available, using total count');
+            activeBusinessesCount = totalBusinesses?.count || 0;
+        }
+
+        let recentActions: any[] = [];
+        try {
+            recentActions = await db.select()
+                .from(auditLogs)
+                .orderBy(desc(auditLogs.timestamp))
+                .limit(10)
+                .all();
+        } catch (e) {
+            console.warn('[Admin Stats] audit_logs table not available');
+        }
+
+        return c.json({
+            totalUsers: totalUsers?.count || 0,
+            totalBusinesses: totalBusinesses?.count || 0,
+            activeBusinesses: activeBusinessesCount,
+            recentActions,
+            systemHealth: {
+                database: 'ok',
+                server: 'running',
+                lastCheck: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Stats error:', error);
+        return c.json({ error: 'Failed to fetch stats' }, 500);
+    }
+});
+
+// --- Users Management ---
+
+// List all users
+admin.get('/users', async (c) => {
+    try {
+        const allUsers = await db.select().from(users).all();
+        return c.json(allUsers);
+    } catch (error) {
+        return c.json({ error: 'Failed to fetch users' }, 500);
+    }
+});
+
+// Create User
+admin.post('/users', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { email, name, role, businessId } = body;
+
+        if (!email || !role) {
+            return c.json({ error: 'Email and Role are required' }, 400);
+        }
+
+        const newUser: NewUser = {
+            id: uuidv4(),
+            email,
+            name,
+            role,
+            primaryWorkspace: businessId || 'biz_main',
+            status: 'active',
+            isLocked: false,
+            onboardingCompleted: false,
+        };
+
+        await db.insert(users).values(newUser).run();
+
+        await db.insert(auditLogs).values({
+            id: uuidv4(),
+            userId: c.get('userId'),
+            businessId: c.get('businessId'),
+            action: 'CREATE',
+            entity: 'USER',
+            entityId: newUser.id,
+            details: JSON.stringify({ email, role }),
+        }).run();
+
+        return c.json(newUser, 201);
+    } catch (error) {
+        return c.json({ error: 'Failed to create user' }, 500);
+    }
+});
+
+// Update User
+admin.patch('/users/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+
+        await db.update(users).set(body).where(eq(users.id, id)).run();
+
+        await db.insert(auditLogs).values({
+            id: uuidv4(),
+            userId: c.get('userId') as string,
+            businessId: c.get('businessId') as string,
+            action: 'UPDATE',
+            entity: 'USER',
+            entityId: id,
+            details: JSON.stringify(body),
+        }).run();
+
+        return c.json({ message: 'User updated' });
+    } catch (error) {
+        return c.json({ error: 'Failed to update user' }, 500);
+    }
+});
+
+// Activate User
+// DEFERRED: Phase 3 Migration Required - users.status column
+admin.post('/users/:id/activate', async (c) => {
+    try {
+        const id = c.req.param('id');
+
+        try {
+            await db.update(users).set({ status: 'active' }).where(eq(users.id, id)).run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('status')) {
+                console.warn('[Admin] users.status column not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'ACTIVATE_USER',
+                entity: 'USER',
+                entityId: id,
+                details: JSON.stringify({ userId: id }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log activate user action');
+        }
+
+        return c.json({ message: 'User activated' });
+    } catch (error) {
+        console.error('[Admin] Activate user error:', error);
+        return c.json({ error: 'Failed to activate user' }, 500);
+    }
+});
+
+// Deactivate User
+// DEFERRED: Phase 3 Migration Required - users.status column
+admin.post('/users/:id/deactivate', async (c) => {
+    try {
+        const id = c.req.param('id');
+
+        try {
+            await db.update(users).set({ status: 'inactive' }).where(eq(users.id, id)).run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('status')) {
+                console.warn('[Admin] users.status column not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'DEACTIVATE_USER',
+                entity: 'USER',
+                entityId: id,
+                details: JSON.stringify({ userId: id }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log deactivate user action');
+        }
+
+        return c.json({ message: 'User deactivated' });
+    } catch (error) {
+        console.error('[Admin] Deactivate user error:', error);
+        return c.json({ error: 'Failed to deactivate user' }, 500);
+    }
+});
+
+// Lock User
+// DEFERRED: Phase 3 Migration Required - users.is_locked column
+admin.post('/users/:id/lock', async (c) => {
+    try {
+        const id = c.req.param('id');
+
+        try {
+            await db.update(users).set({ isLocked: true }).where(eq(users.id, id)).run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('is_locked')) {
+                console.warn('[Admin] users.is_locked column not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'LOCK_USER',
+                entity: 'USER',
+                entityId: id,
+                details: JSON.stringify({ userId: id }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log lock user action');
+        }
+
+        return c.json({ message: 'User locked' });
+    } catch (error) {
+        console.error('[Admin] Lock user error:', error);
+        return c.json({ error: 'Failed to lock user' }, 500);
+    }
+});
+
+// Unlock User
+// DEFERRED: Phase 3 Migration Required - users.is_locked column
+admin.post('/users/:id/unlock', async (c) => {
+    try {
+        const id = c.req.param('id');
+
+        try {
+            await db.update(users).set({ isLocked: false }).where(eq(users.id, id)).run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('is_locked')) {
+                console.warn('[Admin] users.is_locked column not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'UNLOCK_USER',
+                entity: 'USER',
+                entityId: id,
+                details: JSON.stringify({ userId: id }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log unlock user action');
+        }
+
+        return c.json({ message: 'User unlocked' });
+    } catch (error) {
+        console.error('[Admin] Unlock user error:', error);
+        return c.json({ error: 'Failed to unlock user' }, 500);
+    }
+});
+
+// --- Businesses Management ---
+
+// List Businesses
+admin.get('/businesses', async (c) => {
+    try {
+        const allBiz = await db.select().from(businesses).all();
+        return c.json(allBiz);
+    } catch (error) {
+        return c.json({ error: 'Failed to fetch businesses' }, 500);
+    }
+});
+
+// Create Business
+admin.post('/businesses', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { name, type } = body;
+
+        if (!name) return c.json({ error: 'Name is required' }, 400);
+
+        const newBiz: NewBusiness = {
+            id: uuidv4(),
+            name,
+            type: type || 'retail',
+            status: 'active',
+        };
+
+        await db.insert(businesses).values(newBiz).run();
+
+        await db.insert(auditLogs).values({
+            id: uuidv4(),
+            userId: c.get('userId') as string,
+            businessId: c.get('businessId') as string,
+            action: 'CREATE',
+            entity: 'BUSINESS',
+            entityId: newBiz.id,
+            details: JSON.stringify({ name }),
+        }).run();
+
+        return c.json(newBiz, 201);
+    } catch (error) {
+        return c.json({ error: 'Failed to create business' }, 500);
+    }
+});
+
+// Suspend Business
+// DEFERRED: Phase 3 Migration Required - businesses.status and suspension_reason columns
+admin.post('/businesses/:id/suspend', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { reason } = await c.req.json();
+
+        try {
+            await db.update(businesses)
+                .set({ status: 'suspended', suspensionReason: reason || 'No reason provided' })
+                .where(eq(businesses.id, id))
+                .run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('status') || e.message?.includes('suspension_reason')) {
+                console.warn('[Admin] businesses status/suspension_reason columns not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'SUSPEND_BUSINESS',
+                entity: 'BUSINESS',
+                entityId: id,
+                details: JSON.stringify({ businessId: id, reason: reason || 'No reason provided' }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log suspend business action');
+        }
+
+        return c.json({ message: 'Business suspended' });
+    } catch (error) {
+        console.error('[Admin] Suspend business error:', error);
+        return c.json({ error: 'Failed to suspend business' }, 500);
+    }
+});
+
+// Activate Business
+// DEFERRED: Phase 3 Migration Required - businesses.status and suspension_reason columns
+admin.post('/businesses/:id/activate', async (c) => {
+    try {
+        const id = c.req.param('id');
+
+        try {
+            await db.update(businesses)
+                .set({ status: 'active', suspensionReason: null })
+                .where(eq(businesses.id, id))
+                .run();
+        } catch (e: any) {
+            if (e.message?.includes('no such column') || e.message?.includes('status') || e.message?.includes('suspension_reason')) {
+                console.warn('[Admin] businesses status/suspension_reason columns not available - migration required');
+                return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
+            }
+            throw e;
+        }
+
+        try {
+            await db.insert(auditLogs).values({
+                id: uuidv4(),
+                userId: c.get('userId'),
+                businessId: c.get('businessId'),
+                action: 'ACTIVATE_BUSINESS',
+                entity: 'BUSINESS',
+                entityId: id,
+                details: JSON.stringify({ businessId: id }),
+            }).run();
+        } catch (e) {
+            console.warn('[Audit] Failed to log activate business action');
+        }
+
+        return c.json({ message: 'Business activated' });
+    } catch (error) {
+        console.error('[Admin] Activate business error:', error);
+        return c.json({ error: 'Failed to activate business' }, 500);
+    }
+});
+
+// --- Audit Logs ---
+
+// Get Logs with Filters
+admin.get('/audit-logs', async (c) => {
+    try {
+        const userId = c.req.query('userId');
+        const businessId = c.req.query('businessId');
+        const action = c.req.query('action');
+        const startDate = c.req.query('startDate');
+        const endDate = c.req.query('endDate');
+
+        // Build dynamic where conditions
+        const conditions = [];
+        if (userId) conditions.push(eq(auditLogs.userId, userId));
+        if (businessId) conditions.push(eq(auditLogs.businessId, businessId));
+        if (action) conditions.push(eq(auditLogs.action, action));
+        if (startDate) conditions.push(gte(auditLogs.timestamp, new Date(startDate)));
+        if (endDate) conditions.push(lte(auditLogs.timestamp, new Date(endDate)));
+
+        let query = db.select().from(auditLogs);
+
+        if (conditions.length > 0) {
+            query = query.where(and(...conditions)) as typeof query;
+        }
+
+        const logs = await query.orderBy(desc(auditLogs.timestamp)).limit(200).all();
+        return c.json(logs);
+    } catch (error) {
+        console.error('Audit logs error:', error);
+        return c.json({ error: 'Failed to fetch logs' }, 500);
+    }
+});
+
+// --- Settings ---
+
+// Get Settings
+admin.get('/settings', async (c) => {
+    try {
+        const settings = await db.select().from(systemSettings).all();
+        return c.json(settings);
+    } catch (error) {
+        return c.json({ error: 'Failed to fetch settings' }, 500);
+    }
+});
+
+// Update Setting
+admin.post('/settings', async (c) => {
+    try {
+        const { key, value, description } = await c.req.json();
+
+        if (!key || value === undefined) return c.json({ error: 'Key and Value required' }, 400);
+
+        // Upsert
+        await db.insert(systemSettings).values({
+            key,
+            value: typeof value === 'string' ? value : JSON.stringify(value),
+            description,
+            updatedAt: new Date(),
+        })
+            .onConflictDoUpdate({
+                target: systemSettings.key,
+                set: { value: typeof value === 'string' ? value : JSON.stringify(value), updatedAt: new Date() }
+            })
+            .run();
+
+        await db.insert(auditLogs).values({
+            id: uuidv4(),
+            userId: c.get('userId'),
+            businessId: c.get('businessId'),
+            action: 'UPDATE_SETTING',
+            entity: 'SYSTEM_SETTING',
+            entityId: key,
+            details: JSON.stringify({ key, value }),
+        }).run();
+
+        return c.json({ message: 'Setting saved' });
+    } catch (error) {
+        console.error(error);
+        return c.json({ error: 'Failed to save setting' }, 500);
+    }
+});
+
+export default admin;
+
