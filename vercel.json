@@ -1,17 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "experimentalServices": {
-    "frontend": {
-      "entrypoint": ".",
-      "routePrefix": "/",
-      "framework": "vite"
-    },
-    "backend": {
-      "entrypoint": "backend/src/index.ts",
-      "routePrefix": "/api",
-      "framework": "hono"
-    }
-  }
+  "outputDirectory": "dist"
 }
