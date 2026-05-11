@@ -81,8 +81,8 @@ export const LandingView = () => {
             }} />
 
             {/* Header */}
-            <header style={{
-                padding: '20px 40px',
+            <header className="landing-header" style={{
+                padding: '14px 36px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -95,21 +95,29 @@ export const LandingView = () => {
             }}>
                 <div
                     onClick={() => navigate('/')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+                    className="brand-lockup"
+                    style={{ display: 'flex', alignItems: 'center', gap: '11px', cursor: 'pointer' }}
                 >
                     <div style={{
-                        background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
-                        padding: '8px',
-                        borderRadius: '12px',
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '11px',
                         display: 'flex',
-                        boxShadow: '0 0 20px var(--primary-glow)'
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(135deg, rgba(96,165,250,0.18), rgba(20,184,166,0.12))',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        boxShadow: '0 12px 30px rgba(59,130,246,0.16)'
                     }}>
-                        <Box color="white" size={20} />
+                        <img src="/brand/q360-mark.svg" alt="" style={{ width: '30px', height: '30px', display: 'block' }} />
                     </div>
-                    <span style={{ fontWeight: 800, fontSize: '22px', letterSpacing: '-0.02em' }}>One OS</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1 }}>
+                        <span style={{ fontWeight: 800, fontSize: '18px', letterSpacing: '-0.02em' }}>Q360</span>
+                        <span style={{ color: 'var(--fg-muted)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase' }}>One OS</span>
+                    </div>
                 </div>
 
-                <nav style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
+                <nav className="landing-nav" style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
                     <span onClick={() => navigate('/docs')} style={{ color: 'var(--fg-secondary)', cursor: 'pointer', fontSize: '14px', fontWeight: 500, transition: 'color 0.2s' }}>Docs</span>
                     <span onClick={() => navigate('/pricing')} style={{ color: 'var(--fg-secondary)', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>Pricing</span>
 
@@ -138,10 +146,10 @@ export const LandingView = () => {
             </header>
 
             {/* Hero Section */}
-            <section style={{
-                padding: '160px 20px 100px',
+            <section className="landing-hero" style={{
+                padding: '78px 20px 56px',
                 textAlign: 'center',
-                maxWidth: '1200px',
+                maxWidth: '1120px',
                 margin: '0 auto',
                 position: 'relative',
                 zIndex: 1
@@ -155,7 +163,7 @@ export const LandingView = () => {
                     borderRadius: '100px',
                     fontSize: '13px',
                     fontWeight: 600,
-                    marginBottom: '40px',
+                    marginBottom: '20px',
                     border: '1px solid var(--glass-border)',
                     boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                 }}>
@@ -164,11 +172,11 @@ export const LandingView = () => {
                 </div>
 
                 <h1 style={{
-                    fontSize: 'clamp(48px, 8vw, 92px)',
+                    fontSize: 'clamp(42px, 6.7vw, 76px)',
                     fontWeight: 900,
-                    lineHeight: 0.95,
-                    marginBottom: '32px',
-                    letterSpacing: '-0.05em',
+                    lineHeight: 0.98,
+                    marginBottom: '14px',
+                    letterSpacing: '-0.045em',
                 }}>
                     The Operating System<br />
                     <span style={{
@@ -176,32 +184,32 @@ export const LandingView = () => {
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         display: 'inline-block',
-                        padding: '10px 0'
+                        padding: '6px 0'
                     }}>for Modern Business</span>
                 </h1>
 
                 <p style={{
-                    fontSize: '22px',
+                    fontSize: '20px',
                     color: 'var(--fg-secondary)',
-                    maxWidth: '700px',
-                    margin: '0 auto 56px',
-                    lineHeight: 1.6,
+                    maxWidth: '640px',
+                    margin: '0 auto 28px',
+                    lineHeight: 1.45,
                     fontWeight: 400
                 }}>
                     A unified core for the industries that power the world.
                     Manage everything from commerce to compliance in one place.
                 </p>
 
-                <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
                     <button
                         onClick={() => navigate('/login')}
                         style={{
                             background: 'var(--primary)',
                             color: 'white',
                             border: 'none',
-                            padding: '20px 48px',
-                            borderRadius: '16px',
-                            fontSize: '18px',
+                            padding: '16px 34px',
+                            borderRadius: '14px',
+                            fontSize: '16px',
                             fontWeight: 700,
                             cursor: 'pointer',
                             boxShadow: '0 20px 40px -12px var(--primary-glow)',
@@ -219,9 +227,9 @@ export const LandingView = () => {
                             background: 'transparent',
                             color: 'var(--fg-primary)',
                             border: '1px solid var(--glass-border)',
-                            padding: '20px 48px',
-                            borderRadius: '16px',
-                            fontSize: '18px',
+                            padding: '16px 34px',
+                            borderRadius: '14px',
+                            fontSize: '16px',
                             fontWeight: 600,
                             cursor: 'pointer',
                             backdropFilter: 'blur(10px)'
@@ -233,23 +241,23 @@ export const LandingView = () => {
             </section>
 
             {/* Vertical Tabs Section */}
-            <section style={{ padding: '100px 20px', maxWidth: '1200px', margin: '0 auto' }}>
-                <div style={{
+            <section className="landing-section" style={{ padding: '64px 20px', maxWidth: '1120px', margin: '0 auto' }}>
+                <div className="industry-shell" style={{
                     background: 'var(--surface-100)',
-                    borderRadius: '32px',
+                    borderRadius: '26px',
                     border: '1px solid var(--glass-border)',
                     overflow: 'hidden',
                     display: 'flex',
-                    minHeight: '600px',
+                    minHeight: '460px',
                     boxShadow: 'var(--shadow-lg)'
                 }}>
                     {/* Tab Navigation */}
-                    <div style={{
-                        width: '320px',
+                    <div className="industry-menu" style={{
+                        width: '300px',
                         borderRight: '1px solid var(--glass-border)',
-                        padding: '32px'
+                        padding: '26px'
                     }}>
-                        <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '24px' }}>Industries</h3>
+                        <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '18px' }}>Industries</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {verticals.map((v) => (
                                 <button
@@ -259,8 +267,8 @@ export const LandingView = () => {
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '16px',
-                                        padding: '20px',
-                                        borderRadius: '16px',
+                                        padding: '14px',
+                                        borderRadius: '14px',
                                         background: activeTab === v.name ? 'var(--surface-200)' : 'transparent',
                                         border: '1px solid',
                                         borderColor: activeTab === v.name ? 'var(--glass-border)' : 'transparent',
@@ -271,7 +279,7 @@ export const LandingView = () => {
                                     }}
                                 >
                                     <div style={{
-                                        padding: '10px',
+                                        padding: '8px',
                                         borderRadius: '10px',
                                         background: activeTab === v.name ? v.color : 'var(--surface-300)',
                                         color: activeTab === v.name ? 'white' : 'var(--fg-muted)',
@@ -287,16 +295,16 @@ export const LandingView = () => {
                     </div>
 
                     {/* Tab Content */}
-                    <div style={{ flex: 1, padding: '60px', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div className="industry-content" style={{ flex: 1, padding: '42px', position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         {verticals.map((v) => activeTab === v.name && (
                             <div key={v.name} style={{ animation: 'fadeIn 0.5s ease' }}>
-                                <h2 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '20px', letterSpacing: '-0.02em' }}>{v.title}</h2>
-                                <p style={{ fontSize: '20px', color: 'var(--fg-secondary)', lineHeight: 1.6, marginBottom: '40px', maxWidth: '500px' }}>{v.desc}</p>
-                                <div style={{
-                                    borderRadius: '24px',
+                                <h2 className="industry-title" style={{ fontSize: '40px', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.02em' }}>{v.title}</h2>
+                                <p className="industry-desc" style={{ fontSize: '18px', color: 'var(--fg-secondary)', lineHeight: 1.5, marginBottom: '28px', maxWidth: '520px' }}>{v.desc}</p>
+                                <div className="industry-image" style={{
+                                    borderRadius: '18px',
                                     overflow: 'hidden',
                                     border: '1px solid var(--glass-border)',
-                                    aspectRatio: '16/9',
+                                    height: '250px',
                                     background: `url(${v.preview}) center/cover`,
                                     boxShadow: 'var(--shadow-lg)',
                                     position: 'relative'
@@ -313,25 +321,25 @@ export const LandingView = () => {
             </section>
 
             {/* Bento Features Grid */}
-            <section style={{ padding: '100px 20px', maxWidth: '1200px', margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '64px' }}>
-                    <h2 style={{ fontSize: '44px', fontWeight: 800, marginBottom: '16px', letterSpacing: '-0.03em' }}>Built for scale</h2>
+            <section className="landing-section" style={{ padding: '64px 20px', maxWidth: '1120px', margin: '0 auto' }}>
+                <div style={{ textAlign: 'center', marginBottom: '38px' }}>
+                    <h2 style={{ fontSize: '38px', fontWeight: 800, marginBottom: '10px', letterSpacing: '-0.03em' }}>Built for scale</h2>
                     <p style={{ color: 'var(--fg-secondary)', fontSize: '18px' }}>The underlying infrastructure that powers modern enterprise.</p>
                 </div>
 
-                <div style={{
+                <div className="scale-grid" style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
-                    gridAutoRows: 'minmax(200px, auto)',
-                    gap: '24px'
+                    gridAutoRows: 'minmax(142px, auto)',
+                    gap: '18px'
                 }}>
                     {features.map((f, i) => (
                         <div
                             key={i}
                             className={f.span}
                             style={{
-                                padding: '40px',
-                                borderRadius: '24px',
+                                padding: '26px',
+                                borderRadius: '18px',
                                 background: 'var(--surface-100)',
                                 border: '1px solid var(--glass-border)',
                                 display: 'flex',
@@ -353,17 +361,17 @@ export const LandingView = () => {
                             }}
                         >
                             <div style={{
-                                width: '56px', height: '56px', borderRadius: '16px',
+                                width: '46px', height: '46px', borderRadius: '14px',
                                 background: 'var(--surface-200)',
                                 border: '1px solid var(--glass-border)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: 'var(--primary)', marginBottom: '32px'
+                                color: 'var(--primary)', marginBottom: '20px'
                             }}>
-                                <f.icon size={28} />
+                                <f.icon size={24} />
                             </div>
                             <div>
-                                <h3 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '12px' }}>{f.title}</h3>
-                                <p style={{ color: 'var(--fg-secondary)', fontSize: '16px', lineHeight: 1.6 }}>{f.desc}</p>
+                                <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>{f.title}</h3>
+                                <p style={{ color: 'var(--fg-secondary)', fontSize: '15px', lineHeight: 1.5 }}>{f.desc}</p>
                             </div>
                         </div>
                     ))}
@@ -371,11 +379,11 @@ export const LandingView = () => {
             </section>
 
             {/* Testimonials */}
-            <section style={{ padding: '100px 20px', maxWidth: '1200px', margin: '0 auto' }}>
-                <div style={{
+            <section className="landing-section" style={{ padding: '64px 20px', maxWidth: '1120px', margin: '0 auto' }}>
+                <div className="testimonial-grid" style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                    gap: '32px'
+                    gap: '20px'
                 }}>
                     {[
                         { name: 'Sarah Chen', role: 'CEO, Zen Kitchen', quote: 'The only platform that truly bridges our POS with back-office intelligence.' },
@@ -383,15 +391,15 @@ export const LandingView = () => {
                         { name: 'Marcus Aurelius', role: 'Director, Global Retail', quote: 'Scalability is no longer a question. We added 50 locations in a month.' }
                     ].map((t, i) => (
                         <div key={i} style={{
-                            padding: '40px',
-                            borderRadius: '24px',
+                            padding: '28px',
+                            borderRadius: '18px',
                             background: 'var(--surface-100)',
                             border: '1px solid var(--glass-border)',
                         }}>
-                            <div style={{ display: 'flex', gap: '4px', marginBottom: '24px' }}>
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '18px' }}>
                                 {[...Array(5)].map((_, j) => <Star key={j} size={14} fill="var(--warning)" color="var(--warning)" />)}
                             </div>
-                            <p style={{ fontSize: '18px', lineHeight: 1.6, marginBottom: '24px', fontStyle: 'italic', color: 'var(--fg-primary)' }}>"{t.quote}"</p>
+                            <p style={{ fontSize: '16px', lineHeight: 1.55, marginBottom: '18px', fontStyle: 'italic', color: 'var(--fg-primary)' }}>"{t.quote}"</p>
                             <div>
                                 <div style={{ fontWeight: 700, fontSize: '16px' }}>{t.name}</div>
                                 <div style={{ color: 'var(--fg-muted)', fontSize: '14px' }}>{t.role}</div>
@@ -402,13 +410,13 @@ export const LandingView = () => {
             </section>
 
             {/* Final CTA */}
-            <section style={{ padding: '120px 20px' }}>
+            <section className="landing-section landing-cta-section" style={{ padding: '72px 20px' }}>
                 <div style={{
-                    maxWidth: '1000px',
+                    maxWidth: '920px',
                     margin: '0 auto',
-                    padding: '80px 40px',
+                    padding: '58px 36px',
                     background: 'linear-gradient(135deg, #0a0a0a 0%, #171717 100%)',
-                    borderRadius: '40px',
+                    borderRadius: '28px',
                     border: '1px solid var(--glass-border)',
                     textAlign: 'center',
                     position: 'relative',
@@ -419,17 +427,17 @@ export const LandingView = () => {
                         width: '300px', height: '300px', background: 'var(--primary)', filter: 'blur(120px)',
                         opacity: 0.1, pointerEvents: 'none'
                     }} />
-                    <h2 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '24px', letterSpacing: '-0.02em' }}>Ready to centralize?</h2>
-                    <p style={{ color: 'var(--fg-secondary)', fontSize: '20px', marginBottom: '40px' }}>Join 500+ enterprises optimizing their core operations today.</p>
+                    <h2 style={{ fontSize: '40px', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.02em' }}>Ready to centralize?</h2>
+                    <p style={{ color: 'var(--fg-secondary)', fontSize: '18px', marginBottom: '28px' }}>Join 500+ enterprises optimizing their core operations today.</p>
                     <button
                         onClick={() => navigate('/login')}
                         style={{
                             background: 'var(--fg-primary)',
                             color: 'var(--bg-base)',
                             border: 'none',
-                            padding: '20px 56px',
-                            borderRadius: '16px',
-                            fontSize: '18px',
+                            padding: '16px 42px',
+                            borderRadius: '14px',
+                            fontSize: '16px',
                             fontWeight: 700,
                             cursor: 'pointer',
                         }}
@@ -441,8 +449,8 @@ export const LandingView = () => {
 
             {/* Footer */}
             <footer style={{
-                padding: '80px 40px 40px',
-                maxWidth: '1200px',
+                padding: '54px 36px 32px',
+                maxWidth: '1120px',
                 margin: '0 auto',
                 borderTop: '1px solid var(--glass-border)',
                 display: 'flex',
@@ -452,8 +460,8 @@ export const LandingView = () => {
             }}>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                        <Box size={20} color="var(--primary)" />
-                        <span style={{ fontWeight: 800, fontSize: '18px', color: 'white' }}>One OS</span>
+                        <img src="/brand/q360-mark.svg" alt="" style={{ width: '22px', height: '22px', display: 'block' }} />
+                        <span style={{ fontWeight: 800, fontSize: '18px', color: 'white' }}>Q360 One OS</span>
                     </div>
                     <p>© 2026 One OS Modern Business Systems.</p>
                 </div>
@@ -478,6 +486,76 @@ export const LandingView = () => {
                 }
                 .col-span-2 { grid-column: span 2; }
                 .row-span-2 { grid-row: span 2; }
+                @media (max-width: 900px) {
+                    .landing-header {
+                        padding: 14px 20px !important;
+                    }
+                    .landing-nav {
+                        gap: 16px !important;
+                    }
+                    .landing-hero {
+                        padding: 78px 18px 48px !important;
+                    }
+                    .landing-section {
+                        padding: 46px 18px !important;
+                    }
+                    .industry-shell {
+                        display: block !important;
+                        min-height: 0 !important;
+                    }
+                    .industry-menu {
+                        width: auto !important;
+                        border-right: 0 !important;
+                        border-bottom: 1px solid var(--glass-border) !important;
+                        padding: 20px !important;
+                    }
+                    .industry-content {
+                        padding: 28px !important;
+                    }
+                    .industry-title {
+                        font-size: 32px !important;
+                    }
+                    .industry-desc {
+                        font-size: 16px !important;
+                        margin-bottom: 22px !important;
+                    }
+                    .industry-image {
+                        height: 220px !important;
+                    }
+                    .scale-grid {
+                        grid-template-columns: 1fr !important;
+                        grid-auto-rows: auto !important;
+                    }
+                    .scale-grid > div {
+                        grid-column: auto !important;
+                        grid-row: auto !important;
+                        min-height: 0 !important;
+                    }
+                }
+                @media (max-width: 640px) {
+                    .landing-nav span {
+                        display: none !important;
+                    }
+                    .landing-hero h1 {
+                        font-size: 40px !important;
+                    }
+                    .landing-hero p {
+                        font-size: 17px !important;
+                    }
+                    .industry-image {
+                        height: 180px !important;
+                    }
+                    .testimonial-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                    footer {
+                        display: block !important;
+                    }
+                    footer > div:last-child {
+                        margin-top: 28px !important;
+                        gap: 36px !important;
+                    }
+                }
             `}</style>
         </div>
     );

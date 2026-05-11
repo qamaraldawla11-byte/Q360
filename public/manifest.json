@@ -1,17 +1,29 @@
 {
-    "name": "One OS - Business Operating System",
-    "short_name": "One OS",
-    "description": "All-in-one business operating system for restaurants, supermarkets, and retail",
+    "name": "Q360 One OS - Business Operating System",
+    "short_name": "Q360",
+    "description": "Q360 One OS: all-in-one business operating system for restaurants, supermarkets, and retail",
     "start_url": "/",
     "display": "standalone",
     "orientation": "any",
-    "theme_color": "#0a0a0f",
-    "background_color": "#0a0a0f",
+    "theme_color": "#050505",
+    "background_color": "#050505",
     "icons": [
         {
-            "src": "/vite.svg",
+            "src": "/brand/q360-mark.svg",
             "sizes": "any",
             "type": "image/svg+xml",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/brand/q360-icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/brand/q360-icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
             "purpose": "any maskable"
         }
     ],

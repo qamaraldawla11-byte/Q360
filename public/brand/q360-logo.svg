@@ -1,0 +1,30 @@
+<svg width="720" height="192" viewBox="0 0 720 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="176" height="176" rx="40" fill="#050505"/>
+  <rect x="16" y="16" width="160" height="160" rx="34" fill="url(#surface)" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+  <path d="M96 46c27.614 0 50 22.386 50 50s-22.386 50-50 50-50-22.386-50-50 22.386-50 50-50Z" stroke="url(#ring)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M119 119l23 23" stroke="#F8FAFC" stroke-width="18" stroke-linecap="round"/>
+  <path d="M96 72c13.255 0 24 10.745 24 24s-10.745 24-24 24-24-10.745-24-24 10.745-24 24-24Z" fill="url(#core)"/>
+  <path d="M236 74.5c0-21.263 16.333-36.5 39.5-36.5 23.021 0 39.5 15.237 39.5 36.5v43c0 21.263-16.479 36.5-39.5 36.5-23.167 0-39.5-15.237-39.5-36.5v-43Zm20 43c0 10.574 7.849 18.5 19.5 18.5s19.5-7.926 19.5-18.5v-43c0-10.574-7.849-18.5-19.5-18.5S256 63.926 256 74.5v43Z" fill="#F8FAFC"/>
+  <path d="M331 40h64v17.5h-44.5v30H391v17h-40.5V152H331V40Z" fill="#F8FAFC"/>
+  <path d="M413 40h19.5v112H413V40Z" fill="#F8FAFC"/>
+  <path d="M454 40h19.5v94.5H524V152h-70V40Z" fill="#F8FAFC"/>
+  <path d="M540 40h73.5v17.5h-54v29.25H609v16.75h-49.5v31h55V152H540V40Z" fill="#F8FAFC"/>
+  <text x="236" y="180" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="4">Q360 ECOSYSTEM</text>
+  <defs>
+    <linearGradient id="surface" x1="32" y1="24" x2="164" y2="176" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141821"/>
+      <stop offset="0.48" stop-color="#090A0D"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="48" y1="44" x2="144" y2="148" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="0.5" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(90 80) rotate(55.4915) scale(49.5)">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="0.45" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </radialGradient>
+  </defs>
+</svg>
