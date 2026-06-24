@@ -4,7 +4,7 @@ import { requireDatabaseUrl } from '../utils/env.js';
 requireDatabaseUrl();
 
 process.env.JWT_SECRET ||= 'tenant-identity-verification-secret';
-delete process.env.SMTP_HOST;
+delete process.env.RESEND_API_KEY;
 process.env.NODE_ENV = 'test';
 
 const { db, first, closeDatabase } = await import('../db/client.js');

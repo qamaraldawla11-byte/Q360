@@ -16,12 +16,8 @@ POSTGRES_POOL_SIZE=10
 SUPABASE_URL=https://PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>
 
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=<smtp-user>
-SMTP_PASS=<smtp-password>
-SMTP_FROM=One OS <no-reply@example.com>
+RESEND_API_KEY=<resend-api-key>
+EMAIL_FROM=Q360 <no-reply@send.q360.app>
 ```
 
 Railway supplies `PORT`; do not hard-code it in production unless Railway requires an override.

@@ -78,7 +78,7 @@ auth.post('/login', async (c) => {
         });
     });
 
-    const developmentMode = !process.env.SMTP_HOST;
+    const developmentMode = !process.env.RESEND_API_KEY;
 
     if (developmentMode) {
         console.log(`[DEV OTP] Code for ${email}: ${code}`);

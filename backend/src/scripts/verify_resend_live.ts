@@ -13,30 +13,25 @@ const maskEmail = (email: string): string => {
 const recipient = process.env.VERIFY_EMAIL?.trim() || '';
 const maskedRecipient = maskEmail(recipient);
 
-const hasLiveSmtpConfiguration = () =>
-    Boolean(
-        process.env.SMTP_HOST
-        && process.env.SMTP_USER
-        && process.env.SMTP_PASS
-        && process.env.SMTP_FROM,
-    )
-    && process.env.SMTP_JSON_TRANSPORT !== 'true';
+const hasLiveResendConfiguration = () =>
+    Boolean(process.env.RESEND_API_KEY)
+    && process.env.EMAIL_FROM === 'Q360 <no-reply@send.q360.app>';
 
 try {
     if (!EMAIL_PATTERN.test(recipient)) {
         throw new Error('invalid recipient');
     }
 
-    if (!hasLiveSmtpConfiguration()) {
-        throw new Error('invalid SMTP configuration');
+    if (!hasLiveResendConfiguration()) {
+        throw new Error('invalid Resend configuration');
     }
 
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const { sendOtpEmail } = await import('../services/email.js');
     await sendOtpEmail(recipient, code);
 
-    console.info(`SMTP live verification succeeded for ${maskedRecipient}.`);
+    console.info(`Resend live verification succeeded for ${maskedRecipient}.`);
 } catch {
-    console.error(`SMTP live verification failed for ${maskedRecipient}.`);
+    console.error(`Resend live verification failed for ${maskedRecipient}.`);
     process.exitCode = 1;
 }

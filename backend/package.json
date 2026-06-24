@@ -14,7 +14,7 @@
         "verify:restaurant": "tsx src/scripts/verify_restaurant_core.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:otp": "tsx src/scripts/verify_otp.ts",
-        "verify:smtp-live": "node dist/scripts/verify_smtp_live.js"
+        "verify:resend-live": "node dist/scripts/verify_resend_live.js"
     },
     "dependencies": {
         "@hono/node-server": "^2.0.4",
@@ -22,13 +22,12 @@
         "dotenv": "^17.2.3",
         "drizzle-orm": "^0.45.2",
         "hono": "^4.12.25",
-        "nodemailer": "^8.0.11",
         "postgres": "^3.4.9",
+        "resend": "^6.14.0",
         "uuid": "^13.0.0"
     },
     "devDependencies": {
         "@types/node": "^22.0.0",
-        "@types/nodemailer": "^8.0.1",
         "@types/uuid": "^10.0.0",
         "drizzle-kit": "^0.31.8",
         "tsx": "^4.7.0",

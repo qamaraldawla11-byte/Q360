@@ -1,38 +1,27 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const useJsonTransport = process.env.SMTP_JSON_TRANSPORT === 'true';
+const EXPECTED_EMAIL_FROM = 'Q360 <no-reply@send.q360.app>';
 
-const createTransport = () => {
-    if (useJsonTransport) {
-        if (process.env.NODE_ENV === 'production') {
-            throw new Error('SMTP_JSON_TRANSPORT cannot be used in production');
-        }
-
-        return nodemailer.createTransport({ jsonTransport: true });
-    }
-
-    const host = process.env.SMTP_HOST;
-    if (!host) {
-        throw new Error('SMTP_HOST is not configured');
-    }
-
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-
-    return nodemailer.createTransport({
-        host,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: user && pass ? { user, pass } : undefined,
-    });
+const maskEmail = (email: string): string => {
+    const [localPart = '', domain = 'invalid'] = email.trim().split('@', 2);
+    return `${localPart.charAt(0) || '*'}***@${domain || 'invalid'}`;
 };
 
 export const sendOtpEmail = async (email: string, code: string): Promise<void> => {
-    const transporter = createTransport();
+    const maskedRecipient = maskEmail(email);
+
     try {
-        const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || 'One OS <no-reply@one-os.local>',
-            to: email,
+        const apiKey = process.env.RESEND_API_KEY;
+        const from = process.env.EMAIL_FROM;
+
+        if (!apiKey || from !== EXPECTED_EMAIL_FROM) {
+            throw new Error('email delivery configuration is invalid');
+        }
+
+        const resend = new Resend(apiKey);
+        const { error } = await resend.emails.send({
+            from,
+            to: [email],
             subject: 'Your One OS sign-in code',
             text: `Your One OS sign-in code is ${code}. It expires in 10 minutes.`,
             html: `
@@ -45,11 +34,10 @@ export const sendOtpEmail = async (email: string, code: string): Promise<void> =
             `,
         });
 
-        if (useJsonTransport) {
-            const message = (info as { message?: string | Buffer }).message;
-            console.info(`[AUTH] Development OTP email: ${String(message)}`);
+        if (error) {
+            throw new Error('Resend rejected the email request');
         }
-    } finally {
-        transporter.close();
+    } catch {
+        throw new Error(`OTP email delivery failed for ${maskedRecipient}`);
     }
 };

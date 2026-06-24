@@ -19,13 +19,8 @@ Backend Railway variables:
 - `POSTGRES_POOL_SIZE`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_SECURE`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_FROM`
-- `SMTP_JSON_TRANSPORT`
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
 
 Railway supplies `PORT`; do not configure it unless Railway support requires an override.
 
@@ -66,20 +61,16 @@ https://q360-staging.example.vercel.app,https://q360-preview.example.vercel.app
 
 Do not use wildcard CORS for authenticated staging. In production mode, the backend uses only the origins listed in `CORS_ORIGINS`; local development origins are not automatically allowed.
 
-## SMTP Requirements
+## Resend API Requirements
 
 Required backend-only variable names:
 
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_SECURE`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_FROM`
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
 
-`SMTP_FROM` should use a sender address on a domain authorized by the SMTP provider. The provider should have SPF, DKIM, and DMARC configured for the sender domain before first-beta testing.
+`EMAIL_FROM` must be `Q360 <no-reply@send.q360.app>`. The `send.q360.app` subdomain must remain verified in Resend.
 
-Check OTP delivery safely by requesting a code for a dedicated staging test user and confirming receipt in the mailbox. Do not print, screenshot, commit, or paste OTP codes. In staging, `SMTP_JSON_TRANSPORT` must be unset or set to `false`.
+Check OTP delivery with `cd backend && VERIFY_EMAIL=your-test-inbox@example.com npm run verify:resend-live` from the Railway service shell. Do not print, screenshot, commit, or paste OTP codes or API keys.
 
 ## Database Requirement
 
@@ -101,7 +92,7 @@ Staging must use separate names and URLs from production:
 - Railway service name clearly marked as Q360 staging.
 - Vercel project or preview deployment clearly marked as Q360 staging.
 - Supabase project/database clearly identified as Q360-beta.
-- SMTP sender approved for staging use.
+- Resend sender domain approved for staging use.
 
 Use separate environment variables in Railway and Vercel for staging. Confirm before deploy that:
 
@@ -110,7 +101,7 @@ Use separate environment variables in Railway and Vercel for staging. Confirm be
 - Railway `DATABASE_URL` points to Q360-beta Supabase, not production.
 - No backend secrets are configured in Vercel.
 
-To prevent accidental production connection, compare project names and URLs in Railway, Vercel, Supabase, and SMTP before each deploy. Stop immediately if any production hostname, database, or sender appears in a staging variable.
+To prevent accidental production connection, compare project names and URLs in Railway, Vercel, Supabase, and Resend before each deploy. Stop immediately if any production hostname, database, or sender appears in a staging variable.
 
 ## Rollback
 

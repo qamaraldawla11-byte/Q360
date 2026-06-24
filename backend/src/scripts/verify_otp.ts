@@ -4,7 +4,7 @@ import { requireDatabaseUrl } from '../utils/env.js';
 requireDatabaseUrl();
 
 process.env.JWT_SECRET ||= 'otp-verification-secret-with-sufficient-length';
-delete process.env.SMTP_HOST;
+delete process.env.RESEND_API_KEY;
 process.env.NODE_ENV = 'test';
 
 const { default: authRoutes } = await import('../routes/auth.js');
