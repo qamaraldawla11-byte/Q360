@@ -1,6 +1,6 @@
-# One OS Setup
+# Q360 Setup
 
-This guide describes local development setup for the current One OS repository.
+This guide describes local development setup for the current Q360 codebase.
 
 ## Required Tools
 

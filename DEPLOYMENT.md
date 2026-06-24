@@ -1,4 +1,4 @@
-# One OS Production Deployment Guide
+# Q360 Production Deployment Guide
 
 ## Backend: Railway + Supabase Postgres
 
@@ -63,7 +63,7 @@ Install Command: npm install
 
 ## Backups
 
-One OS no longer stores production data in a SQLite file. Use Supabase Postgres backups, point-in-time recovery, or `pg_dump` against `DATABASE_URL`.
+Q360 no longer stores production data in a SQLite file. Use Supabase Postgres backups, point-in-time recovery, or `pg_dump` against `DATABASE_URL`.
 
 ## Launch Checks
 

@@ -22,11 +22,11 @@ export const sendOtpEmail = async (email: string, code: string): Promise<void> =
         const { error } = await resend.emails.send({
             from,
             to: [email],
-            subject: 'Your One OS sign-in code',
-            text: `Your One OS sign-in code is ${code}. It expires in 10 minutes.`,
+            subject: 'Your Q360 sign-in code',
+            text: `Your Q360 sign-in code is ${code}. It expires in 10 minutes.`,
             html: `
                 <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5">
-                    <h2 style="margin-bottom:8px">Sign in to One OS</h2>
+                    <h2 style="margin-bottom:8px">Sign in to Q360</h2>
                     <p>Enter this code to finish signing in:</p>
                     <p style="font-size:32px;font-weight:700;letter-spacing:8px;margin:24px 0">${code}</p>
                     <p style="color:#64748b">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>

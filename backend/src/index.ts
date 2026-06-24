@@ -43,7 +43,7 @@ app.use('*', cors({
 }));
 
 const healthResponse = () => ({
-        name: 'One OS Backend',
+        name: 'Q360 Backend API',
         version: '0.0.1',
         status: 'running',
         timestamp: new Date().toISOString(),
@@ -85,7 +85,7 @@ const port = Number(process.env.PORT) || 3001;
 
 console.log(`
 ╔═══════════════════════════════════════════════╗
-║           One OS Backend API                  ║
+║           Q360 Backend API                    ║
 ║                                               ║
 ║   🚀 Server running on http://localhost:${port}  ║
 ║                                               ║

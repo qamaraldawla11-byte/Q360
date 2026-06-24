@@ -1,10 +1,10 @@
-# One OS
+# Q360
 
-One OS is Qamar Technology's core AI operating system project. It is currently implemented as a modular business operating system with a React frontend shell, vertical workspaces, and a Hono-based backend API. The long-term direction is to evolve this foundation into a modular platform for AI agents, MCP servers, workflows, and enterprise applications.
+Q360 is Qamar Technology's core AI operating system project. It is currently implemented as a modular business operating system with a React frontend shell, vertical workspaces, and a Hono-based backend API. The long-term direction is to evolve this foundation into a modular platform for AI agents, MCP servers, workflows, and enterprise applications.
 
 Company: Qamar Technology  
 Corporate domain: qamartech.io  
-Project name: One OS
+Project name: Q360
 
 ## Current Capabilities
 
@@ -128,13 +128,13 @@ Typical local development uses:
 - `ARCHITECTURE.md` explains the current technical architecture and integration strategy.
 - `SETUP.md` explains local setup, environment variables, and build/run commands.
 - `ROADMAP.md` lists current state, risks, and development milestones.
-- `PRODUCT_VISION.md` captures the strategic direction for One OS.
+- `PRODUCT_VISION.md` captures the historical strategic direction for the codebase.
 - `HANDOVER.md` is the executive and technical handover for future developers and AI assistants.
 - `DEPLOYMENT.md` contains an existing production deployment guide that should be reviewed before launch.
 
 ## Important Assumptions
 
-- One OS is the official internal project name and must remain unchanged.
+- Q360 is the current product brand.
 - Shajara is a separate flagship application and is not part of this repository.
 - MCP and AI agent orchestration are strategic platform goals, but no production MCP server or agent runtime is currently implemented in this repository.
 - SQLite is suitable for the current prototype/local deployment phase, but a production multi-tenant SaaS rollout will likely require a managed relational database and stronger tenancy controls.

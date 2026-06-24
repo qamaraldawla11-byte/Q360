@@ -1,4 +1,4 @@
-# One OS Backend
+# Q360 Backend
 
 ## Requirements
 
