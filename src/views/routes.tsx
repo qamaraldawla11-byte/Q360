@@ -1,6 +1,8 @@
+/* eslint-disable react-refresh/only-export-components */
 import { lazy, Suspense } from 'react';
-import { Navigate, Outlet, type RouteObject, useLocation } from 'react-router-dom';
+import { Navigate, type RouteObject, useLocation } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
+import { AppShell } from '@/layouts/AppShell';
 import { useAuthStore } from '@/store/auth.store';
 
 // Admin Pages (Lazy Load)
@@ -34,9 +36,14 @@ const LogisticsView = lazy(() => import('@/modules/logistics/LogisticsView').the
 const MerchantsView = lazy(() => import('@/modules/merchants/MerchantsView').then(m => ({ default: m.MerchantsView })));
 const SettingsView = lazy(() => import('@/modules/settings/SettingsView').then(m => ({ default: m.SettingsView })));
 const NotFoundView = lazy(() => import('@/modules/core/NotFoundView').then(m => ({ default: m.NotFoundView })));
+const PersonalDashboard = lazy(() => import('@/components/personal/PersonalDashboard').then(m => ({ default: m.PersonalDashboard })));
+const InvoiceListView = lazy(() => import('@/components/personal/PersonalStubViews').then(m => ({ default: m.InvoiceListView })));
+const ClientListView = lazy(() => import('@/components/personal/PersonalStubViews').then(m => ({ default: m.ClientListView })));
+const ExpenseView = lazy(() => import('@/components/personal/PersonalStubViews').then(m => ({ default: m.ExpenseView })));
+const TaskView = lazy(() => import('@/components/personal/PersonalStubViews').then(m => ({ default: m.TaskView })));
+const PersonalSettingsView = lazy(() => import('@/components/personal/PersonalStubViews').then(m => ({ default: m.PersonalSettingsView })));
 
 // Restaurant Vertical
-const RestaurantLayout = lazy(() => import('@/modules/commerce/restaurant/layout/RestaurantLayout').then(m => ({ default: m.RestaurantLayout })));
 const RestaurantDashboard = lazy(() => import('@/modules/commerce/restaurant/views/DashboardView').then(m => ({ default: m.DashboardView })));
 const RestaurantMenu = lazy(() => import('@/modules/commerce/restaurant/views/MenuView').then(m => ({ default: m.MenuView })));
 const RestaurantPos = lazy(() => import('@/modules/commerce/restaurant/views/PosView').then(m => ({ default: m.PosView })));
@@ -49,7 +56,6 @@ const RestaurantReports = lazy(() => import('@/modules/commerce/restaurant/views
 const RestaurantSettings = lazy(() => import('@/modules/commerce/restaurant/views/SettingsView').then(m => ({ default: m.SettingsView })));
 
 // Pharmacy Vertical
-const PharmacyLayout = lazy(() => import('@/modules/commerce/pharmacy/layout/PharmacyLayout').then(m => ({ default: m.PharmacyLayout })));
 const PharmacyDashboard = lazy(() => import('@/modules/commerce/pharmacy/views/DashboardView').then(m => ({ default: m.DashboardView })));
 const PharmacyCatalog = lazy(() => import('@/modules/commerce/pharmacy/views/CatalogView').then(m => ({ default: m.CatalogView })));
 const PharmacyInventory = lazy(() => import('@/modules/commerce/pharmacy/views/InventoryView').then(m => ({ default: m.InventoryView })));
@@ -60,11 +66,15 @@ const PharmacyReports = lazy(() => import('@/modules/commerce/pharmacy/views/Rep
 const PharmacyStaff = lazy(() => import('@/modules/commerce/pharmacy/views/StaffView').then(m => ({ default: m.StaffView })));
 
 // Retail Vertical
-const RetailLayout = lazy(() => import('@/modules/commerce/retail/layout/RetailLayout').then(m => ({ default: m.RetailLayout })));
 const RetailDashboard = lazy(() => import('@/modules/commerce/retail/views/DashboardView').then(m => ({ default: m.DashboardView })));
+const RetailPos = lazy(() => import('@/modules/commerce/retail/views/PosView').then(m => ({ default: m.PosView })));
+const RetailCatalog = lazy(() => import('@/modules/commerce/retail/views/CatalogView').then(m => ({ default: m.CatalogView })));
+const RetailInventory = lazy(() => import('@/modules/commerce/retail/views/InventoryView').then(m => ({ default: m.InventoryView })));
+const RetailCustomers = lazy(() => import('@/modules/commerce/retail/views/CustomersView').then(m => ({ default: m.CustomersView })));
+const RetailReports = lazy(() => import('@/modules/commerce/retail/views/ReportsView').then(m => ({ default: m.ReportsView })));
+const RetailSettings = lazy(() => import('@/modules/commerce/retail/views/SettingsView').then(m => ({ default: m.SettingsView })));
 
 // Supermarket Vertical
-const SupermarketLayout = lazy(() => import('@/modules/commerce/supermarket/layout/SupermarketLayout').then(m => ({ default: m.SupermarketLayout })));
 const SupermarketDashboard = lazy(() => import('@/modules/commerce/supermarket/views/DashboardView').then(m => ({ default: m.DashboardView })));
 const SupermarketPos = lazy(() => import('@/modules/commerce/supermarket/views/PosView').then(m => ({ default: m.PosView })));
 const SupermarketCatalog = lazy(() => import('@/modules/commerce/supermarket/views/CatalogView').then(m => ({ default: m.CatalogView })));
@@ -80,7 +90,6 @@ const PharmacyProcurement = lazy(() => import('@/modules/commerce/pharmacy/views
 const RetailProcurement = lazy(() => import('@/modules/commerce/retail/views/ProcurementView').then(m => ({ default: m.RetailProcurementView })));
 
 // School Vertical
-const SchoolLayout = lazy(() => import('@/modules/education/school/layout/SchoolLayout').then(m => ({ default: m.SchoolLayout })));
 const SchoolDashboard = lazy(() => import('@/modules/education/school/views/DashboardView').then(m => ({ default: m.DashboardView })));
 
 // Loading Component
@@ -98,20 +107,40 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     // Rule 1: Not authenticated → Login
     if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-    // Rule 2: Not onboarded → Onboarding (unless already there)
-    // Exception: Admins/Owners bypass onboarding
-    const isBypassRole = user?.role === 'admin' || user?.role === 'owner';
-    if (!user?.onboardingCompleted && !location.pathname.startsWith('/onboarding') && !isBypassRole) {
+    // Rule 2: Persisted onboarding state controls access for every user.
+    if (user?.onboardingCompleted && location.pathname.startsWith('/onboarding')) {
+        return <Navigate to={user.lastActiveWorkspace || user.primaryWorkspace || (user.segment ? `/app/${user.segment}` : '/app')} replace />;
+    }
+    if (!user?.onboardingCompleted && !location.pathname.startsWith('/onboarding')) {
         return <Navigate to="/onboarding/identity" replace />;
     }
 
     // Rule 3: At /app root → Redirect to primary workspace or segments
     if (location.pathname === '/app' || location.pathname === '/app/') {
+        if (user?.userType === 'personal') {
+            return <Navigate to="/app/personal" replace />;
+        }
         if (user?.primaryWorkspace) {
             return <Navigate to={user.primaryWorkspace} replace />;
         }
+        if (user?.segment) {
+            return <Navigate to={`/app/${user.segment}`} replace />;
+        }
         // Fallback: No workspace set (edge case)
         return <Navigate to="/app/segments" replace />;
+    }
+
+    return <>{children}</>;
+};
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+    const { isAuthenticated, user } = useAuthStore();
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
+    if (user?.role !== 'admin' && user?.role !== 'owner') {
+        return <Navigate to="/app" replace />;
     }
 
     return <>{children}</>;
@@ -145,11 +174,21 @@ export const appRoutes: RouteObject[] = [
     },
     {
         path: '/app',
-        element: <ProtectedRoute><Outlet /></ProtectedRoute>,
+        element: <ProtectedRoute><AppShell /></ProtectedRoute>,
         children: [
             {
+                path: 'personal',
+                children: [
+                    { index: true, element: <PersonalDashboard /> },
+                    { path: 'invoices', element: <InvoiceListView /> },
+                    { path: 'clients', element: <ClientListView /> },
+                    { path: 'expenses', element: <ExpenseView /> },
+                    { path: 'tasks', element: <TaskView /> },
+                    { path: 'settings', element: <PersonalSettingsView /> },
+                ],
+            },
+            {
                 path: 'restaurant',
-                element: <RestaurantLayout />,
                 children: [
                     { index: true, element: <RestaurantDashboard /> },
                     { path: 'menu', element: <RestaurantMenu /> },
@@ -165,7 +204,6 @@ export const appRoutes: RouteObject[] = [
             },
             {
                 path: 'pharmacy',
-                element: <PharmacyLayout />,
                 children: [
                     { index: true, element: <PharmacyDashboard /> },
                     { path: 'catalog', element: <PharmacyCatalog /> },
@@ -180,15 +218,19 @@ export const appRoutes: RouteObject[] = [
             },
             {
                 path: 'retail',
-                element: <RetailLayout />,
                 children: [
                     { index: true, element: <RetailDashboard /> },
+                    { path: 'pos', element: <RetailPos /> },
+                    { path: 'catalog', element: <RetailCatalog /> },
+                    { path: 'inventory', element: <RetailInventory /> },
+                    { path: 'customers', element: <RetailCustomers /> },
                     { path: 'procurement', element: <RetailProcurement /> },
+                    { path: 'reports', element: <RetailReports /> },
+                    { path: 'settings', element: <RetailSettings /> },
                 ]
             },
             {
                 path: 'supermarket',
-                element: <SupermarketLayout />,
                 children: [
                     { index: true, element: <SupermarketDashboard /> },
                     { path: 'pos', element: <SupermarketPos /> },
@@ -204,7 +246,6 @@ export const appRoutes: RouteObject[] = [
             },
             {
                 path: 'school',
-                element: <SchoolLayout />,
                 children: [
                     { index: true, element: <SchoolDashboard /> },
                 ]
@@ -219,6 +260,18 @@ export const appRoutes: RouteObject[] = [
                                 <SegmentsView />
                             </Suspense>
                         ),
+                    },
+                    {
+                        path: 'personal_freelancer',
+                        element: <Navigate to="/app/personal" replace />,
+                    },
+                    {
+                        path: 'personal_consultant',
+                        element: <Navigate to="/app/personal" replace />,
+                    },
+                    {
+                        path: 'personal_creative',
+                        element: <Navigate to="/app/personal" replace />,
                     },
                     {
                         path: 'admin',
@@ -266,7 +319,7 @@ export const appRoutes: RouteObject[] = [
     },
     {
         path: '/admin',
-        element: <ProtectedRoute><AdminLayout /></ProtectedRoute>,
+        element: <ProtectedRoute><AdminRoute><AdminLayout /></AdminRoute></ProtectedRoute>,
         children: [
             { index: true, element: <Navigate to="/admin/users" replace /> },
             { path: 'users', element: <UsersPage /> },

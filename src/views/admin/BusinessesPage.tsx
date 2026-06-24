@@ -32,7 +32,7 @@ export const BusinessesPage = () => {
             setShowModal(false);
             setNewBiz({ name: '', type: 'retail' });
             fetchBiz();
-        } catch (err) {
+        } catch {
             alert('Failed to create business');
         }
     };
@@ -45,7 +45,7 @@ export const BusinessesPage = () => {
             setShowSuspendModal(null);
             setSuspendReason('');
             fetchBiz();
-        } catch (err) {
+        } catch {
             alert('Failed to suspend business');
         } finally {
             setActionLoading(null);
@@ -57,7 +57,7 @@ export const BusinessesPage = () => {
         try {
             await adminApi.activateBusiness(id);
             fetchBiz();
-        } catch (err) {
+        } catch {
             alert('Failed to activate business');
         } finally {
             setActionLoading(null);

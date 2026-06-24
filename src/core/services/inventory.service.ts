@@ -25,6 +25,12 @@ class InventoryService {
             throw error;
         }
     }
+
+    async createItem(input: Omit<InventoryItem, 'id' | 'status'>): Promise<InventoryItem> {
+        const createdItem = await http.post<InventoryItem>('/inventory', input);
+        await this.getInventory();
+        return createdItem;
+    }
 }
 
 export const inventoryService = new InventoryService();

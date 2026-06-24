@@ -16,7 +16,7 @@ export const supermarketManifest: VerticalManifest = {
     name: 'Supermarket OS',
     shortName: 'Supermarket',
     icon: ShoppingCart,
-    color: '#10b981',
+    color: '#3b82f6',
     basePath: '/app/supermarket',
     description: 'Comprehensive supermarket management with barcode POS, inventory, and offers.',
 

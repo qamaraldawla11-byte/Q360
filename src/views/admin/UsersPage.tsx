@@ -15,7 +15,7 @@ export const UsersPage = () => {
             setLoading(true);
             const data = await adminApi.getUsers();
             setUsers(data);
-        } catch (err) {
+        } catch {
             setError('Failed to load users');
         } finally {
             setLoading(false);
@@ -32,7 +32,7 @@ export const UsersPage = () => {
             setShowModal(false);
             setNewUser({ email: '', role: 'user', businessId: 'biz_main', name: '' });
             fetchUsers();
-        } catch (err) {
+        } catch {
             alert('Failed to create user');
         }
     };
@@ -47,7 +47,7 @@ export const UsersPage = () => {
                 case 'unlock': await adminApi.unlockUser(userId); break;
             }
             fetchUsers();
-        } catch (err) {
+        } catch {
             alert(`Failed to ${action} user`);
         } finally {
             setActionLoading(null);

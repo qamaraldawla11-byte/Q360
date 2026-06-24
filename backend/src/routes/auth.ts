@@ -1,47 +1,199 @@
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
-import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { db, first } from '../db/client.js';
+import { otpCodes, users } from '../db/schema.js';
 import { generateToken, authMiddleware } from '../middleware/auth.js';
+import { sendOtpEmail } from '../services/email.js';
+import type { AppEnv } from '../types/app.js';
+import { ensureBusinessRecord, isWorkspaceRoute, resolveJwtBusinessId } from '../utils/tenant.js';
 
-const auth = new Hono();
+const auth = new Hono<AppEnv>();
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_DELAY_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// POST /api/auth/login
+type OtpRow = {
+    id: string;
+    codeHash: string;
+    expiresAt: Date;
+    attempts: number;
+};
+
+const normalizeEmail = (email: unknown) =>
+    typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+const hashOtp = (email: string, code: string) =>
+    createHmac('sha256', process.env.JWT_SECRET!).update(`${email}:${code}`).digest('hex');
+
+const otpMatches = (expectedHash: string, actualHash: string) => {
+    const expected = Buffer.from(expectedHash, 'hex');
+    const actual = Buffer.from(actualHash, 'hex');
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
+
+// Request a one-time sign-in code.
 auth.post('/login', async (c) => {
-    const body = await c.req.json<{ email: string }>();
+    const body = await c.req.json<{ email?: string }>();
+    const email = normalizeEmail(body.email);
 
-    if (!body.email) {
-        return c.json({ error: 'Email is required' }, 400);
+    if (!EMAIL_PATTERN.test(email)) {
+        return c.json({ error: 'A valid email address is required' }, 400);
     }
 
-    // Find or create user
-    let user = db.select().from(users).where(eq(users.email, body.email)).get();
+    const user = await first(db.select().from(users).where(eq(users.email, email)));
+    if (user?.isLocked || user?.status === 'inactive') {
+        return c.json({ error: 'Account is not available' }, 403);
+    }
 
+    const now = Date.now();
+    const latest = await first(db.select({ createdAt: otpCodes.createdAt })
+        .from(otpCodes)
+        .where(and(eq(otpCodes.email, email), isNull(otpCodes.usedAt)))
+        .orderBy(desc(otpCodes.createdAt))
+        .limit(1));
+
+    if (latest && now - latest.createdAt.getTime() < OTP_RESEND_DELAY_MS) {
+        return c.json({
+            error: 'Please wait before requesting another code',
+            retryAfter: Math.ceil((OTP_RESEND_DELAY_MS - (now - latest.createdAt.getTime())) / 1000),
+        }, 429);
+    }
+
+    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const id = randomUUID();
+
+    await db.transaction(async (tx) => {
+        await tx.update(otpCodes)
+            .set({ usedAt: new Date(now) })
+            .where(and(eq(otpCodes.email, email), isNull(otpCodes.usedAt)));
+        await tx.insert(otpCodes).values({
+            id,
+            email,
+            codeHash: hashOtp(email, code),
+            expiresAt: new Date(now + OTP_TTL_MS),
+            attempts: 0,
+            createdAt: new Date(now),
+        });
+    });
+
+    const developmentMode = !process.env.SMTP_HOST;
+
+    if (developmentMode) {
+        console.log(`[DEV OTP] Code for ${email}: ${code}`);
+    } else {
+        try {
+            await sendOtpEmail(email, code);
+        } catch (error) {
+            await db.delete(otpCodes).where(eq(otpCodes.id, id));
+            console.error('[AUTH] Failed to send OTP email:', error);
+            return c.json({ error: 'Unable to send sign-in code.' }, 503);
+        }
+    }
+
+    return c.json({ success: true, expiresIn: OTP_TTL_MS / 1000, developmentMode });
+});
+
+// Exchange a valid one-time code for a JWT session.
+auth.post('/verify', async (c) => {
+    const body = await c.req.json<{ email?: string; code?: string }>();
+    const email = normalizeEmail(body.email);
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+
+    if (!EMAIL_PATTERN.test(email) || !/^\d{6}$/.test(code)) {
+        return c.json({ error: 'Email and a 6-digit code are required' }, 400);
+    }
+
+    const otp = await first(db.select({
+        id: otpCodes.id,
+        codeHash: otpCodes.codeHash,
+        expiresAt: otpCodes.expiresAt,
+        attempts: otpCodes.attempts,
+    })
+        .from(otpCodes)
+        .where(and(eq(otpCodes.email, email), isNull(otpCodes.usedAt)))
+        .orderBy(desc(otpCodes.createdAt))
+        .limit(1)) as OtpRow | undefined;
+
+    if (!otp) {
+        return c.json({ error: 'No active sign-in code. Request a new code.' }, 400);
+    }
+
+    const now = Date.now();
+    if (otp.expiresAt.getTime() <= now) {
+        await db.update(otpCodes).set({ usedAt: new Date(now) }).where(eq(otpCodes.id, otp.id));
+        return c.json({ error: 'This code has expired. Request a new code.' }, 400);
+    }
+
+    if (otp.attempts >= OTP_MAX_ATTEMPTS) {
+        await db.update(otpCodes).set({ usedAt: new Date(now) }).where(eq(otpCodes.id, otp.id));
+        return c.json({ error: 'Too many attempts. Request a new code.' }, 429);
+    }
+
+    if (!otpMatches(otp.codeHash, hashOtp(email, code))) {
+        const attempts = otp.attempts + 1;
+        await db.update(otpCodes)
+            .set({
+                attempts,
+                usedAt: attempts >= OTP_MAX_ATTEMPTS ? new Date(now) : null,
+            })
+            .where(eq(otpCodes.id, otp.id));
+        return c.json({
+            error: attempts >= OTP_MAX_ATTEMPTS
+                ? 'Too many attempts. Request a new code.'
+                : 'Invalid sign-in code',
+        }, attempts >= OTP_MAX_ATTEMPTS ? 429 : 400);
+    }
+
+    const claimed = await db.update(otpCodes)
+        .set({ usedAt: new Date(now) })
+        .where(and(eq(otpCodes.id, otp.id), isNull(otpCodes.usedAt)))
+        .returning({ id: otpCodes.id });
+
+    if (claimed.length !== 1) {
+        return c.json({ error: 'This code has already been used' }, 400);
+    }
+
+    let user = await first(db.select().from(users).where(eq(users.email, email)));
     if (!user) {
-        // Create new user
-        const newUserId = `usr_${Date.now()}`;
-        db.insert(users).values({
+        const newUserId = `usr_${randomUUID()}`;
+        const businessId = `biz_${randomUUID()}`;
+        await ensureBusinessRecord(businessId, `${email.split('@')[0]}'s Business`, 'retail');
+        await db.insert(users).values({
             id: newUserId,
-            email: body.email,
-            name: body.email.split('@')[0],
+            email,
+            name: email.split('@')[0],
             role: 'user',
+            businessId,
             onboardingCompleted: false,
-            primaryWorkspace: 'biz_main', // Default workspace
-        }).run();
-
-        user = db.select().from(users).where(eq(users.id, newUserId)).get();
+            primaryWorkspace: null,
+        });
+        user = await first(db.select().from(users).where(eq(users.id, newUserId)));
     }
 
     if (!user) {
         return c.json({ error: 'Failed to create user' }, 500);
     }
 
-    // Generate JWT
+    if (user.isLocked || user.status === 'inactive') {
+        return c.json({ error: 'Account is not available' }, 403);
+    }
+
+    if (!user.businessId || isWorkspaceRoute(user.businessId)) {
+        const businessId = resolveJwtBusinessId(user);
+        await ensureBusinessRecord(businessId, user.businessName || `${user.name || user.email}'s Business`, user.segment || 'retail');
+        await db.update(users)
+            .set({ businessId })
+            .where(eq(users.id, user.id));
+        user = { ...user, businessId };
+    }
+
     const token = await generateToken({
         sub: user.id,
         email: user.email,
         role: user.role || 'user',
-        businessId: user.primaryWorkspace || 'biz_main',
+        businessId: resolveJwtBusinessId(user),
     });
 
     return c.json({
@@ -51,26 +203,25 @@ auth.post('/login', async (c) => {
             email: user.email,
             name: user.name,
             role: user.role,
+            userType: user.userType,
+            segment: user.segment,
+            businessName: user.businessName,
+            country: user.country,
+            currency: user.currency,
             onboardingCompleted: user.onboardingCompleted,
             primaryWorkspace: user.primaryWorkspace,
-            workspaces: [], // TODO: Implement workspace relation
+            workspaces: [],
         },
     });
 });
 
-// POST /api/auth/logout
 auth.post('/logout', (c) => {
-    // JWT is stateless, so logout is handled client-side
-    // This endpoint exists for API contract consistency
     return c.json({ success: true });
 });
 
-// GET /api/auth/session (protected)
 auth.get('/session', authMiddleware, async (c) => {
-    // Explicitly cast keys because Hono Context variables aren't globally typed yet
-    const userId = c.get('userId' as any) as string;
-
-    const user = db.select().from(users).where(eq(users.id, userId)).get();
+    const userId = c.get('userId');
+    const user = await first(db.select().from(users).where(eq(users.id, userId)));
 
     if (!user) {
         return c.json({ error: 'User not found' }, 404);
@@ -81,6 +232,11 @@ auth.get('/session', authMiddleware, async (c) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        userType: user.userType,
+        segment: user.segment,
+        businessName: user.businessName,
+        country: user.country,
+        currency: user.currency,
         onboardingCompleted: user.onboardingCompleted,
         primaryWorkspace: user.primaryWorkspace,
         workspaces: [],

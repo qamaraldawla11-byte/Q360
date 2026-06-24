@@ -1,12 +1,12 @@
 {
-    "name": "Q360 One OS - Business Operating System",
+    "name": "Q360",
     "short_name": "Q360",
-    "description": "Q360 One OS: all-in-one business operating system for restaurants, supermarkets, and retail",
+    "description": "Business Operating System by Qamar Technologies",
     "start_url": "/",
     "display": "standalone",
     "orientation": "any",
-    "theme_color": "#050505",
-    "background_color": "#050505",
+    "theme_color": "#0a0a0a",
+    "background_color": "#0a0a0a",
     "icons": [
         {
             "src": "/brand/q360-mark.svg",

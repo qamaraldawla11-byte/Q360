@@ -17,7 +17,7 @@ export const restaurantManifest: VerticalManifest = {
     name: 'Restaurant OS',
     shortName: 'Restaurant',
     icon: UtensilsCrossed,
-    color: '#f59e0b',
+    color: '#f97316',
     basePath: '/app/restaurant',
     description: 'Table management, kitchen display, menus, and billing.',
 

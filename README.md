@@ -15,7 +15,7 @@ Project name: One OS
 - Manifest-driven vertical registry for workspace metadata and navigation.
 - Supermarket/commerce backend integration for inventory, products, POS orders, suppliers, and procurement.
 - Admin API and UI for users, businesses, audit logs, settings, and dashboard health.
-- SQLite persistence through Drizzle ORM and `better-sqlite3`.
+- Supabase Postgres persistence through Drizzle ORM and the `postgres` driver.
 - Basic audit logging, rate limiting, CORS configuration, and backup scripts.
 - PWA manifest in `public/manifest.json`.
 
@@ -37,7 +37,7 @@ Backend:
 - `@hono/node-server`
 - Hono JWT utilities
 - Drizzle ORM
-- SQLite via `better-sqlite3`
+- Supabase Postgres via `postgres` and Drizzle
 - `dotenv`
 - `tsx`
 
@@ -87,7 +87,7 @@ npm run db:backup:list
 
 Typical local development uses:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:5174`
 - Backend: `http://localhost:3001`
 - API base URL: `http://localhost:3001/api`
 

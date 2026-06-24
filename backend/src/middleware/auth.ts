@@ -1,6 +1,8 @@
 
 import { Context, Next } from 'hono';
 import { verify } from 'hono/jwt';
+import type { AppEnv } from '../types/app.js';
+import { DEFAULT_BUSINESS_ID, isWorkspaceRoute } from '../utils/tenant.js';
 
 // SECURITY: JWT_SECRET must be set in environment. No fallback allowed.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -17,11 +19,11 @@ export interface JWTPayload {
     businessId: string; // Multi-tenancy context
     iat: number;
     exp: number;
-    [key: string]: any; // Allow other claims
+    [key: string]: unknown;
 }
 
 // Middleware to verify JWT token
-export const authMiddleware = async (c: Context, next: Next) => {
+export const authMiddleware = async (c: Context<AppEnv>, next: Next) => {
     const authHeader = c.req.header('Authorization');
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -31,18 +33,20 @@ export const authMiddleware = async (c: Context, next: Next) => {
     const token = authHeader.substring(7);
 
     try {
-        const payload = await verify(token, JWT_SECRET) as unknown as JWTPayload;
+        const payload = await verify(token, JWT_SECRET, 'HS256') as unknown as JWTPayload;
 
         // Attach user info to context
         c.set('userId', payload.sub);
         c.set('userEmail', payload.email);
         c.set('userRole', payload.role);
-        // Default to 'biz_main' if missing in legacy tokens, assuming they are admin/demo. 
-        // Ideally should reject, but for smooth transition:
-        c.set('businessId', payload.businessId || 'biz_main');
+        // Default to the seeded demo tenant only for missing legacy tokens.
+        if (isWorkspaceRoute(payload.businessId)) {
+            return c.json({ error: 'Unauthorized: Invalid tenant identity' }, 401);
+        }
+        c.set('businessId', payload.businessId || DEFAULT_BUSINESS_ID);
 
         await next();
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Unauthorized: Invalid token' }, 401);
     }
 };
@@ -58,13 +62,13 @@ export const generateToken = async (payload: Omit<JWTPayload, 'iat' | 'exp'>): P
         exp: now + (24 * 60 * 60), // 24 hours
     } as JWTPayload;
 
-    return sign(fullPayload, JWT_SECRET);
+    return sign(fullPayload, JWT_SECRET, 'HS256');
 };
 
 // RBAC Middleware generator
 export const requireRole = (allowedRoles: string[]) => {
-    return async (c: Context, next: Next) => {
-        const userRole = c.get('userRole') as string;
+    return async (c: Context<AppEnv>, next: Next) => {
+        const userRole = c.get('userRole');
 
         // Owner/Admin always have access? Or strict check?
         // Usually Admin/Owner implies access to most things, but let's be explicit in usage or implicit here.

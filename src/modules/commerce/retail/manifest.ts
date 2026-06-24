@@ -1,12 +1,13 @@
 import type { VerticalManifest } from '@/types/vertical';
 import {
+    Boxes,
+    Contact,
+    FileBarChart,
     LayoutDashboard,
-    ShoppingBag,
     Package,
-    Users,
-    BarChart3,
     Settings,
-    Tag
+    ShoppingBag,
+    ShoppingCart
 } from 'lucide-react';
 
 export const retailManifest: VerticalManifest = {
@@ -14,7 +15,7 @@ export const retailManifest: VerticalManifest = {
     name: 'Retail OS',
     shortName: 'Retail',
     icon: ShoppingBag,
-    color: '#ec4899',
+    color: '#8b5cf6',
     basePath: '/app/retail',
     description: 'Point of sale, inventory, and customer management for retail stores.',
 
@@ -22,10 +23,10 @@ export const retailManifest: VerticalManifest = {
         { id: 'dashboard', label: 'Dashboard', path: '', icon: LayoutDashboard },
         { id: 'pos', label: 'Point of Sale', path: '/pos', icon: ShoppingBag },
         { id: 'catalog', label: 'Product Catalog', path: '/catalog', icon: Package },
-        { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Package },
-        { id: 'pricing', label: 'Pricing & Discounts', path: '/pricing', icon: Tag },
-        { id: 'customers', label: 'Customers', path: '/customers', icon: Users },
-        { id: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },
+        { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Boxes },
+        { id: 'customers', label: 'Customers', path: '/customers', icon: Contact },
+        { id: 'procurement', label: 'Procurement', path: '/procurement', icon: ShoppingCart },
+        { id: 'reports', label: 'Reports', path: '/reports', icon: FileBarChart },
         { id: 'settings', label: 'Settings', path: '/settings', icon: Settings },
     ],
 

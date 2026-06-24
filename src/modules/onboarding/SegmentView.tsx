@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
-import { ShoppingCart, Briefcase, GraduationCap, Truck, Building2 } from 'lucide-react';
+import { Building2, User } from 'lucide-react';
+import type { UserType } from '@/types/user';
 
 const CATEGORIES = [
-    { id: 'commerce', label: 'Commerce', icon: ShoppingCart, color: '#10b981', description: 'Retail, Restaurants, Pharmacy' },
-    { id: 'services', label: 'Services', icon: Briefcase, color: '#3b82f6', description: 'Clinics, Salons, Repair' },
-    { id: 'education', label: 'Education', icon: GraduationCap, color: '#8b5cf6', description: 'Schools, Courses, Tutoring' },
-    { id: 'marketplace', label: 'Marketplace', icon: Truck, color: '#ec4899', description: 'Logistics, Delivery, Apps' },
-    { id: 'enterprise', label: 'Enterprise / Ops', icon: Building2, color: '#64748b', description: 'Office, Manufacturing' },
+    { id: 'sme' as const, label: 'Business', icon: Building2, color: '#10b981', description: 'Restaurant, pharmacy, supermarket, or retail' },
+    { id: 'personal' as const, label: 'Personal', icon: User, color: '#3b82f6', description: 'Freelancer, consultant, or creative' },
 ];
 
 export const SegmentView = () => {
@@ -19,10 +17,10 @@ export const SegmentView = () => {
     const handleContinue = () => {
         if (!selected) return;
 
-        // Store category selection in temp field
         updateUser({
-            // Using lastActiveWorkspace as temp storage for category ID initially
-            lastActiveWorkspace: selected
+            userType: selected as UserType,
+            segment: null,
+            lastActiveWorkspace: undefined,
         });
 
         navigate('/onboarding/type');
@@ -37,10 +35,14 @@ export const SegmentView = () => {
                 marginBottom: '32px'
             }}>
                 {CATEGORIES.map((c) => (
-                    <div
+                    <button
                         key={c.id}
+                        type="button"
                         onClick={() => setSelected(c.id)}
+                        aria-pressed={selected === c.id}
+                        className="onboarding-option"
                         style={{
+                            width: '100%',
                             padding: '16px 20px',
                             borderRadius: '16px',
                             border: selected === c.id ? `2px solid ${c.color}` : '1px solid var(--border-subtle)',
@@ -50,6 +52,8 @@ export const SegmentView = () => {
                             alignItems: 'center',
                             gap: '16px',
                             transition: 'all 0.2s',
+                            fontFamily: 'inherit',
+                            textAlign: 'left',
                         }}
                     >
                         <div style={{
@@ -72,7 +76,7 @@ export const SegmentView = () => {
                                 {c.description}
                             </div>
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
 

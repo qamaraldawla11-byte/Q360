@@ -11,12 +11,16 @@ node_modules
 dist
 dist-ssr
 *.local
+playwright-report/
+test-results/
 
 # Environment files (NEVER COMMIT SECRETS)
 .env
 .env.local
 .env.*.local
 backend/.env
+backend/.env.local
+backend/.env.*.local
 
 # Database files
 backend/data/*.db

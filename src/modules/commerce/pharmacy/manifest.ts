@@ -7,7 +7,8 @@ import {
     ShoppingCart,
     FileText,
     Users,
-    BarChart3
+    BarChart3,
+    ClipboardList
 } from 'lucide-react';
 
 export const pharmacyManifest: VerticalManifest = {
@@ -15,7 +16,7 @@ export const pharmacyManifest: VerticalManifest = {
     name: 'Pharmacy OS',
     shortName: 'Pharmacy',
     icon: Pill,
-    color: '#06b6d4',
+    color: '#16a34a',
     basePath: '/app/pharmacy',
     description: 'Prescriptions, inventory, compliance, and dispensing.',
 
@@ -24,6 +25,7 @@ export const pharmacyManifest: VerticalManifest = {
         { id: 'catalog', label: 'Catalog', path: '/catalog', icon: Pill },
         { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Package },
         { id: 'suppliers', label: 'Suppliers', path: '/suppliers', icon: Truck },
+        { id: 'procurement', label: 'Procurement', path: '/procurement', icon: ClipboardList },
         { id: 'pos', label: 'Dispensing', path: '/pos', icon: ShoppingCart },
         { id: 'rx', label: 'Prescriptions', path: '/rx', icon: FileText },
         { id: 'staff', label: 'Staff', path: '/staff', icon: Users },

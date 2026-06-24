@@ -13,31 +13,45 @@ import inventoryRoutes from './routes/inventory.js';
 import ordersRoutes from './routes/orders.js';
 import suppliersRoutes from './routes/suppliers.js';
 import adminRoutes from './routes/admin.js';
+import userRoutes from './routes/user.js';
+import restaurantRoutes from './routes/restaurant.js';
 
 const app = new Hono();
 
 // Middleware
 app.use('*', logger());
 app.use('*', rateLimiter);
-// CORS: Allow localhost for dev, plus any production origins from env
-const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000'];
-const envOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
-const allowedOrigins = [...defaultOrigins, ...envOrigins];
+const developmentOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'http://127.0.0.1:3000',
+];
+const envOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowedOrigins = process.env.NODE_ENV === 'production'
+    ? envOrigins
+    : [...developmentOrigins, ...envOrigins];
 
 app.use('*', cors({
     origin: allowedOrigins,
     credentials: true,
 }));
 
-// Health check
-app.get('/', (c) => {
-    return c.json({
+const healthResponse = () => ({
         name: 'One OS Backend',
         version: '0.0.1',
         status: 'running',
         timestamp: new Date().toISOString(),
-    });
 });
+
+// Service metadata and deployment health check
+app.get('/', (c) => c.json(healthResponse()));
+app.get('/health', (c) => c.json(healthResponse()));
 
 // Mount routes
 app.route('/api/auth', authRoutes);
@@ -45,6 +59,8 @@ app.route('/api/inventory', inventoryRoutes);
 app.route('/api', ordersRoutes); // /api/orders and /api/products/search
 app.route('/api/suppliers', suppliersRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/api/user', userRoutes);
+app.route('/api/restaurant', restaurantRoutes);
 
 // 404 handler
 app.notFound((c) => {

@@ -6,10 +6,10 @@ import {
     Users,
     Settings,
     LogOut,
-    Box
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
+import { LogoFull, LogoMark } from '@/components/ui/Logo';
 
 export const Sidebar = () => {
     const { logout } = useAuthStore();
@@ -43,12 +43,7 @@ export const Sidebar = () => {
         >
             {/* Brand */}
             <div style={{ height: '64px', display: 'flex', alignItems: 'center', padding: '0 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                <Box size={24} color="var(--accent-primary)" />
-                {!sidebarCollapsed && (
-                    <span style={{ marginLeft: '12px', fontWeight: 600, fontSize: '16px', letterSpacing: '-0.02em' }}>
-                        One OS
-                    </span>
-                )}
+                {sidebarCollapsed ? <LogoMark size={28} /> : <LogoFull height={24} />}
             </div>
 
             {/* Nav */}

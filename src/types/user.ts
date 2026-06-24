@@ -1,4 +1,17 @@
 export type UserRole = 'owner' | 'admin' | 'manager' | 'staff';
+export type UserType = 'sme' | 'personal';
+export type UserSegment =
+    | 'restaurant'
+    | 'pharmacy'
+    | 'supermarket'
+    | 'retail'
+    | 'autoparts'
+    | 'clinic'
+    | 'services'
+    | 'other'
+    | 'personal_freelancer'
+    | 'personal_consultant'
+    | 'personal_creative';
 
 export interface WorkspaceRef {
     id: string;
@@ -14,6 +27,11 @@ export interface User {
     name: string;
     role: UserRole;
     avatar?: string;
+    userType: UserType | null;
+    segment: UserSegment | null;
+    businessName?: string | null;
+    country?: string | null;
+    currency?: string | null;
 
     // CRITICAL FLAGS (per architecture spec)
     onboardingCompleted: boolean;

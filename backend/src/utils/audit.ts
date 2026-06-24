@@ -2,17 +2,18 @@
 import { Context } from 'hono';
 import { db } from '../db/client.js';
 import { auditLogs } from '../db/schema.js';
+import type { AppEnv } from '../types/app.js';
 
 export const logAudit = async (
-    c: Context,
+    c: Context<AppEnv>,
     action: string,
     entity: string,
     entityId: string | null = null,
-    details: any = null
+    details: unknown = null
 ) => {
     try {
-        const userId = c.get('userId' as any) as string;
-        const businessId = c.get('businessId' as any) as string;
+        const userId = c.get('userId');
+        const businessId = c.get('businessId');
 
         // If system action or unauthenticated (login), might need handling.
         // But for protected routes, userId and businessId should exist.
@@ -28,8 +29,8 @@ export const logAudit = async (
             action,
             entity,
             entityId,
-            details: details ? JSON.stringify(details) : null,
-        }).run();
+            details: details || null,
+        });
     } catch (error) {
         console.error('[Audit] Failed to create audit log:', error);
     }

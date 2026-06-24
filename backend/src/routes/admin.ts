@@ -1,19 +1,14 @@
 
 import { Hono } from 'hono';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, first } from '../db/client.js';
 import { users, businesses, auditLogs, systemSettings, NewUser, NewBusiness } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
+import type { AppEnv } from '../types/app.js';
+import { getErrorMessage } from '../types/app.js';
 
-const admin = new Hono<{
-    Variables: {
-        userId: string;
-        businessId: string;
-        userEmail: string;
-        userRole: string;
-    }
-}>();
+const admin = new Hono<AppEnv>();
 
 // Middleware: Protected and Admin/Owner only
 admin.use('*', authMiddleware);
@@ -23,8 +18,8 @@ admin.use('*', requireRole(['owner', 'admin']));
 
 admin.get('/stats', async (c) => {
     try {
-        const totalUsers = await db.select({ count: sql<number>`count(*)` }).from(users).get();
-        const totalBusinesses = await db.select({ count: sql<number>`count(*)` }).from(businesses).get();
+        const totalUsers = await first(db.select({ count: sql<number>`count(*)` }).from(users));
+        const totalBusinesses = await first(db.select({ count: sql<number>`count(*)` }).from(businesses));
 
         // DEFERRED: Phase 3 Migration Required - businesses.status column may not exist
         let activeBusinessesCount = 0;
@@ -32,22 +27,21 @@ admin.get('/stats', async (c) => {
             const activeBusinesses = await db.select({ count: sql<number>`count(*)` })
                 .from(businesses)
                 .where(eq(businesses.status, 'active'))
-                .get();
+                .then((rows) => rows[0]);
             activeBusinessesCount = activeBusinesses?.count || 0;
-        } catch (e) {
+        } catch {
             // Column may not exist yet - gracefully default to total count
             console.warn('[Admin Stats] businesses.status column not available, using total count');
             activeBusinessesCount = totalBusinesses?.count || 0;
         }
 
-        let recentActions: any[] = [];
+        let recentActions: (typeof auditLogs.$inferSelect)[] = [];
         try {
             recentActions = await db.select()
                 .from(auditLogs)
                 .orderBy(desc(auditLogs.timestamp))
-                .limit(10)
-                .all();
-        } catch (e) {
+                .limit(10);
+        } catch {
             console.warn('[Admin Stats] audit_logs table not available');
         }
 
@@ -73,9 +67,9 @@ admin.get('/stats', async (c) => {
 // List all users
 admin.get('/users', async (c) => {
     try {
-        const allUsers = await db.select().from(users).all();
+        const allUsers = await db.select().from(users);
         return c.json(allUsers);
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to fetch users' }, 500);
     }
 });
@@ -101,7 +95,7 @@ admin.post('/users', async (c) => {
             onboardingCompleted: false,
         };
 
-        await db.insert(users).values(newUser).run();
+        await db.insert(users).values(newUser);
 
         await db.insert(auditLogs).values({
             id: uuidv4(),
@@ -111,10 +105,10 @@ admin.post('/users', async (c) => {
             entity: 'USER',
             entityId: newUser.id,
             details: JSON.stringify({ email, role }),
-        }).run();
+        });
 
         return c.json(newUser, 201);
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to create user' }, 500);
     }
 });
@@ -125,7 +119,7 @@ admin.patch('/users/:id', async (c) => {
         const id = c.req.param('id');
         const body = await c.req.json();
 
-        await db.update(users).set(body).where(eq(users.id, id)).run();
+        await db.update(users).set(body).where(eq(users.id, id));
 
         await db.insert(auditLogs).values({
             id: uuidv4(),
@@ -135,10 +129,10 @@ admin.patch('/users/:id', async (c) => {
             entity: 'USER',
             entityId: id,
             details: JSON.stringify(body),
-        }).run();
+        });
 
         return c.json({ message: 'User updated' });
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to update user' }, 500);
     }
 });
@@ -150,13 +144,14 @@ admin.post('/users/:id/activate', async (c) => {
         const id = c.req.param('id');
 
         try {
-            await db.update(users).set({ status: 'active' }).where(eq(users.id, id)).run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('status')) {
+            await db.update(users).set({ status: 'active' }).where(eq(users.id, id));
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('status')) {
                 console.warn('[Admin] users.status column not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -168,8 +163,8 @@ admin.post('/users/:id/activate', async (c) => {
                 entity: 'USER',
                 entityId: id,
                 details: JSON.stringify({ userId: id }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log activate user action');
         }
 
@@ -187,13 +182,14 @@ admin.post('/users/:id/deactivate', async (c) => {
         const id = c.req.param('id');
 
         try {
-            await db.update(users).set({ status: 'inactive' }).where(eq(users.id, id)).run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('status')) {
+            await db.update(users).set({ status: 'inactive' }).where(eq(users.id, id));
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('status')) {
                 console.warn('[Admin] users.status column not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -205,8 +201,8 @@ admin.post('/users/:id/deactivate', async (c) => {
                 entity: 'USER',
                 entityId: id,
                 details: JSON.stringify({ userId: id }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log deactivate user action');
         }
 
@@ -224,13 +220,14 @@ admin.post('/users/:id/lock', async (c) => {
         const id = c.req.param('id');
 
         try {
-            await db.update(users).set({ isLocked: true }).where(eq(users.id, id)).run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('is_locked')) {
+            await db.update(users).set({ isLocked: true }).where(eq(users.id, id));
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('is_locked')) {
                 console.warn('[Admin] users.is_locked column not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -242,8 +239,8 @@ admin.post('/users/:id/lock', async (c) => {
                 entity: 'USER',
                 entityId: id,
                 details: JSON.stringify({ userId: id }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log lock user action');
         }
 
@@ -261,13 +258,14 @@ admin.post('/users/:id/unlock', async (c) => {
         const id = c.req.param('id');
 
         try {
-            await db.update(users).set({ isLocked: false }).where(eq(users.id, id)).run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('is_locked')) {
+            await db.update(users).set({ isLocked: false }).where(eq(users.id, id));
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('is_locked')) {
                 console.warn('[Admin] users.is_locked column not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -279,8 +277,8 @@ admin.post('/users/:id/unlock', async (c) => {
                 entity: 'USER',
                 entityId: id,
                 details: JSON.stringify({ userId: id }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log unlock user action');
         }
 
@@ -296,9 +294,9 @@ admin.post('/users/:id/unlock', async (c) => {
 // List Businesses
 admin.get('/businesses', async (c) => {
     try {
-        const allBiz = await db.select().from(businesses).all();
+        const allBiz = await db.select().from(businesses);
         return c.json(allBiz);
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to fetch businesses' }, 500);
     }
 });
@@ -318,7 +316,7 @@ admin.post('/businesses', async (c) => {
             status: 'active',
         };
 
-        await db.insert(businesses).values(newBiz).run();
+        await db.insert(businesses).values(newBiz);
 
         await db.insert(auditLogs).values({
             id: uuidv4(),
@@ -328,10 +326,10 @@ admin.post('/businesses', async (c) => {
             entity: 'BUSINESS',
             entityId: newBiz.id,
             details: JSON.stringify({ name }),
-        }).run();
+        });
 
         return c.json(newBiz, 201);
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to create business' }, 500);
     }
 });
@@ -347,13 +345,14 @@ admin.post('/businesses/:id/suspend', async (c) => {
             await db.update(businesses)
                 .set({ status: 'suspended', suspensionReason: reason || 'No reason provided' })
                 .where(eq(businesses.id, id))
-                .run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('status') || e.message?.includes('suspension_reason')) {
+                ;
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('status') || message.includes('suspension_reason')) {
                 console.warn('[Admin] businesses status/suspension_reason columns not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -365,8 +364,8 @@ admin.post('/businesses/:id/suspend', async (c) => {
                 entity: 'BUSINESS',
                 entityId: id,
                 details: JSON.stringify({ businessId: id, reason: reason || 'No reason provided' }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log suspend business action');
         }
 
@@ -387,13 +386,14 @@ admin.post('/businesses/:id/activate', async (c) => {
             await db.update(businesses)
                 .set({ status: 'active', suspensionReason: null })
                 .where(eq(businesses.id, id))
-                .run();
-        } catch (e: any) {
-            if (e.message?.includes('no such column') || e.message?.includes('status') || e.message?.includes('suspension_reason')) {
+                ;
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            if (message.includes('no such column') || message.includes('status') || message.includes('suspension_reason')) {
                 console.warn('[Admin] businesses status/suspension_reason columns not available - migration required');
                 return c.json({ error: 'Feature requires database migration', code: 'MIGRATION_REQUIRED' }, 400);
             }
-            throw e;
+            throw error;
         }
 
         try {
@@ -405,8 +405,8 @@ admin.post('/businesses/:id/activate', async (c) => {
                 entity: 'BUSINESS',
                 entityId: id,
                 details: JSON.stringify({ businessId: id }),
-            }).run();
-        } catch (e) {
+            });
+        } catch {
             console.warn('[Audit] Failed to log activate business action');
         }
 
@@ -442,7 +442,7 @@ admin.get('/audit-logs', async (c) => {
             query = query.where(and(...conditions)) as typeof query;
         }
 
-        const logs = await query.orderBy(desc(auditLogs.timestamp)).limit(200).all();
+        const logs = await query.orderBy(desc(auditLogs.timestamp)).limit(200);
         return c.json(logs);
     } catch (error) {
         console.error('Audit logs error:', error);
@@ -455,9 +455,9 @@ admin.get('/audit-logs', async (c) => {
 // Get Settings
 admin.get('/settings', async (c) => {
     try {
-        const settings = await db.select().from(systemSettings).all();
+        const settings = await db.select().from(systemSettings);
         return c.json(settings);
-    } catch (error) {
+    } catch {
         return c.json({ error: 'Failed to fetch settings' }, 500);
     }
 });
@@ -479,8 +479,7 @@ admin.post('/settings', async (c) => {
             .onConflictDoUpdate({
                 target: systemSettings.key,
                 set: { value: typeof value === 'string' ? value : JSON.stringify(value), updatedAt: new Date() }
-            })
-            .run();
+            });
 
         await db.insert(auditLogs).values({
             id: uuidv4(),
@@ -490,7 +489,7 @@ admin.post('/settings', async (c) => {
             entity: 'SYSTEM_SETTING',
             entityId: key,
             details: JSON.stringify({ key, value }),
-        }).run();
+        });
 
         return c.json({ message: 'Setting saved' });
     } catch (error) {

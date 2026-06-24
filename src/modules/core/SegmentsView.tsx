@@ -1,11 +1,14 @@
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBag, Truck, UtensilsCrossed, Settings, Pill, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Truck, UtensilsCrossed, Settings, Pill, ArrowRight, Store, Users } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { useAuthStore } from '@/store/auth.store';
 
 export const SegmentsView = () => {
     const navigate = useNavigate();
     const { user } = useAuthStore();
+    const displayName = user?.name?.trim()
+        ? user.name.trim().split(' ')[0]
+        : user?.email?.split('@')[0] ?? 'there';
 
     // Modules Definition
     const modules = [
@@ -22,12 +25,22 @@ export const SegmentsView = () => {
         {
             id: 'retail', label: 'Retail Point',
             icon: ShoppingBag, color: '#ec4899',
-            desc: 'POS, Inventory, Customers', path: '/app/marketplace', disabled: true
+            desc: 'POS, Inventory, Customers', path: '/app/retail'
         },
         {
             id: 'logistics', label: 'Logistics',
             icon: Truck, color: '#8b5cf6',
-            desc: 'Fleet, Deliveries, Tracking', path: '/app/logistics', disabled: true
+            desc: 'Fleet, Deliveries, Tracking', disabled: true, badge: 'Coming soon'
+        },
+        {
+            id: 'marketplace', label: 'Marketplace',
+            icon: Store, color: '#10b981',
+            desc: 'Apps, integrations, and partner services', disabled: true, badge: 'Coming soon'
+        },
+        {
+            id: 'merchants', label: 'Merchants',
+            icon: Users, color: '#06b6d4',
+            desc: 'Merchant directory and onboarding', disabled: true, badge: 'Coming soon'
         },
         {
             id: 'admin', label: 'Admin Console',
@@ -48,7 +61,7 @@ export const SegmentsView = () => {
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '60px' }}>
                     <h1 style={{ fontSize: '36px', fontWeight: 800, color: 'var(--fg-primary)', marginBottom: '12px' }}>
-                        Welcome back, {user?.name?.split(' ')[0] || 'Admin'}
+                        Welcome back, {displayName}
                     </h1>
                     <p style={{ fontSize: '18px', color: 'var(--fg-secondary)' }}>
                         Select a workspace to begin operations.
@@ -64,13 +77,13 @@ export const SegmentsView = () => {
                     {modules.map((m) => (
                         <div
                             key={m.id}
-                            onClick={() => !m.disabled && navigate(m.path)}
+                            onClick={() => !m.disabled && m.path && navigate(m.path)}
                             style={{
                                 background: 'white',
                                 borderRadius: '24px',
                                 padding: '32px',
                                 border: '1px solid var(--border-subtle)',
-                                cursor: m.disabled ? 'not-allowed' : 'pointer',
+                                cursor: m.disabled ? 'default' : 'pointer',
                                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                 opacity: m.disabled ? 0.6 : 1,
                                 position: 'relative',
@@ -124,7 +137,7 @@ export const SegmentsView = () => {
                                     fontSize: '12px', fontWeight: 700, color: 'var(--fg-muted)',
                                     background: '#f1f5f9', padding: '4px 10px', borderRadius: '12px'
                                 }}>
-                                    SOON
+                                    {'badge' in m ? m.badge : 'Coming soon'}
                                 </span>
                             )}
                         </div>

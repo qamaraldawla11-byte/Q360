@@ -34,7 +34,7 @@ export const SettingsPage = () => {
         try {
             await adminApi.saveSetting({ key, value, description });
             fetchSettings();
-        } catch (err) {
+        } catch {
             alert('Error saving setting');
         } finally {
             setSaving(null);
@@ -130,10 +130,11 @@ export const SettingsPage = () => {
                 <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#9ca3af' }}>Add New Setting</h3>
                 <form onSubmit={(e) => {
                     e.preventDefault();
-                    const target = e.target as any;
-                    const key = target.key.value;
-                    const value = target.value.value;
-                    const desc = target.desc.value;
+                    const target = e.currentTarget;
+                    const formData = new FormData(target);
+                    const key = String(formData.get('key') || '');
+                    const value = String(formData.get('value') || '');
+                    const desc = String(formData.get('desc') || '');
                     if (key && value) {
                         handleSave(key, value, desc).then(() => {
                             target.reset();

@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
 import { ArrowRight, Check } from 'lucide-react';
+import { LogoApp } from '@/components/ui/Logo';
 
 // Onboarding Steps Definition
 const STEPS = [
@@ -29,46 +30,23 @@ export const OnboardingLayout = () => {
             // Category is MANDATORY - no skip
             return;
         } else if (currentStep.path.includes('type')) {
-            // Pick first type automatically
+            const segment = user?.userType === 'personal' ? 'personal_freelancer' : 'restaurant';
+            updateUser({ segment, lastActiveWorkspace: `/app/${segment}` });
             navigate('/onboarding/workspace');
-        } else if (currentStep.path.includes('workspace')) {
-            // Use default workspace name
-            finishOnboarding('/app/restaurant'); // Default to restaurant
         }
     };
 
-    // Finish Onboarding
-    const finishOnboarding = (workspacePath: string) => {
-        updateUser({
-            onboardingCompleted: true,
-            primaryWorkspace: workspacePath,
-            workspaces: [{
-                id: 'ws_001',
-                type: workspacePath.includes('pharmacy') ? 'pharmacy' : 'restaurant',
-                name: 'My Business',
-                path: workspacePath,
-                role: user?.role || 'owner'
-            }]
-        });
-        navigate(workspacePath);
-    };
-
-    // Expose finishOnboarding to child views
-    (window as any).__finishOnboarding = finishOnboarding;
-
     return (
-        <div style={{
+        <div className="onboarding-canvas" style={{
             minHeight: '100vh',
-            background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '24px'
         }}>
-            <div style={{
+            <div className="onboarding-surface" style={{
                 width: '100%',
                 maxWidth: '520px',
-                background: 'white',
                 borderRadius: '24px',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)',
                 padding: '48px 40px',
@@ -76,14 +54,8 @@ export const OnboardingLayout = () => {
             }}>
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-                    <div style={{
-                        width: '48px', height: '48px',
-                        background: 'black', borderRadius: '12px',
-                        margin: '0 auto 20px', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                        color: 'white', fontWeight: 800, fontSize: '18px'
-                    }}>
-                        OS
+                    <div style={{ margin: '0 auto 20px' }}>
+                        <LogoApp size={48} />
                     </div>
 
                     {/* Progress Steps */}
@@ -123,10 +95,10 @@ export const OnboardingLayout = () => {
                 </div>
 
                 {/* Content */}
-                <Outlet context={{ finishOnboarding }} />
+                <Outlet />
 
                 {/* Footer Actions */}
-                <div style={{
+                {!currentStep.path.includes('type') && <div style={{
                     marginTop: '32px',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -144,7 +116,7 @@ export const OnboardingLayout = () => {
                     </button>
 
                     {/* Use Defaults (Skip equivalent) - Not shown for Segment */}
-                    {!currentStep.path.includes('segment') && (
+                    {!currentStep.path.includes('segment') && !currentStep.path.includes('workspace') && (
                         <button
                             onClick={handleUseDefaults}
                             style={{
@@ -158,7 +130,7 @@ export const OnboardingLayout = () => {
                             Use Defaults <ArrowRight size={14} />
                         </button>
                     )}
-                </div>
+                </div>}
             </div>
         </div>
     );

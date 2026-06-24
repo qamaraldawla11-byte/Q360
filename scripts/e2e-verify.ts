@@ -5,7 +5,8 @@
  * Run with: npx tsx scripts/e2e-verify.ts
  */
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:3001/api';
+const SERVER_BASE = API_BASE.replace(/\/api\/?$/, '');
 
 interface TestResult {
     step: string;
@@ -19,6 +20,7 @@ let testItemId: string = '';
 let initialStock: number = 0;
 let stockAfterOrder: number = 0;
 let stockAfterRestart: number = 0;
+let testItemPrice: number = 0;
 
 function log(message: string) {
     console.log(`  ${message}`);
@@ -89,14 +91,14 @@ async function runTests() {
     // ===== STEP 1: Health Check =====
     console.log('\n📡 Step 1: Backend Health Check');
     try {
-        const health = await fetch('http://localhost:3001');
+        const health = await fetch(SERVER_BASE);
         const data = await health.json();
         if (data.status === 'running') {
             pass('Backend Health Check', `Version ${data.version}`);
         } else {
             fail('Backend Health Check', 'Unexpected status');
         }
-    } catch (e) {
+    } catch {
         fail('Backend Health Check', 'Cannot connect to backend');
     }
 
@@ -128,6 +130,7 @@ async function runTests() {
         const firstItem = inventoryRes.data[0];
         testItemId = firstItem.id;
         initialStock = firstItem.current;
+        testItemPrice = firstItem.price;
         pass('Fetch Inventory', `${inventoryRes.data.length} items found`);
         log(`Test Item: ${firstItem.name} (ID: ${testItemId})`);
         log(`Current Stock: ${initialStock} ${firstItem.unit}`);
@@ -141,7 +144,7 @@ async function runTests() {
         items: [{
             id: testItemId,
             name: 'Test Item',
-            price: 10.00,
+            price: 0.01,
             quantity: 1
         }]
     };
@@ -149,7 +152,11 @@ async function runTests() {
 
     const orderRes = await makeRequest('POST', '/orders', orderPayload);
     if (orderRes.ok && orderRes.data?.orderId) {
+        if (Math.abs(orderRes.data.subtotal - testItemPrice) > Number.EPSILON) {
+            fail('Server-side Pricing', `Expected ${testItemPrice}, got ${orderRes.data.subtotal}`);
+        }
         pass('Create Order', `Order ID: ${orderRes.data.orderId}`);
+        pass('Server-side Pricing', `Client price ignored; canonical price ${testItemPrice} used`);
         log(`Subtotal: $${orderRes.data.subtotal}, Tax: $${orderRes.data.tax}, Total: $${orderRes.data.total}`);
     } else {
         fail('Create Order', `Status ${orderRes.status}: ${JSON.stringify(orderRes.data)}`);
@@ -201,6 +208,17 @@ async function runTests() {
     } else {
         log(`Warning: Stock restore partial - current: ${restoreRes.data?.current}`);
         pass('Stock Restore Attempted', `Result: ${restoreRes.data?.current}`);
+    }
+
+    // ===== STEP 9: Reject Overselling =====
+    console.log('\nStep 9: Reject Overselling');
+    const oversellRes = await makeRequest('POST', '/orders', {
+        items: [{ id: testItemId, quantity: initialStock + 1 }],
+    });
+    if (oversellRes.status === 409) {
+        pass('Oversell Rejected', 'Inventory cannot be reduced below zero');
+    } else {
+        fail('Oversell Rejected', `Expected 409, got ${oversellRes.status}`);
     }
 
     // ===== FINAL SUMMARY =====

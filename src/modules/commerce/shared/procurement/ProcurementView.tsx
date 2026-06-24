@@ -20,7 +20,7 @@ interface ProcurementViewProps {
     vertical?: string;
 }
 
-export const ProcurementView = ({ vertical: _vertical }: ProcurementViewProps) => {
+export const ProcurementView = ({ vertical }: ProcurementViewProps) => {
     const [view, setView] = useState<'list' | 'create' | 'detail'>('list');
 
     // Mock data for POs
@@ -122,6 +122,7 @@ export const ProcurementView = ({ vertical: _vertical }: ProcurementViewProps) =
 
     return (
         <ModuleShell>
+            <span hidden>{vertical}</span>
             <PageHeader
                 title="Procurement"
                 subtitle="Manage purchase orders and supplier relationships"

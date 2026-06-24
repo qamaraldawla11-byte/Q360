@@ -1,96 +1,39 @@
-import { db, sqlite } from './client.js';
-import { users, inventoryItems, products, suppliers } from './schema.js';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { closeDatabase, db } from './client.js';
+import {
+  inventoryItems,
+  menuCategories,
+  menuItems,
+  products,
+  restaurantMenus,
+  restaurantTables,
+  suppliers,
+  users,
+  businesses,
+} from './schema.js';
 
-console.log('🌱 Seeding database...');
+console.log('Seeding database...');
 
-// Create tables if they don't exist
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    name TEXT,
-    role TEXT DEFAULT 'user',
-    status TEXT DEFAULT 'active',
-    is_locked INTEGER DEFAULT 0,
-    onboarding_completed INTEGER DEFAULT 0,
-    primary_workspace TEXT,
-    created_at INTEGER
-  );
+try {
+await db.insert(businesses).values({
+  id: 'biz_main',
+  name: 'Main Business',
+  type: 'restaurant',
+  status: 'active',
+}).onConflictDoNothing();
+console.log('  Main business seeded');
 
-  CREATE TABLE IF NOT EXISTS inventory_items (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    current INTEGER NOT NULL,
-    min INTEGER NOT NULL,
-    max INTEGER,
-    unit TEXT NOT NULL,
-    barcode TEXT,
-    category TEXT,
-    status TEXT DEFAULT 'ok',
-    supplier TEXT,
-    price REAL NOT NULL,
-    business_id TEXT DEFAULT 'biz_main' NOT NULL
-  );
+await db.insert(users).values({
+  id: 'usr_admin_001',
+  email: 'admin@one-os.io',
+  name: 'System Admin',
+  role: 'admin',
+  businessId: 'biz_main',
+  onboardingCompleted: false,
+  primaryWorkspace: 'biz_main',
+}).onConflictDoNothing();
+console.log('  Admin user seeded');
 
-  CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    barcode TEXT NOT NULL UNIQUE,
-    price REAL NOT NULL,
-    category TEXT,
-    business_id TEXT DEFAULT 'biz_main' NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY,
-    items TEXT,
-    subtotal REAL NOT NULL,
-    tax REAL NOT NULL,
-    total REAL NOT NULL,
-    created_at INTEGER,
-    business_id TEXT DEFAULT 'biz_main' NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS suppliers (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    contact TEXT,
-    phone TEXT,
-    email TEXT,
-    address TEXT,
-    products TEXT,
-    status TEXT DEFAULT 'active',
-    business_id TEXT DEFAULT 'biz_main' NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS audit_logs (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    business_id TEXT NOT NULL,
-    action TEXT NOT NULL,
-    entity TEXT NOT NULL,
-    entity_id TEXT,
-    details TEXT,
-    timestamp INTEGER
-  );
-`);
-
-// Seed admin user
-const adminExists = db.select().from(users).where(eq(users.email, 'admin@one-os.io')).get();
-if (!adminExists) {
-  db.insert(users).values({
-    id: 'usr_admin_001',
-    email: 'admin@one-os.io',
-    name: 'System Admin',
-    role: 'admin',
-    onboardingCompleted: false,
-    primaryWorkspace: 'biz_main',
-  }).run();
-  console.log('  ✓ Admin user created');
-}
-
-// Seed inventory items (from frontend mocks)
 const inventoryData = [
   { id: '1', name: 'Fresh Milk (1L)', current: 45, min: 50, unit: 'units', barcode: '123456', category: 'Dairy', status: 'low' as const, supplier: 'Dairy Fresh Co.', price: 3.99, businessId: 'biz_main' },
   { id: '2', name: 'Bread - Whole Wheat', current: 12, min: 30, unit: 'units', barcode: '234567', category: 'Bakery', status: 'critical' as const, supplier: 'Local Bakery', price: 2.49, businessId: 'biz_main' },
@@ -99,15 +42,9 @@ const inventoryData = [
   { id: '5', name: 'Tomatoes (per kg)', current: 25, min: 50, unit: 'kg', barcode: '567890', category: 'Produce', status: 'low' as const, supplier: 'Green Valley Farm', price: 2.99, businessId: 'biz_main' },
 ];
 
-for (const item of inventoryData) {
-  const exists = db.select().from(inventoryItems).where(eq(inventoryItems.id, item.id)).get();
-  if (!exists) {
-    db.insert(inventoryItems).values(item).run();
-  }
-}
-console.log('  ✓ Inventory items seeded');
+await db.insert(inventoryItems).values(inventoryData).onConflictDoNothing();
+console.log('  Inventory items seeded');
 
-// Seed products (for POS barcode lookup)
 const productData = [
   { id: '1', name: 'Fresh Milk (1L)', barcode: '123456', price: 3.99, category: 'Dairy', businessId: 'biz_main' },
   { id: '2', name: 'Bread - Whole Wheat', barcode: '234567', price: 2.49, category: 'Bakery', businessId: 'biz_main' },
@@ -116,15 +53,9 @@ const productData = [
   { id: '5', name: 'Tomatoes (per kg)', barcode: '567890', price: 2.99, category: 'Produce', businessId: 'biz_main' },
 ];
 
-for (const product of productData) {
-  const exists = db.select().from(products).where(eq(products.id, product.id)).get();
-  if (!exists) {
-    db.insert(products).values(product).run();
-  }
-}
-console.log('  ✓ Products seeded');
+await db.insert(products).values(productData).onConflictDoNothing();
+console.log('  Products seeded');
 
-// Seed suppliers
 const supplierData = [
   {
     id: 'sup_001',
@@ -161,12 +92,82 @@ const supplierData = [
   },
 ];
 
-for (const supplier of supplierData) {
-  const exists = db.select().from(suppliers).where(eq(suppliers.id, supplier.id)).get();
-  if (!exists) {
-    db.insert(suppliers).values(supplier).run();
-  }
-}
-console.log('  ✓ Suppliers seeded');
+await db.insert(suppliers).values(supplierData).onConflictDoNothing();
+console.log('  Suppliers seeded');
 
-console.log('✅ Database seeding complete!');
+const mainMenu = {
+  id: 'restaurant_main_menu',
+  businessId: 'biz_main',
+  name: 'Main Menu',
+  isActive: true,
+};
+await db.insert(restaurantMenus).values(mainMenu).onConflictDoNothing();
+
+const restaurantCategories = ['Starters', 'Mains', 'Drinks', 'Desserts'].map((name, index) => ({
+  id: `restaurant_category_${name.toLowerCase()}`,
+  businessId: 'biz_main',
+  menuId: mainMenu.id,
+  name,
+  sortOrder: index,
+}));
+await db.insert(menuCategories).values(restaurantCategories).onConflictDoNothing();
+
+const categoryIds = Object.fromEntries(restaurantCategories.map((category) => [category.name, category.id]));
+const legacyRestaurantItemIds = [
+  'menu_truffle_fries',
+  'menu_caesar_salad',
+  'menu_wagyu_burger',
+  'menu_grilled_salmon',
+  'menu_craft_cola',
+  'menu_espresso',
+  'menu_cheesecake',
+];
+for (const id of legacyRestaurantItemIds) {
+  await db.delete(menuItems).where(and(eq(menuItems.id, id), eq(menuItems.businessId, 'biz_main')));
+}
+
+const restaurantMenuData = [
+  { id: 'restaurant_item_bruschetta', name: 'Bruschetta', price: 800, categoryId: categoryIds.Starters },
+  { id: 'restaurant_item_caesar_salad', name: 'Caesar Salad', price: 1200, categoryId: categoryIds.Starters },
+  { id: 'restaurant_item_grilled_chicken', name: 'Grilled Chicken', price: 1800, categoryId: categoryIds.Mains },
+  { id: 'restaurant_item_beef_burger', name: 'Beef Burger', price: 1600, categoryId: categoryIds.Mains },
+  { id: 'restaurant_item_pasta_carbonara', name: 'Pasta Carbonara', price: 1500, categoryId: categoryIds.Mains },
+  { id: 'restaurant_item_margherita_pizza', name: 'Margherita Pizza', price: 1400, categoryId: categoryIds.Mains },
+  { id: 'restaurant_item_soft_drink', name: 'Soft Drink', price: 400, categoryId: categoryIds.Drinks },
+  { id: 'restaurant_item_fresh_juice', name: 'Fresh Juice', price: 600, categoryId: categoryIds.Drinks },
+].map((item) => ({
+  ...item,
+  businessId: 'biz_main',
+  isAvailable: true,
+  prepTimeMinutes: 0,
+}));
+
+await db.insert(menuItems).values(restaurantMenuData).onConflictDoNothing();
+console.log('  Restaurant menu seeded');
+
+for (let index = 1; index <= 12; index += 1) {
+  await db.delete(restaurantTables)
+    .where(and(eq(restaurantTables.id, `table_${index}`), eq(restaurantTables.businessId, 'biz_main')));
+}
+
+const tableData = Array.from({ length: 12 }, (_, index) => {
+  const number = index + 1;
+  return {
+    id: `restaurant_table_t${number}`,
+    businessId: 'biz_main',
+    label: `T${number}`,
+    capacity: number <= 3 ? 2 : number <= 9 ? 4 : 6,
+    status: 'available' as const,
+  };
+});
+
+await db.insert(restaurantTables).values(tableData).onConflictDoNothing();
+console.log('  Restaurant tables seeded');
+
+console.log('Database seeding complete!');
+} catch (error) {
+  console.error('Database seeding failed:', error);
+  process.exitCode = 1;
+} finally {
+  await closeDatabase();
+}

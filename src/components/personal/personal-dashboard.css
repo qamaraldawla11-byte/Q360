@@ -1,0 +1,232 @@
+.personal-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.personal-dashboard__header p {
+    margin: 0 0 7px;
+    color: var(--personal-muted);
+    font-size: 13px;
+}
+
+.personal-dashboard__header h1 {
+    margin: 0;
+    color: var(--personal-text);
+    font-size: clamp(26px, 4vw, 34px);
+    font-weight: 650;
+    letter-spacing: -0.035em;
+}
+
+.personal-dashboard__stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.personal-stat,
+.personal-panel {
+    background: var(--personal-surface);
+    border: 1px solid var(--personal-border);
+    border-radius: 14px;
+}
+
+.personal-stat {
+    display: flex;
+    flex-direction: column;
+    min-height: 150px;
+    padding: 22px;
+}
+
+.personal-stat > span,
+.personal-panel__heading span {
+    color: var(--personal-muted);
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.personal-stat strong {
+    margin-top: 15px;
+    color: var(--personal-text);
+    font-size: 29px;
+    letter-spacing: -0.035em;
+}
+
+.personal-stat small {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+    color: var(--personal-muted);
+    font-size: 12px;
+}
+
+.personal-dashboard__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.personal-dashboard__actions button,
+.personal-panel__heading button {
+    border: 1px solid var(--personal-border);
+    background: var(--personal-surface);
+    color: var(--personal-text);
+    cursor: pointer;
+    font: inherit;
+}
+
+.personal-dashboard__actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 13px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.personal-dashboard__actions button:hover {
+    border-color: #c9ced8;
+    background: #f9fafb;
+}
+
+.personal-panel {
+    overflow: hidden;
+}
+
+.personal-panel__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--personal-border);
+}
+
+.personal-panel__heading h2 {
+    margin: 4px 0 0;
+    color: var(--personal-text);
+    font-size: 17px;
+}
+
+.personal-panel__heading button {
+    padding: 0;
+    border: 0;
+    color: var(--personal-accent);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.personal-invoice {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px 82px;
+    align-items: center;
+    gap: 16px;
+    min-height: 68px;
+    padding: 0 22px;
+    border-bottom: 1px solid var(--personal-border);
+}
+
+.personal-invoice:last-child {
+    border-bottom: 0;
+}
+
+.personal-invoice > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.personal-invoice strong,
+.personal-invoice b {
+    color: var(--personal-text);
+    font-size: 13px;
+}
+
+.personal-invoice > div span {
+    color: var(--personal-muted);
+    font-size: 11px;
+}
+
+.personal-invoice b {
+    text-align: right;
+}
+
+.personal-status {
+    justify-self: end;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.personal-status--paid {
+    color: #16734a;
+    background: #e8f6ef;
+}
+
+.personal-status--pending {
+    color: #8b5b08;
+    background: #fff5dc;
+}
+
+.personal-status--overdue {
+    color: #a43838;
+    background: #fdecec;
+}
+
+.personal-assistant .personal-panel__heading {
+    border-bottom: 0;
+    padding-bottom: 14px;
+}
+
+.personal-assistant .personal-panel__heading > svg {
+    color: var(--personal-accent);
+}
+
+.personal-assistant__feed {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 0 22px 22px;
+}
+
+.personal-assistant__feed p,
+.personal-assistant__empty {
+    margin: 0;
+    color: #4e5663;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.personal-assistant__feed p {
+    padding: 14px;
+    background: #f7f8fb;
+    border-radius: 9px;
+}
+
+.personal-assistant__empty {
+    padding: 0 22px 22px;
+}
+
+@media (max-width: 620px) {
+    .personal-dashboard__stats,
+    .personal-assistant__feed {
+        grid-template-columns: 1fr;
+    }
+
+    .personal-invoice {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .personal-invoice b {
+        text-align: right;
+    }
+
+    .personal-status {
+        grid-column: 2;
+    }
+}

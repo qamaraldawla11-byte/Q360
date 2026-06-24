@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Globe, DollarSign, ArrowRight } from 'lucide-react';
 import { useBusinessStore } from '@/store/business.store';
@@ -9,18 +9,10 @@ export const BusinessView = () => {
     const { profile, updateProfile } = useBusinessStore();
     const { previewMode } = useAuthStore();
 
-    const [name, setName] = useState(profile?.name || '');
+    const [name, setName] = useState(profile?.name || (previewMode ? 'Q360 Demo Corp' : ''));
     const [jurisdiction, setJurisdiction] = useState(profile?.jurisdiction || 'US');
     const [currency, setCurrency] = useState(profile?.currency || 'USD');
-    const [phone, setPhone] = useState(profile?.phone || '');
-
-    // Preview Mode Auto-fill
-    useEffect(() => {
-        if (previewMode && !name) {
-            setName('One OS Demo Corp');
-            setPhone('+1 (555) 0123');
-        }
-    }, [previewMode, name]);
+    const [phone, setPhone] = useState(profile?.phone || (previewMode ? '+1 (555) 0123' : ''));
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

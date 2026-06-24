@@ -19,7 +19,7 @@ export const IdentityView = () => {
         <div>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <div>
-                    <label style={{
+                    <label htmlFor="onboarding-full-name" style={{
                         display: 'block',
                         marginBottom: '8px',
                         fontSize: '14px',
@@ -29,6 +29,7 @@ export const IdentityView = () => {
                         Full Name
                     </label>
                     <input
+                        id="onboarding-full-name"
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
@@ -48,7 +49,7 @@ export const IdentityView = () => {
                 </div>
 
                 <div>
-                    <label style={{
+                    <label htmlFor="onboarding-email" style={{
                         display: 'block',
                         marginBottom: '8px',
                         fontSize: '14px',
@@ -58,6 +59,7 @@ export const IdentityView = () => {
                         Email Address
                     </label>
                     <input
+                        id="onboarding-email"
                         type="email"
                         value={user?.email || ''}
                         disabled

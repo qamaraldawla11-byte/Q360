@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Box, UtensilsCrossed, Pill, ShoppingCart, Star, Zap, Shield, Globe, ChevronRight } from 'lucide-react';
+import { ArrowRight, UtensilsCrossed, Pill, ShoppingCart, Star, Zap, Shield, Radio, ChevronRight } from 'lucide-react';
+import { LogoFull } from '@/components/ui/Logo';
 
 export const LandingView = () => {
     const navigate = useNavigate();
@@ -47,16 +48,10 @@ export const LandingView = () => {
             span: 'col-span-1 row-span-1'
         },
         {
-            title: 'Global Mesh',
-            desc: 'Sync data across unlimited locations instantly.',
-            icon: Globe,
-            span: 'col-span-1 row-span-2'
-        },
-        {
-            title: 'Hybrid Cloud',
-            desc: 'Works offline, syncs when you\'re back.',
-            icon: Box,
-            span: 'col-span-2 row-span-1'
+            title: 'Real-time sync',
+            desc: 'Coming soon.',
+            icon: Radio,
+            span: 'col-span-1 row-span-1'
         }
     ];
 
@@ -96,25 +91,16 @@ export const LandingView = () => {
                 <div
                     onClick={() => navigate('/')}
                     className="brand-lockup"
-                    style={{ display: 'flex', alignItems: 'center', gap: '11px', cursor: 'pointer' }}
-                >
-                    <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '11px',
-                        display: 'flex',
+                    style={{
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'linear-gradient(135deg, rgba(96,165,250,0.18), rgba(20,184,166,0.12))',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        boxShadow: '0 12px 30px rgba(59,130,246,0.16)'
-                    }}>
-                        <img src="/brand/q360-mark.svg" alt="" style={{ width: '30px', height: '30px', display: 'block' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1 }}>
-                        <span style={{ fontWeight: 800, fontSize: '18px', letterSpacing: '-0.02em' }}>Q360</span>
-                        <span style={{ color: 'var(--fg-muted)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase' }}>One OS</span>
-                    </div>
+                        padding: '7px 10px',
+                        borderRadius: '10px',
+                        background: '#fff',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <LogoFull height={32} />
                 </div>
 
                 <nav className="landing-nav" style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
@@ -154,23 +140,6 @@ export const LandingView = () => {
                 position: 'relative',
                 zIndex: 1
             }}>
-                <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 16px',
-                    background: 'var(--surface-100)',
-                    borderRadius: '100px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    marginBottom: '20px',
-                    border: '1px solid var(--glass-border)',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-                }}>
-                    <span style={{ display: 'flex', padding: '4px', background: 'var(--success)', borderRadius: '50%', boxShadow: '0 0 10px var(--success)' }} />
-                    <span style={{ color: 'var(--fg-secondary)' }}>v7.0 with OneMesh™ Sync</span>
-                </div>
-
                 <h1 style={{
                     fontSize: 'clamp(42px, 6.7vw, 76px)',
                     fontWeight: 900,
@@ -387,7 +356,7 @@ export const LandingView = () => {
                 }}>
                     {[
                         { name: 'Sarah Chen', role: 'CEO, Zen Kitchen', quote: 'The only platform that truly bridges our POS with back-office intelligence.' },
-                        { name: 'Dr. James Miller', role: 'Lead Pharmacist', quote: 'Compliance used to be a headache. With One OS, it\'s just a background task.' },
+                        { name: 'Dr. James Miller', role: 'Lead Pharmacist', quote: 'Compliance used to be a headache. With Q360, it\'s just a background task.' },
                         { name: 'Marcus Aurelius', role: 'Director, Global Retail', quote: 'Scalability is no longer a question. We added 50 locations in a month.' }
                     ].map((t, i) => (
                         <div key={i} style={{
@@ -459,11 +428,10 @@ export const LandingView = () => {
                 fontSize: '14px'
             }}>
                 <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                        <img src="/brand/q360-mark.svg" alt="" style={{ width: '22px', height: '22px', display: 'block' }} />
-                        <span style={{ fontWeight: 800, fontSize: '18px', color: 'white' }}>Q360 One OS</span>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 9px', borderRadius: '9px', marginBottom: '12px', background: '#fff' }}>
+                        <LogoFull height={24} />
                     </div>
-                    <p>© 2026 One OS Modern Business Systems.</p>
+                    <p>© 2026 Qamar Technologies Ltd. All rights reserved.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '64px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

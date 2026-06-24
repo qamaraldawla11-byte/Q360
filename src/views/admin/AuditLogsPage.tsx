@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { adminApi, type AdminLog, type AuditLogFilters } from '@/api/admin.api';
 
 export const AuditLogsPage = () => {
@@ -7,7 +7,7 @@ export const AuditLogsPage = () => {
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
     const [filters, setFilters] = useState<AuditLogFilters>({});
 
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         setLoading(true);
         try {
             const data = await adminApi.getAuditLogs(filters);
@@ -17,11 +17,11 @@ export const AuditLogsPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [filters]);
 
     useEffect(() => {
         fetchLogs();
-    }, []);
+    }, [fetchLogs]);
 
     const handleFilter = () => {
         fetchLogs();

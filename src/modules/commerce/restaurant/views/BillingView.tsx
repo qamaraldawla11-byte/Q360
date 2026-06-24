@@ -1,56 +1,150 @@
-import { useRestaurantStore } from '../store/restaurant.store';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    restaurantApi,
+    type RestaurantOrder,
+    type RestaurantPaymentMethod,
+    type RestaurantTable,
+} from '@/api/restaurant.api';
+
+type BillingTab = 'Today' | 'Active' | 'Paid';
 
 export const BillingView = () => {
-    const { orders } = useRestaurantStore();
+    const [orders, setOrders] = useState<RestaurantOrder[]>([]);
+    const [tables, setTables] = useState<RestaurantTable[]>([]);
+    const [tab, setTab] = useState<BillingTab>('Today');
+    const [payingId, setPayingId] = useState<string | null>(null);
+    const [paymentMethods, setPaymentMethods] = useState<Record<string, RestaurantPaymentMethod>>({});
+    const [error, setError] = useState('');
 
-    // Sort recent first
-    const sortedOrders = [...orders].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const load = useCallback(async () => {
+        try {
+            const [orderData, tableData] = await Promise.all([
+                restaurantApi.getOrders(),
+                restaurantApi.getTables(),
+            ]);
+            setOrders(orderData);
+            setTables(tableData);
+            setError('');
+        } catch {
+            setError('Unable to load today’s orders.');
+        }
+    }, []);
+
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    const visibleOrders = useMemo(() => orders.filter((order) => {
+        if (tab === 'Active') return order.status === 'in_kitchen' || order.status === 'ready';
+        if (tab === 'Paid') return order.status === 'paid';
+        return true;
+    }), [orders, tab]);
+
+    const runningTotal = visibleOrders.reduce((sum, order) => sum + order.total, 0);
+    const tableLabel = (tableId: string | null) =>
+        tables.find((table) => table.id === tableId)?.label || (tableId ? tableId : 'Takeaway');
+
+    const markPaid = async (order: RestaurantOrder) => {
+        const method = paymentMethods[order.id] ?? 'cash';
+        setPayingId(order.id);
+        try {
+            await restaurantApi.completePayment(order.id, {
+                method,
+                amount: order.total / 100,
+            });
+            await load();
+        } catch {
+            setError('Unable to complete payment for this order.');
+        } finally {
+            setPayingId(null);
+        }
+    };
 
     return (
         <div>
             <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Order History & Billing</h1>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                {(['Today', 'Active', 'Paid'] as const).map((value) => (
+                    <button
+                        key={value}
+                        onClick={() => setTab(value)}
+                        style={{ padding: '8px 16px', borderRadius: 999, border: '1px solid var(--border-subtle)', background: tab === value ? 'var(--accent-primary)' : 'white', color: tab === value ? 'white' : 'var(--fg-secondary)', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                        {value}
+                    </button>
+                ))}
+            </div>
+            {error && <div style={{ marginBottom: 16, color: '#b91c1c' }}>{error}</div>}
 
             <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>ID</th>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>Type</th>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>Table</th>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>Time</th>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>Total</th>
-                            <th style={{ padding: '16px', fontWeight: 600, color: 'var(--fg-secondary)' }}>Status</th>
+                            <th style={{ padding: '16px' }}>ID</th>
+                            <th style={{ padding: '16px' }}>Table</th>
+                            <th style={{ padding: '16px' }}>Time</th>
+                            <th style={{ padding: '16px' }}>Total</th>
+                            <th style={{ padding: '16px' }}>Status</th>
+                            <th style={{ padding: '16px' }}>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {sortedOrders.map(order => (
+                        {visibleOrders.map((order) => (
                             <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                <td style={{ padding: '16px', fontFamily: 'monospace' }}>#{order.id.slice(-4)}</td>
-                                <td style={{ padding: '16px', textTransform: 'capitalize' }}>{order.type}</td>
-                                <td style={{ padding: '16px' }}>{order.tableId ? order.tableId.replace('t-', '') : '-'}</td>
-                                <td style={{ padding: '16px' }}>{order.createdAt.toLocaleTimeString()}</td>
-                                <td style={{ padding: '16px', fontWeight: 600 }}>${order.total.toFixed(2)}</td>
+                                <td style={{ padding: '16px', fontFamily: 'monospace' }}>#{order.id.slice(-8)}</td>
+                                <td style={{ padding: '16px' }}>{tableLabel(order.tableId)}</td>
+                                <td style={{ padding: '16px' }}>{new Date(order.createdAt).toLocaleTimeString()}</td>
+                                <td style={{ padding: '16px', fontWeight: 600 }}>${(order.total / 100).toFixed(2)}</td>
                                 <td style={{ padding: '16px' }}>
-                                    <div style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '4px 8px', borderRadius: '100px', fontSize: '12px', fontWeight: 600,
-                                        background: order.status === 'served' ? '#dcfce7' : order.status === 'cancelled' ? '#fee2e2' : '#f1f5f9',
-                                        color: order.status === 'served' ? '#166534' : order.status === 'cancelled' ? '#991b1b' : '#475569'
-                                    }}>
-                                        {order.status.toUpperCase()}
-                                    </div>
+                                    <span style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: 999, fontSize: '12px', fontWeight: 600, background: order.status === 'paid' ? '#dcfce7' : order.status === 'cancelled' ? '#fee2e2' : '#f1f5f9', color: order.status === 'paid' ? '#166534' : order.status === 'cancelled' ? '#991b1b' : '#475569' }}>
+                                        {order.status.replace('_', ' ').toUpperCase()}
+                                    </span>
+                                </td>
+                                <td style={{ padding: '16px' }}>
+                                    {order.status === 'ready' ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <select
+                                                aria-label={`Payment method for order ${order.id.slice(-8)}`}
+                                                value={paymentMethods[order.id] ?? 'cash'}
+                                                onChange={(event) => setPaymentMethods((current) => ({
+                                                    ...current,
+                                                    [order.id]: event.target.value as RestaurantPaymentMethod,
+                                                }))}
+                                                disabled={payingId === order.id}
+                                                style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--border-subtle)' }}
+                                            >
+                                                <option value="cash">Cash</option>
+                                                <option value="card">Card</option>
+                                                <option value="mobile">Mobile</option>
+                                            </select>
+                                            <button
+                                                onClick={() => markPaid(order)}
+                                                disabled={payingId === order.id}
+                                                className="btn-primary"
+                                                style={{ padding: '7px 12px', cursor: payingId === order.id ? 'wait' : 'pointer' }}
+                                            >
+                                                Mark as Paid
+                                            </button>
+                                        </div>
+                                    ) : order.status === 'paid' ? (
+                                        <span style={{ color: '#166534', fontWeight: 600 }}>PAID</span>
+                                    ) : (
+                                        <span style={{ color: 'var(--fg-muted)' }}>Awaiting readiness</span>
+                                    )}
                                 </td>
                             </tr>
                         ))}
-                        {sortedOrders.length === 0 && (
+                        {!visibleOrders.length && (
                             <tr>
-                                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--fg-secondary)' }}>
-                                    No orders recorded today
-                                </td>
+                                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--fg-secondary)' }}>No orders in this view</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
+                <div style={{ padding: '16px', display: 'flex', justifyContent: 'flex-end', gap: 12, background: '#f8fafc', fontSize: '18px', fontWeight: 700 }}>
+                    <span>Running Total</span>
+                    <span>${(runningTotal / 100).toFixed(2)}</span>
+                </div>
             </div>
         </div>
     );

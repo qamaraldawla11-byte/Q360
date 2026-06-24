@@ -29,7 +29,7 @@ export const AiView = () => {
                         Coming Late 2026
                     </span>
                     <button onClick={() => navigate('/')} style={{ background: 'white', color: 'black', border: 'none', padding: '10px 24px', borderRadius: '100px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
-                        Back to One OS
+                        Back to Q360
                     </button>
                 </div>
             </div>
