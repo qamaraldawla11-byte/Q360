@@ -29,8 +29,9 @@ Railway supplies `PORT`; do not hard-code it in production unless Railway requir
 Recommended Railway settings:
 
 ```yaml
-Root Directory: backend
-Start Command: npm run start
+Root Directory: repository root
+Build Command: cd backend && npm ci --include=dev && npm run build && npm prune --omit=dev
+Start Command: cd backend && npm start
 Health Check Path: /health
 ```
 

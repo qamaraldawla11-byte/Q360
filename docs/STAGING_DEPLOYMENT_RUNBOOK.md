@@ -31,13 +31,13 @@ Railway supplies `PORT`; do not configure it unless Railway support requires an 
 
 ## Railway Service Configuration
 
-- Root directory: `backend`
-- Build command: `npm install`
-- Start command: `npm run start`
+- Root directory: repository root
+- Build command: `cd backend && npm ci --include=dev && npm run build && npm prune --omit=dev`
+- Start command: `cd backend && npm start`
 - Required port behavior: the backend reads `process.env.PORT` and falls back to `3001` only for local development. Railway should provide `PORT`.
 - Health-check endpoint: `/health`
 
-The backend startup entry point is `backend/src/index.ts`. It loads `dotenv/config`, configures CORS, mounts API routes under `/api`, exposes `/` and `/health`, and starts Hono using the Railway-provided port.
+The backend production startup entry point is the compiled `backend/dist/index.js`. It loads `dotenv/config`, configures CORS, mounts API routes under `/api`, exposes `/` and `/health`, and starts Hono using the Railway-provided port.
 
 ## Vercel Configuration
 

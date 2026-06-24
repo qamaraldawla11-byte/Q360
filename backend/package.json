@@ -4,8 +4,8 @@
     "type": "module",
     "scripts": {
         "dev": "tsx watch src/index.ts",
-        "start": "node --import tsx src/index.ts",
-        "build": "tsc --noEmit",
+        "start": "node dist/index.js",
+        "build": "tsc",
         "db:push": "drizzle-kit push",
         "db:seed": "tsx src/db/seed.ts",
         "db:migrate:restaurant": "tsx src/db/migrate_restaurant_core.ts",
@@ -22,7 +22,8 @@
         "drizzle-orm": "^0.45.2",
         "hono": "^4.12.25",
         "nodemailer": "^8.0.11",
-        "postgres": "^3.4.9"
+        "postgres": "^3.4.9",
+        "uuid": "^13.0.0"
     },
     "devDependencies": {
         "@types/node": "^22.0.0",
@@ -30,7 +31,6 @@
         "@types/uuid": "^10.0.0",
         "drizzle-kit": "^0.31.8",
         "tsx": "^4.7.0",
-        "typescript": "^5.0.0",
-        "uuid": "^13.0.0"
+        "typescript": "^5.0.0"
     }
 }
