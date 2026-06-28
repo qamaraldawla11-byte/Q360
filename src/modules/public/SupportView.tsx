@@ -6,7 +6,7 @@ export const SupportView = () => {
     return (
         <div style={{ minHeight: '100vh', background: 'var(--bg-app)', fontFamily: 'var(--font-sans)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ maxWidth: '500px', width: '100%', padding: '40px', background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-glass)' }}>
-                <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: 'var(--fg-secondary)', cursor: 'pointer', marginBottom: '24px' }}>← Back</button>
+                <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: 'var(--fg-secondary)', cursor: 'pointer', marginBottom: '24px' }}>Back</button>
 
                 <div style={{ background: '#eff6ff', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', color: 'var(--accent-primary)' }}>
                     <MessageSquare size={24} />
@@ -14,7 +14,7 @@ export const SupportView = () => {
 
                 <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--fg-primary)', marginBottom: '16px' }}>Contact Support</h1>
                 <p style={{ color: 'var(--fg-secondary)', marginBottom: '32px', lineHeight: 1.5 }}>
-                    Our enterprise support team is available 24/7. Please provide your organization ID when reaching out.
+                    Tell us what workflow you want to run in Q360. Beta access is founder-supported while the product is being shaped with early businesses.
                 </p>
 
                 <div style={{ display: 'grid', gap: '16px' }}>

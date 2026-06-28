@@ -16,17 +16,17 @@ export const AiView = () => {
                 </div>
 
                 <h1 style={{ fontSize: '56px', fontWeight: 800, marginBottom: '24px', letterSpacing: '-0.02em', background: 'linear-gradient(to right, #fff, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                    One Intelligence
+                    Meet Q
                 </h1>
 
                 <p style={{ fontSize: '20px', color: '#94a3b8', lineHeight: 1.6, marginBottom: '48px' }}>
-                    A new era of cognitive business operations. Predictive supply chain, automated commerce, and deep financial insights.
+                    Q is your AI operations teammate inside Q360. It helps owners spot overdue invoices, delayed tasks, low stock, unconfirmed quotes, and daily priorities using data already recorded in Q360.
                 </p>
 
                 <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', alignItems: 'center' }}>
                     <span style={{ border: '1px solid #333', padding: '8px 16px', borderRadius: '100px', fontSize: '14px', color: '#cbd5e1' }}>
                         <Sparkles size={14} style={{ display: 'inline', marginRight: '8px' }} />
-                        Coming Late 2026
+                        Available for selected beta workflows
                     </span>
                     <button onClick={() => navigate('/')} style={{ background: 'white', color: 'black', border: 'none', padding: '10px 24px', borderRadius: '100px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
                         Back to Q360

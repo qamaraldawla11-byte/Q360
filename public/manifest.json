@@ -1,7 +1,7 @@
 {
     "name": "Q360",
     "short_name": "Q360",
-    "description": "Business Operating System by Qamar Technologies",
+    "description": "Modular operations workspace for businesses by Qamar Technologies",
     "start_url": "/",
     "display": "standalone",
     "orientation": "any",
