@@ -32,8 +32,10 @@ Profile responses continue to expose `primaryWorkspace` as a route value such as
 
 - `npm run build` from the repository root: passed.
 - `npm run lint` from the repository root: passed.
-- `cd backend && npm run build`: passed.
-- Database-gated commands were not run because `DATABASE_URL` is not configured in the shell environment, root `.env`, or `backend/.env`: `cd backend && npm run db:push`, `cd backend && npm run db:seed`, `cd backend && npm run verify:tenant-identity`, `cd backend && npm run verify:otp`, and `cd backend && npm run verify:restaurant`.
+- `cd backend && npm run build`: passed when run through `cmd.exe /c` because this PowerShell version does not support `&&`.
+- `cd backend && npm run verify:tenant-identity`: passed with approved database/network access.
+- `cd backend && npm run verify:otp`: passed with approved database/network access.
+- `cd backend && npm run verify:restaurant`: passed with approved database/network access.
 
 ## Known limitations
 
