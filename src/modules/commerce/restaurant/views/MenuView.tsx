@@ -1,25 +1,51 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Image as ImageIcon, Search, Settings, GripVertical } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { Image as ImageIcon, Loader2, Plus, Search } from 'lucide-react';
 import {
     restaurantApi,
     type RestaurantMenuCategory,
 } from '@/api/restaurant.api';
 
+type Notice = { kind: 'success' | 'error'; text: string } | null;
+
+const surface: CSSProperties = {
+    background: '#ffffff',
+    color: '#0f172a',
+    border: '1px solid #d8dee8',
+    borderRadius: 'var(--radius-md)',
+};
+
+const fieldStyle: CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid #cbd5e1',
+    background: '#ffffff',
+    color: '#0f172a',
+    font: 'inherit',
+};
+
 export const MenuView = () => {
     const [categories, setCategories] = useState<RestaurantMenuCategory[]>([]);
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
+    const [categoryName, setCategoryName] = useState('');
+    const [itemName, setItemName] = useState('');
+    const [itemPrice, setItemPrice] = useState('');
+    const [itemCategoryId, setItemCategoryId] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [isCreatingItem, setIsCreatingItem] = useState(false);
+    const [notice, setNotice] = useState<Notice>(null);
 
     const loadMenu = useCallback(async () => {
         setIsLoading(true);
         try {
             const response = await restaurantApi.getMenu();
             setCategories(response.categories);
-            setError('');
+            setItemCategoryId((current) => current || response.categories[0]?.id || '');
+            setNotice(null);
         } catch {
-            setError('Unable to load the menu.');
+            setNotice({ kind: 'error', text: 'Unable to load the menu.' });
         } finally {
             setIsLoading(false);
         }
@@ -38,125 +64,188 @@ export const MenuView = () => {
         return matchesCategory && item.name.toLowerCase().includes(searchQuery.toLowerCase());
     });
 
-    const handleQuickAdd = async () => {
-        if (!categories.length) {
-            setError('Create or seed a category before adding an item.');
-            return;
+    const createCategory = async (event: FormEvent) => {
+        event.preventDefault();
+        const name = categoryName.trim();
+        if (!name || isCreatingCategory) return;
+        setIsCreatingCategory(true);
+        try {
+            const category = await restaurantApi.createMenuCategory({ name });
+            setCategoryName('');
+            setSelectedCategory(category.name);
+            setItemCategoryId(category.id);
+            await loadMenu();
+            setNotice({ kind: 'success', text: `Category "${category.name}" created.` });
+        } catch {
+            setNotice({ kind: 'error', text: 'Unable to create that category.' });
+        } finally {
+            setIsCreatingCategory(false);
         }
-        const name = window.prompt('Item name:')?.trim();
-        if (!name) return;
-        const priceText = window.prompt('Price in dollars:', '10.00');
-        if (priceText === null) return;
-        const price = Number(priceText);
-        if (!Number.isFinite(price) || price <= 0) {
-            setError('Price must be greater than zero.');
-            return;
-        }
-        const category = selectedCategory === 'All'
-            ? categories[0]
-            : categories.find((entry) => entry.name === selectedCategory) || categories[0];
+    };
 
+    const createItem = async (event: FormEvent) => {
+        event.preventDefault();
+        const name = itemName.trim();
+        const price = Number(itemPrice);
+        if (!name || !Number.isFinite(price) || price <= 0 || !itemCategoryId || isCreatingItem) {
+            setNotice({ kind: 'error', text: 'Add an item name, category, and price greater than 0.' });
+            return;
+        }
+        setIsCreatingItem(true);
         try {
             await restaurantApi.createMenuItem({
                 name,
-                category_id: category.id,
+                category_id: itemCategoryId,
                 price,
             });
+            setItemName('');
+            setItemPrice('');
             await loadMenu();
+            setNotice({ kind: 'success', text: `Menu item "${name}" created.` });
         } catch {
-            setError('Unable to add the menu item.');
+            setNotice({ kind: 'error', text: 'Unable to create that menu item.' });
+        } finally {
+            setIsCreatingItem(false);
         }
     };
 
     return (
-        <div style={{ height: 'calc(100vh - 100px)', display: 'flex', gap: '24px' }}>
-            <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Categories</h2>
-                    <p style={{ fontSize: '13px', color: 'var(--fg-secondary)' }}>Drag to reorder</p>
+        <div style={{ minHeight: 'calc(100vh - 100px)', display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 24, padding: 24 }}>
+            <aside style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Categories</h2>
+                    <p style={{ fontSize: 13, color: 'var(--fg-secondary)', margin: '4px 0 0' }}>Create setup groups for POS items.</p>
                 </div>
 
-                {['All', ...categories.map((category) => category.name)].map((category) => (
-                    <div
-                        key={category}
-                        onClick={() => setSelectedCategory(category)}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            padding: '12px 16px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                            background: selectedCategory === category ? 'white' : 'transparent',
-                            fontWeight: selectedCategory === category ? 600 : 500,
-                            border: selectedCategory === category ? '1px solid var(--border-subtle)' : 'none',
-                            color: selectedCategory === category ? 'var(--accent-primary)' : 'var(--fg-secondary)',
-                        }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {['All', ...categories.map((category) => category.name)].map((category) => (
+                        <button
+                            key={category}
+                            type="button"
+                            onClick={() => setSelectedCategory(category)}
+                            style={{
+                                ...surface,
+                                padding: '12px 14px',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                fontWeight: selectedCategory === category ? 700 : 500,
+                                borderColor: selectedCategory === category ? 'var(--accent-primary)' : '#d8dee8',
+                            }}
+                        >
+                            {category === 'All' ? 'All Items' : category}
+                        </button>
+                    ))}
+                    {!categories.length && !isLoading && (
+                        <div style={{ ...surface, padding: 14, fontSize: 13, color: '#475569' }}>
+                            No categories yet.
+                        </div>
+                    )}
+                </div>
+
+                <form onSubmit={createCategory} style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <label htmlFor="restaurant-category-name" style={{ fontSize: 13, fontWeight: 700 }}>New category</label>
+                    <input
+                        id="restaurant-category-name"
+                        value={categoryName}
+                        onChange={(event) => setCategoryName(event.target.value)}
+                        placeholder="Mains"
+                        style={fieldStyle}
+                    />
+                    <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={!categoryName.trim() || isCreatingCategory}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: !categoryName.trim() || isCreatingCategory ? 0.65 : 1 }}
                     >
-                        {category !== 'All' && <GripVertical size={14} color="var(--fg-muted)" />}
-                        {category === 'All' ? 'All Items' : category}
-                    </div>
-                ))}
+                        {isCreatingCategory ? <Loader2 size={16} /> : <Plus size={16} />} Create Category
+                    </button>
+                </form>
+            </aside>
 
-                <button style={{ marginTop: 'auto', padding: '12px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)', color: 'var(--fg-secondary)', background: 'transparent', cursor: 'pointer' }}>
-                    + New Category
-                </button>
-            </div>
-
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                    <div style={{ position: 'relative', width: '300px' }}>
-                        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
+            <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(300px, 420px)', gap: 16, alignItems: 'start' }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                         <input
                             type="text"
                             placeholder="Search menu items..."
                             value={searchQuery}
                             onChange={(event) => setSearchQuery(event.target.value)}
-                            className="input-base"
-                            style={{ width: '100%', paddingLeft: '40px', background: 'white' }}
+                            style={{ ...fieldStyle, paddingLeft: 40 }}
                         />
                     </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button style={{ padding: '0 16px', background: 'white', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', fontWeight: 600 }}>
-                            <Settings size={18} color="var(--fg-muted)" />
+
+                    <form onSubmit={createItem} style={{ ...surface, padding: 16, display: 'grid', gap: 10 }}>
+                        <strong style={{ fontSize: 14 }}>New menu item</strong>
+                        <input
+                            value={itemName}
+                            onChange={(event) => setItemName(event.target.value)}
+                            placeholder="Item name"
+                            style={fieldStyle}
+                        />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10 }}>
+                            <select
+                                value={itemCategoryId}
+                                onChange={(event) => setItemCategoryId(event.target.value)}
+                                style={fieldStyle}
+                            >
+                                <option value="">Choose category</option>
+                                {categories.map((category) => (
+                                    <option key={category.id} value={category.id}>{category.name}</option>
+                                ))}
+                            </select>
+                            <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={itemPrice}
+                                onChange={(event) => setItemPrice(event.target.value)}
+                                placeholder="Price"
+                                style={fieldStyle}
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            className="btn-primary"
+                            disabled={!categories.length || isCreatingItem}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: !categories.length || isCreatingItem ? 0.65 : 1 }}
+                        >
+                            {isCreatingItem ? <Loader2 size={16} /> : <Plus size={16} />} Create Menu Item
                         </button>
-                        <button onClick={handleQuickAdd} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Plus size={18} /> New Product
-                        </button>
-                    </div>
+                    </form>
                 </div>
 
-                {error && <div style={{ marginBottom: 16, color: '#b91c1c' }}>{error}</div>}
+                {notice && (
+                    <div
+                        role="status"
+                        style={{ color: notice.kind === 'success' ? '#bbf7d0' : '#fecaca', fontWeight: 600 }}
+                    >
+                        {notice.text}
+                    </div>
+                )}
+
                 {isLoading ? (
                     <div style={{ padding: 40, color: 'var(--fg-secondary)' }}>Loading menu...</div>
                 ) : menu.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-secondary)' }}>
-                        No menu items yet. Add your first product.
+                    <div style={{ ...surface, padding: 40, textAlign: 'center', color: '#475569' }}>
+                        Create a category, then add the first menu item for POS.
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px', overflowY: 'auto', paddingBottom: '40px' }}>
-                        <div
-                            onClick={handleQuickAdd}
-                            style={{
-                                border: '2px dashed var(--border-subtle)', borderRadius: 'var(--radius-lg)',
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                cursor: 'pointer', background: '#f8fafc', minHeight: '300px', color: 'var(--fg-secondary)',
-                            }}
-                        >
-                            <Plus size={48} color="var(--fg-muted)" style={{ marginBottom: '16px' }} />
-                            <span style={{ fontWeight: 600 }}>Add Product</span>
-                        </div>
-
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
                         {filteredMenu.map((item) => (
-                            <div key={item.id} style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ height: '180px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                    <ImageIcon size={48} color="#cbd5e1" />
-                                    <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'white', borderRadius: '20px', padding: '4px 10px', fontSize: '11px', fontWeight: 700, color: item.isAvailable ? '#166534' : '#991b1b' }}>
-                                        {item.isAvailable ? 'IN STOCK' : 'SOLD OUT'}
+                            <div key={item.id} style={{ ...surface, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ height: 150, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                    <ImageIcon size={42} color="#94a3b8" />
+                                    <div style={{ position: 'absolute', top: 12, right: 12, background: '#ffffff', border: '1px solid #d8dee8', borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 800, color: item.isAvailable ? '#166534' : '#991b1b' }}>
+                                        {item.isAvailable ? 'AVAILABLE' : 'SOLD OUT'}
                                     </div>
                                 </div>
-                                <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    <div style={{ fontSize: '16px', fontWeight: 700 }}>{item.name}</div>
-                                    <div style={{ fontSize: '11px', width: 'fit-content', padding: '2px 8px', borderRadius: '4px', background: '#f1f5f9', color: 'var(--fg-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 800 }}>{item.name}</div>
+                                    <div style={{ fontSize: 11, width: 'fit-content', padding: '2px 8px', borderRadius: 4, background: '#f1f5f9', color: '#475569', textTransform: 'uppercase', fontWeight: 700 }}>
                                         {item.categoryName}
                                     </div>
-                                    <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #f1f5f9', fontWeight: 700, fontSize: '18px', color: 'var(--accent-primary)' }}>
+                                    <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #e2e8f0', fontWeight: 800, fontSize: 18, color: '#1d4ed8' }}>
                                         ${(item.price / 100).toFixed(2)}
                                     </div>
                                 </div>
@@ -164,7 +253,7 @@ export const MenuView = () => {
                         ))}
                     </div>
                 )}
-            </div>
+            </main>
         </div>
     );
 };

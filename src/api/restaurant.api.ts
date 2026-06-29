@@ -87,6 +87,9 @@ export const restaurantApi = {
 
     getMenu: () => http.get<{ categories: RestaurantMenuCategory[] }>('/restaurant/menu'),
 
+    createMenuCategory: (payload: { name: string }) =>
+        http.post<RestaurantMenuCategory>('/restaurant/menu/categories', payload),
+
     createMenuItem: (payload: {
         name: string;
         category_id: string;
@@ -96,6 +99,9 @@ export const restaurantApi = {
     }) => http.post<RestaurantMenuItem>('/restaurant/menu/items', payload),
 
     getTables: () => http.get<RestaurantTable[]>('/restaurant/tables'),
+
+    createTable: (payload: { label: string; capacity: number }) =>
+        http.post<RestaurantTable>('/restaurant/tables', payload),
 
     updateTableStatus: (id: string, status: RestaurantTableStatus) =>
         http.patch<RestaurantTable>(`/restaurant/tables/${id}/status`, { status }),

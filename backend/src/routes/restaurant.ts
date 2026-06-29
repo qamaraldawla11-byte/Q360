@@ -451,6 +451,61 @@ restaurant.get('/menu', async (c) => {
     });
 });
 
+restaurant.post('/menu/categories', async (c) => {
+    const body = await parseJson<{ name?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) return c.json({ error: 'Name is required' }, 400);
+    if (name.length > 80) return c.json({ error: 'Name must be 80 characters or fewer' }, 400);
+
+    const businessId = c.get('businessId');
+    let categoryId = '';
+    try {
+        await db.transaction(async (tx) => {
+            let menu = await first(tx.select().from(restaurantMenus)
+                .where(and(eq(restaurantMenus.businessId, businessId), eq(restaurantMenus.isActive, true)))
+            );
+            if (!menu) {
+                menu = { id: randomUUID(), businessId, name: 'Main Menu', isActive: true };
+                await tx.insert(restaurantMenus).values(menu);
+            }
+
+            const duplicate = await first(tx.select().from(menuCategories)
+                .where(and(
+                    eq(menuCategories.businessId, businessId),
+                    eq(menuCategories.menuId, menu.id),
+                    eq(menuCategories.name, name),
+                ))
+            );
+            if (duplicate) throw new Error('CATEGORY_EXISTS');
+
+            const last = await first(tx.select({ sortOrder: menuCategories.sortOrder }).from(menuCategories)
+                .where(and(eq(menuCategories.businessId, businessId), eq(menuCategories.menuId, menu.id)))
+                .orderBy(sql`${menuCategories.sortOrder} DESC`)
+            );
+            categoryId = randomUUID();
+            await tx.insert(menuCategories).values({
+                id: categoryId,
+                businessId,
+                menuId: menu.id,
+                name,
+                sortOrder: (last?.sortOrder ?? -1) + 1,
+            });
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === 'CATEGORY_EXISTS') {
+            return c.json({ error: 'Category already exists' }, 409);
+        }
+        throw error;
+    }
+
+    const category = await first(db.select().from(menuCategories)
+        .where(and(eq(menuCategories.id, categoryId), eq(menuCategories.businessId, businessId)))
+    );
+    return c.json({ id: category!.id, name: category!.name, items: [] }, 201);
+});
+
 restaurant.post('/menu/items', async (c) => {
     const body = await parseJson<{
         name?: unknown;
@@ -523,6 +578,41 @@ restaurant.get('/tables', async (c) => {
     return c.json(await db.select().from(restaurantTables)
         .where(eq(restaurantTables.businessId, c.get('businessId')))
         .orderBy(asc(restaurantTables.label)));
+});
+
+restaurant.post('/tables', async (c) => {
+    const body = await parseJson<{ label?: unknown; capacity?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+    const label = typeof body.label === 'string' ? body.label.trim() : '';
+    if (!label) return c.json({ error: 'Label is required' }, 400);
+    if (label.length > 24) return c.json({ error: 'Label must be 24 characters or fewer' }, 400);
+    if (
+        typeof body.capacity !== 'number' ||
+        !Number.isSafeInteger(body.capacity) ||
+        body.capacity < 1 ||
+        body.capacity > 30
+    ) {
+        return c.json({ error: 'Capacity must be a whole number from 1 to 30' }, 400);
+    }
+
+    const businessId = c.get('businessId');
+    const duplicate = await first(db.select().from(restaurantTables)
+        .where(and(eq(restaurantTables.businessId, businessId), eq(restaurantTables.label, label)))
+    );
+    if (duplicate) return c.json({ error: 'Table label already exists' }, 409);
+
+    const id = randomUUID();
+    await db.insert(restaurantTables).values({
+        id,
+        businessId,
+        label,
+        capacity: body.capacity,
+        status: 'available',
+    });
+    return c.json(await first(db.select().from(restaurantTables)
+        .where(and(eq(restaurantTables.id, id), eq(restaurantTables.businessId, businessId)))
+    ), 201);
 });
 
 restaurant.patch('/tables/:id/status', async (c) => {

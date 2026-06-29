@@ -76,7 +76,7 @@ export const BillingView = () => {
             </div>
             {error && <div style={{ marginBottom: 16, color: '#b91c1c' }}>{error}</div>}
 
-            <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+            <div style={{ background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
@@ -111,7 +111,7 @@ export const BillingView = () => {
                                                     [order.id]: event.target.value as RestaurantPaymentMethod,
                                                 }))}
                                                 disabled={payingId === order.id}
-                                                style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid var(--border-subtle)' }}
+                                                style={{ padding: '7px 8px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
                                             >
                                                 <option value="cash">Cash</option>
                                                 <option value="card">Card</option>
@@ -129,14 +129,14 @@ export const BillingView = () => {
                                     ) : order.status === 'paid' ? (
                                         <span style={{ color: '#166534', fontWeight: 600 }}>PAID</span>
                                     ) : (
-                                        <span style={{ color: 'var(--fg-muted)' }}>Awaiting readiness</span>
+                                        <span style={{ color: '#64748b' }}>Awaiting readiness</span>
                                     )}
                                 </td>
                             </tr>
                         ))}
                         {!visibleOrders.length && (
                             <tr>
-                                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--fg-secondary)' }}>No orders in this view</td>
+                                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#475569' }}>No orders in this view</td>
                             </tr>
                         )}
                     </tbody>

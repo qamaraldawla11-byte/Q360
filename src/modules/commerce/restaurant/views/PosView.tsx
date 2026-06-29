@@ -97,6 +97,11 @@ export const PosView = () => {
 
             <div className="restaurant-pos__catalog" style={{ flex: 1, overflowY: 'auto', paddingRight: '12px' }}>
                 {isLoading && <div style={{ color: 'var(--fg-secondary)' }}>Loading menu...</div>}
+                {!isLoading && !categories.length && (
+                    <div style={{ background: '#ffffff', color: '#475569', border: '1px solid #d8dee8', borderRadius: 'var(--radius-md)', padding: 20, marginBottom: 20 }}>
+                        Create menu categories and items in Menu Architect before starting POS orders.
+                    </div>
+                )}
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
                     {categories.map((category) => (
                         <button
@@ -105,7 +110,7 @@ export const PosView = () => {
                             style={{
                                 padding: '10px 20px', borderRadius: '100px', border: 'none',
                                 background: selectedCategory === category.id ? 'var(--accent-primary)' : 'white',
-                                color: selectedCategory === category.id ? 'white' : 'var(--fg-secondary)',
+                                color: selectedCategory === category.id ? 'white' : '#334155',
                                 fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                             }}
                         >
@@ -121,30 +126,35 @@ export const PosView = () => {
                             key={item.id}
                             onClick={() => addToCart(item)}
                             style={{
-                                background: 'white', padding: '16px', borderRadius: 'var(--radius-md)',
+                                background: 'white', color: '#0f172a', padding: '16px', borderRadius: 'var(--radius-md)',
                                 border: '1px solid var(--border-subtle)', cursor: 'pointer', textAlign: 'left',
                                 display: 'flex', flexDirection: 'column', gap: '8px', font: 'inherit',
                             }}
                         >
                             <div style={{ fontWeight: 600, fontSize: '15px' }}>{item.name}</div>
-                            <div style={{ color: 'var(--fg-secondary)' }}>${(item.price / 100).toFixed(2)}</div>
+                            <div style={{ color: '#475569' }}>${(item.price / 100).toFixed(2)}</div>
                         </button>
                     ))}
+                    {!isLoading && categories.length > 0 && !menuItems.filter((item) => item.isAvailable).length && (
+                        <div style={{ gridColumn: '1/-1', background: '#ffffff', color: '#475569', border: '1px solid #d8dee8', borderRadius: 'var(--radius-md)', padding: 20 }}>
+                            No available items in this category.
+                        </div>
+                    )}
                 </div>
             </div>
 
-            <div className="restaurant-pos__cart" style={{ width: '360px', background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column' }}>
+            <div className="restaurant-pos__cart" style={{ width: '360px', background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)', fontWeight: 700, fontSize: '18px', display: 'flex', gap: 8 }}>
                     <ShoppingCart size={20} /> Current Order
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {!cart.length && <div style={{ textAlign: 'center', color: 'var(--fg-muted)', marginTop: '40px' }}>Cart is empty</div>}
+                    {!cart.length && <div style={{ textAlign: 'center', color: '#64748b', marginTop: '40px' }}>Cart is empty</div>}
                     {cart.map((item) => (
                         <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <div style={{ fontWeight: 500 }}>{item.name}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--fg-secondary)' }}>
+                                <div style={{ fontSize: '12px', color: '#475569' }}>
                                     ${(item.price / 100).toFixed(2)} x {item.quantity}
                                 </div>
                             </div>
@@ -160,24 +170,27 @@ export const PosView = () => {
 
                 <div style={{ padding: '20px', background: '#f8fafc', borderTop: '1px solid var(--border-subtle)' }}>
                     <div style={{ marginBottom: '16px' }}>
-                        <label htmlFor="restaurant-table" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--fg-secondary)' }}>TABLE ASSIGNMENT</label>
+                        <label htmlFor="restaurant-table" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>TABLE ASSIGNMENT</label>
                         <select
                             id="restaurant-table"
                             value={selectedTable}
                             onChange={(event) => setSelectedTable(event.target.value)}
-                            style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}
+                            style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
                         >
                             <option value="">No Table (Takeaway)</option>
                             {tables.filter((table) => table.status === 'available').map((table) => (
                                 <option key={table.id} value={table.id}>{table.label} ({table.capacity}p)</option>
                             ))}
                         </select>
+                        {!tables.some((table) => table.status === 'available') && (
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>No available tables. Create or free a table in Floor / Tables.</div>
+                        )}
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
                         <span>Subtotal</span><span>${(totalCents / 100).toFixed(2)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '14px', color: 'var(--fg-secondary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '14px', color: '#475569' }}>
                         <span>Tax</span><span>$0.00</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', fontSize: '20px', fontWeight: 800 }}>
