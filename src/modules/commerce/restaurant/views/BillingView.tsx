@@ -2,17 +2,39 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     restaurantApi,
     type RestaurantOrder,
+    type RestaurantOrderStatus,
     type RestaurantPaymentMethod,
     type RestaurantTable,
 } from '@/api/restaurant.api';
 
-type BillingTab = 'Today' | 'Active' | 'Paid';
+type BillingTab = 'Today' | 'Service' | 'Payment' | 'Paid';
+
+const statusLabels: Record<RestaurantOrderStatus, string> = {
+    pending: 'Pending',
+    in_kitchen: 'In Kitchen',
+    ready: 'Ready',
+    delivered: 'Delivered',
+    served: 'Delivered',
+    paid: 'Paid',
+    cancelled: 'Cancelled',
+};
+
+const statusColors: Record<RestaurantOrderStatus, { background: string; color: string }> = {
+    pending: { background: '#fef3c7', color: '#78350f' },
+    in_kitchen: { background: '#dbeafe', color: '#1e3a8a' },
+    ready: { background: '#dcfce7', color: '#166534' },
+    delivered: { background: '#e0f2fe', color: '#075985' },
+    served: { background: '#e0f2fe', color: '#075985' },
+    paid: { background: '#dcfce7', color: '#166534' },
+    cancelled: { background: '#fee2e2', color: '#991b1b' },
+};
 
 export const BillingView = () => {
     const [orders, setOrders] = useState<RestaurantOrder[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
     const [tab, setTab] = useState<BillingTab>('Today');
     const [payingId, setPayingId] = useState<string | null>(null);
+    const [deliveringId, setDeliveringId] = useState<string | null>(null);
     const [paymentMethods, setPaymentMethods] = useState<Record<string, RestaurantPaymentMethod>>({});
     const [error, setError] = useState('');
 
@@ -35,7 +57,8 @@ export const BillingView = () => {
     }, [load]);
 
     const visibleOrders = useMemo(() => orders.filter((order) => {
-        if (tab === 'Active') return order.status === 'in_kitchen' || order.status === 'ready';
+        if (tab === 'Service') return order.status === 'ready';
+        if (tab === 'Payment') return order.status === 'delivered' || order.status === 'served';
         if (tab === 'Paid') return order.status === 'paid';
         return true;
     }), [orders, tab]);
@@ -60,11 +83,23 @@ export const BillingView = () => {
         }
     };
 
+    const markDelivered = async (order: RestaurantOrder) => {
+        setDeliveringId(order.id);
+        try {
+            await restaurantApi.markDelivered(order.id);
+            await load();
+        } catch {
+            setError('Unable to mark this order as delivered.');
+        } finally {
+            setDeliveringId(null);
+        }
+    };
+
     return (
         <div>
             <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Order History & Billing</h1>
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-                {(['Today', 'Active', 'Paid'] as const).map((value) => (
+                {(['Today', 'Service', 'Payment', 'Paid'] as const).map((value) => (
                     <button
                         key={value}
                         onClick={() => setTab(value)}
@@ -96,12 +131,21 @@ export const BillingView = () => {
                                 <td style={{ padding: '16px' }}>{new Date(order.createdAt).toLocaleTimeString()}</td>
                                 <td style={{ padding: '16px', fontWeight: 600 }}>${(order.total / 100).toFixed(2)}</td>
                                 <td style={{ padding: '16px' }}>
-                                    <span style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: 999, fontSize: '12px', fontWeight: 600, background: order.status === 'paid' ? '#dcfce7' : order.status === 'cancelled' ? '#fee2e2' : '#f1f5f9', color: order.status === 'paid' ? '#166534' : order.status === 'cancelled' ? '#991b1b' : '#475569' }}>
-                                        {order.status.replace('_', ' ').toUpperCase()}
+                                    <span style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: 999, fontSize: '12px', fontWeight: 700, background: statusColors[order.status].background, color: statusColors[order.status].color }}>
+                                        {statusLabels[order.status]}
                                     </span>
                                 </td>
                                 <td style={{ padding: '16px' }}>
                                     {order.status === 'ready' ? (
+                                        <button
+                                            onClick={() => markDelivered(order)}
+                                            disabled={deliveringId === order.id}
+                                            className="btn-primary"
+                                            style={{ padding: '7px 12px', cursor: deliveringId === order.id ? 'wait' : 'pointer' }}
+                                        >
+                                            {order.tableId ? 'Mark Delivered' : 'Mark Handed Over'}
+                                        </button>
+                                    ) : order.status === 'delivered' || order.status === 'served' ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                             <select
                                                 aria-label={`Payment method for order ${order.id.slice(-8)}`}
@@ -129,7 +173,7 @@ export const BillingView = () => {
                                     ) : order.status === 'paid' ? (
                                         <span style={{ color: '#166534', fontWeight: 600 }}>PAID</span>
                                     ) : (
-                                        <span style={{ color: '#64748b' }}>Awaiting readiness</span>
+                                        <span style={{ color: '#475569' }}>Awaiting service step</span>
                                     )}
                                 </td>
                             </tr>

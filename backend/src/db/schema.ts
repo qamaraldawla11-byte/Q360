@@ -124,7 +124,7 @@ export const restaurantOrders = pgTable('restaurant_orders', {
     id: text('id').primaryKey(),
     businessId: text('business_id').default('biz_main').notNull(),
     tableId: text('table_id'),
-    status: text('status').$type<'pending' | 'in_kitchen' | 'ready' | 'served' | 'paid' | 'cancelled'>().default('pending').notNull(),
+    status: text('status').$type<'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'paid' | 'cancelled'>().default('pending').notNull(),
     createdBy: text('created_by').notNull(),
     total: integer('total').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),

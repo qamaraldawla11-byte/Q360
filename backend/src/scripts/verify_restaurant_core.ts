@@ -19,7 +19,9 @@ import {
 requireDatabaseUrl();
 
 const businessId = 'biz_verify_restaurant_core';
+const businessBId = 'biz_verify_restaurant_core_b';
 const userId = 'usr_verify_restaurant_core';
+const userBId = 'usr_verify_restaurant_core_b';
 const port = 32000 + (process.pid % 1000);
 const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-core-test-secret';
@@ -29,15 +31,18 @@ const testEnv = {
     PORT: String(port),
 };
 
-const createToken = () => {
+const createToken = (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const now = Math.floor(Date.now() / 1000);
+    const tokenBusinessId = options?.businessId ?? businessId;
+    const tokenUserId = options?.userId ?? userId;
+    const tokenRole = options?.role ?? 'admin';
     const header = encode({ alg: 'HS256', typ: 'JWT' });
     const payload = encode({
-        sub: userId,
-        email: 'verify-restaurant-core@example.com',
-        role: 'admin',
-        businessId,
+        sub: tokenUserId,
+        email: options?.email ?? `${tokenRole}-verify-restaurant-core@example.com`,
+        role: tokenRole,
+        businessId: tokenBusinessId,
         iat: now,
         exp: now + 3600,
     });
@@ -47,11 +52,11 @@ const createToken = () => {
     return `${header}.${payload}.${signature}`;
 };
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+const request = async <T>(path: string, init?: RequestInit, tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string }): Promise<T> => {
     const response = await fetch(`${baseUrl}${path}`, {
         ...init,
         headers: {
-            Authorization: `Bearer ${createToken()}`,
+            Authorization: `Bearer ${createToken(tokenOptions)}`,
             'Content-Type': 'application/json',
             ...init?.headers,
         },
@@ -62,11 +67,11 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     return response.json() as Promise<T>;
 };
 
-const requestResponse = async (path: string, init?: RequestInit) => {
+const requestResponse = async (path: string, init?: RequestInit, tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const response = await fetch(`${baseUrl}${path}`, {
         ...init,
         headers: {
-            Authorization: `Bearer ${createToken()}`,
+            Authorization: `Bearer ${createToken(tokenOptions)}`,
             'Content-Type': 'application/json',
             ...init?.headers,
         },
@@ -79,84 +84,97 @@ const requestResponse = async (path: string, init?: RequestInit) => {
 };
 
 const resetFixture = async () => {
+    const businessesUnderTest = [businessId, businessBId];
     const existingOrders = await db.select({ id: restaurantOrders.id }).from(restaurantOrders)
-        .where(eq(restaurantOrders.businessId, businessId));
+        .where(inArray(restaurantOrders.businessId, businessesUnderTest));
     const orderIds = existingOrders.map((order) => order.id);
 
-    await db.delete(restaurantPayments).where(eq(restaurantPayments.businessId, businessId));
+    await db.delete(restaurantPayments).where(inArray(restaurantPayments.businessId, businessesUnderTest));
     if (orderIds.length > 0) {
-        await db.delete(kdsTickets).where(eq(kdsTickets.businessId, businessId));
+        await db.delete(kdsTickets).where(inArray(kdsTickets.businessId, businessesUnderTest));
         await db.delete(restaurantOrderItems).where(inArray(restaurantOrderItems.orderId, orderIds));
-        await db.delete(restaurantOrders).where(eq(restaurantOrders.businessId, businessId));
+        await db.delete(restaurantOrders).where(inArray(restaurantOrders.businessId, businessesUnderTest));
     }
 
-    await db.delete(restaurantTables).where(eq(restaurantTables.businessId, businessId));
-    await db.delete(menuItems).where(eq(menuItems.businessId, businessId));
-    await db.delete(menuCategories).where(eq(menuCategories.businessId, businessId));
-    await db.delete(restaurantMenus).where(eq(restaurantMenus.businessId, businessId));
-    await db.delete(users).where(eq(users.id, userId));
-    await db.delete(businesses).where(eq(businesses.id, businessId));
+    await db.delete(restaurantTables).where(inArray(restaurantTables.businessId, businessesUnderTest));
+    await db.delete(menuItems).where(inArray(menuItems.businessId, businessesUnderTest));
+    await db.delete(menuCategories).where(inArray(menuCategories.businessId, businessesUnderTest));
+    await db.delete(restaurantMenus).where(inArray(restaurantMenus.businessId, businessesUnderTest));
+    await db.delete(users).where(inArray(users.id, [userId, userBId]));
+    await db.delete(businesses).where(inArray(businesses.id, businessesUnderTest));
 
-    await db.insert(businesses).values({
-        id: businessId,
-        name: 'Restaurant Verification Business',
-        type: 'restaurant',
-        status: 'active',
-    });
-    await db.insert(users).values({
-        id: userId,
-        email: 'verify-restaurant-core@example.com',
-        name: 'Restaurant Verifier',
-        role: 'admin',
-        businessId,
-        onboardingCompleted: true,
-        primaryWorkspace: '/app/restaurant',
-    });
-
-    const menuId = 'verify_restaurant_menu';
-    await db.insert(restaurantMenus).values({
-        id: menuId,
-        businessId,
-        name: 'Verification Menu',
-        isActive: true,
-    });
-
-    const categories = ['Starters', 'Mains', 'Drinks', 'Desserts'].map((name, index) => ({
-        id: `verify_restaurant_category_${name.toLowerCase()}`,
-        businessId,
-        menuId,
-        name,
-        sortOrder: index,
-    }));
-    await db.insert(menuCategories).values(categories);
-    const categoryIds = Object.fromEntries(categories.map((category) => [category.name, category.id]));
-
-    await db.insert(menuItems).values([
-        { id: 'verify_restaurant_item_bruschetta', name: 'Bruschetta', price: 800, categoryId: categoryIds.Starters },
-        { id: 'verify_restaurant_item_caesar_salad', name: 'Caesar Salad', price: 1200, categoryId: categoryIds.Starters },
-        { id: 'verify_restaurant_item_grilled_chicken', name: 'Grilled Chicken', price: 1800, categoryId: categoryIds.Mains },
-        { id: 'verify_restaurant_item_beef_burger', name: 'Beef Burger', price: 1600, categoryId: categoryIds.Mains },
-        { id: 'verify_restaurant_item_pasta_carbonara', name: 'Pasta Carbonara', price: 1500, categoryId: categoryIds.Mains },
-        { id: 'verify_restaurant_item_margherita_pizza', name: 'Margherita Pizza', price: 1400, categoryId: categoryIds.Mains },
-        { id: 'verify_restaurant_item_soft_drink', name: 'Soft Drink', price: 400, categoryId: categoryIds.Drinks },
-        { id: 'verify_restaurant_item_fresh_juice', name: 'Fresh Juice', price: 600, categoryId: categoryIds.Drinks },
-    ].map((item) => ({
-        ...item,
-        businessId,
-        isAvailable: true,
-        prepTimeMinutes: 0,
-    })));
-
-    await db.insert(restaurantTables).values(Array.from({ length: 12 }, (_, index) => {
-        const number = index + 1;
-        return {
-            id: `verify_restaurant_table_t${number}`,
+    await db.insert(businesses).values([
+        { id: businessId, name: 'Restaurant Verification Business', type: 'restaurant', status: 'active' },
+        { id: businessBId, name: 'Restaurant Verification Business B', type: 'restaurant', status: 'active' },
+    ]);
+    await db.insert(users).values([
+        {
+            id: userId,
+            email: 'verify-restaurant-core@example.com',
+            name: 'Restaurant Verifier',
+            role: 'admin',
             businessId,
-            label: `T${number}`,
-            capacity: number <= 3 ? 2 : number <= 9 ? 4 : 6,
-            status: 'available' as const,
-        };
-    }));
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+        {
+            id: userBId,
+            email: 'verify-restaurant-core-b@example.com',
+            name: 'Restaurant Verifier B',
+            role: 'admin',
+            businessId: businessBId,
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+    ]);
+
+    for (const tenantId of businessesUnderTest) {
+        const prefix = tenantId === businessId ? 'verify_restaurant' : 'verify_restaurant_b';
+        const menuId = `${prefix}_menu`;
+        await db.insert(restaurantMenus).values({
+            id: menuId,
+            businessId: tenantId,
+            name: 'Verification Menu',
+            isActive: true,
+        });
+
+        const categories = ['Starters', 'Mains', 'Drinks', 'Desserts'].map((name, index) => ({
+            id: `${prefix}_category_${name.toLowerCase()}`,
+            businessId: tenantId,
+            menuId,
+            name,
+            sortOrder: index,
+        }));
+        await db.insert(menuCategories).values(categories);
+        const categoryIds = Object.fromEntries(categories.map((category) => [category.name, category.id]));
+
+        await db.insert(menuItems).values([
+            { id: `${prefix}_item_bruschetta`, name: 'Bruschetta', price: 800, categoryId: categoryIds.Starters },
+            { id: `${prefix}_item_caesar_salad`, name: 'Caesar Salad', price: 1200, categoryId: categoryIds.Starters },
+            { id: `${prefix}_item_grilled_chicken`, name: 'Grilled Chicken', price: 1800, categoryId: categoryIds.Mains },
+            { id: `${prefix}_item_beef_burger`, name: 'Beef Burger', price: 1600, categoryId: categoryIds.Mains },
+            { id: `${prefix}_item_pasta_carbonara`, name: 'Pasta Carbonara', price: 1500, categoryId: categoryIds.Mains },
+            { id: `${prefix}_item_margherita_pizza`, name: 'Margherita Pizza', price: 1400, categoryId: categoryIds.Mains },
+            { id: `${prefix}_item_soft_drink`, name: 'Soft Drink', price: 400, categoryId: categoryIds.Drinks },
+            { id: `${prefix}_item_fresh_juice`, name: 'Fresh Juice', price: 600, categoryId: categoryIds.Drinks },
+        ].map((item) => ({
+            ...item,
+            businessId: tenantId,
+            isAvailable: true,
+            prepTimeMinutes: 0,
+        })));
+
+        await db.insert(restaurantTables).values(Array.from({ length: tenantId === businessId ? 12 : 1 }, (_, index) => {
+            const number = index + 1;
+            return {
+                id: `${prefix}_table_t${number}`,
+                businessId: tenantId,
+                label: `T${number}`,
+                capacity: number <= 3 ? 2 : number <= 9 ? 4 : 6,
+                status: 'available' as const,
+            };
+        }));
+    }
 };
 
 let serverOutput = '';
@@ -203,9 +221,9 @@ try {
     console.log('[verify:restaurant] Loading menu and tables...');
     const menuResponse = await request<{
         categories: { items: { id: string }[] }[];
-    }>('/api/restaurant/menu');
+    }>('/api/restaurant/menu', undefined, { role: 'waiter' });
     const menu = menuResponse.categories.flatMap((category) => category.items);
-    const tables = await request<{ id: string; label: string; status: string }[]>('/api/restaurant/tables');
+    const tables = await request<{ id: string; label: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
     if (menu.length < 8 || tables.length < 12) {
         throw new Error(`Seeded menu or tables are missing: ${JSON.stringify({
             apiMenu: menu.length,
@@ -226,38 +244,95 @@ try {
                 { menu_item_id: menu[1].id, quantity: 1 },
             ],
         }),
-    });
+    }, { role: 'waiter' });
+    const tablesAfterCreate = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
+
+    console.log('[verify:restaurant] Verifying tenant isolation...');
+    const menuResponseB = await request<{ categories: { items: { id: string }[] }[] }>(
+        '/api/restaurant/menu',
+        undefined,
+        { businessId: businessBId, userId: userBId, role: 'waiter' },
+    );
+    const menuB = menuResponseB.categories.flatMap((category) => category.items);
+    const tablesB = await request<{ id: string; label: string }[]>(
+        '/api/restaurant/tables',
+        undefined,
+        { businessId: businessBId, userId: userBId, role: 'waiter' },
+    );
+    if (!menuB[0] || !tablesB[0]) throw new Error('Tenant B fixture menu or table is missing');
+    const orderB = await request<{ id: string; status: string }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            table_id: tablesB[0].id,
+            items: [{ menu_item_id: menuB[0].id, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const ordersVisibleToA = await request<{ id: string }[]>('/api/restaurant/orders', undefined, { role: 'waiter' });
+    const foreignDeliverAsA = await requestResponse(`/api/restaurant/orders/${orderB.id}/deliver`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    if (ordersVisibleToA.some((order) => order.id === orderB.id) || foreignDeliverAsA.status !== 404) {
+        throw new Error(`Tenant isolation failed: ${JSON.stringify({ orderB, ordersVisibleToA, foreignDeliverAsA })}`);
+    }
+
     console.log('[verify:restaurant] Verifying KDS ticket...');
-    const tickets = await request<{ id: string; order: { id: string } | null }[]>('/api/restaurant/kds');
+    const tickets = await request<{ id: string; order: { id: string } | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
     const ticketId = tickets.find((ticket) => ticket.order?.id === created.id)?.id;
     if (!ticketId) throw new Error('Created order did not produce a KDS ticket');
     const doneTicket = await request<{ status: string; completedAt: string | null }>(`/api/restaurant/kds/${ticketId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'done' }),
-    });
+    }, { role: 'kitchen' });
     console.log('[verify:restaurant] Verifying order and dashboard state...');
-    const readyOrders = await request<{ id: string; status: string; total: number }[]>('/api/restaurant/orders');
+    const readyOrders = await request<{ id: string; status: string; total: number }[]>('/api/restaurant/orders', undefined, { role: 'waiter' });
     const ready = readyOrders.find((order) => order.id === created.id);
     if (!ready) throw new Error('KDS status change was not reflected on the order');
+    const tablesAfterReady = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
+    const waiterPayment = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
+    }, { role: 'waiter' });
+    const kitchenPayment = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
+    }, { role: 'kitchen' });
+    const paymentBeforeDelivery = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
+    }, { role: 'cashier' });
+    const delivered = await request<{ status: string; total: number }>(`/api/restaurant/orders/${created.id}/deliver`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    const tablesAfterDelivered = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
     const paid = await request<{ status: string; total: number }>(`/api/restaurant/orders/${created.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
-    });
+    }, { role: 'cashier' });
     const payments = await db.select().from(restaurantPayments)
         .where(and(
             eq(restaurantPayments.businessId, businessId),
             eq(restaurantPayments.orderId, created.id),
         ));
     const payment = payments[0];
-    const tablesAfter = await request<{ id: string; status: string }[]>('/api/restaurant/tables');
+    const tablesAfter = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
+
+    console.log('[verify:restaurant] Verifying takeaway order support...');
+    const takeaway = await request<{ id: string; status: string; tableId: string | null }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [{ menu_item_id: menu[0].id, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
     const dashboard = await request<{
         total_revenue_today: number;
         active_orders_count: number;
-    }>('/api/restaurant/dashboard');
+    }>('/api/restaurant/dashboard', undefined, { role: 'manager' });
     const duplicatePayment = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
-    });
+    }, { role: 'cashier' });
     const paymentsAfterDuplicate = await db.select().from(restaurantPayments)
         .where(and(
             eq(restaurantPayments.businessId, businessId),
@@ -267,12 +342,27 @@ try {
     const result = {
         menuItems: menu.length,
         tables: tables.length,
-        statuses: [created.status, ready.status, paid.status],
+        statuses: [created.status, ready.status, delivered.status, paid.status],
+        waiterPaymentStatus: waiterPayment.status,
+        kitchenPaymentStatus: kitchenPayment.status,
+        paymentBeforeDeliveryStatus: paymentBeforeDelivery.status,
         paymentCount: payments.length,
         paymentAmount: payment?.amount,
         paymentMethod: payment?.method,
         paymentTimestampExists: Boolean(payment?.paidAt),
+        tableAfterCreate: tablesAfterCreate.find((table) => table.id === tableT1.id)?.status,
+        tableAfterReady: tablesAfterReady.find((table) => table.id === tableT1.id)?.status,
+        tableAfterDelivered: tablesAfterDelivered.find((table) => table.id === tableT1.id)?.status,
         tableAfterPayment: tablesAfter.find((table) => table.id === tableT1.id)?.status,
+        tenantIsolation: {
+            foreignOrderHiddenFromA: !ordersVisibleToA.some((order) => order.id === orderB.id),
+            foreignDeliverAsAStatus: foreignDeliverAsA.status,
+        },
+        takeaway: {
+            id: takeaway.id,
+            status: takeaway.status,
+            tableId: takeaway.tableId,
+        },
         dashboard,
         kdsTicket: doneTicket,
         duplicatePayment,
@@ -280,18 +370,28 @@ try {
     };
 
     if (
-        result.statuses.join(',') !== 'pending,ready,paid' ||
+        result.statuses.join(',') !== 'pending,ready,delivered,paid' ||
+        result.waiterPaymentStatus !== 403 ||
+        result.kitchenPaymentStatus !== 403 ||
+        result.paymentBeforeDeliveryStatus !== 409 ||
         result.paymentCount !== 1 ||
         result.paymentAmount !== paid.total / 100 ||
         result.paymentMethod !== 'cash' ||
         !result.paymentTimestampExists ||
+        result.tableAfterCreate !== 'occupied' ||
+        result.tableAfterReady !== 'occupied' ||
+        result.tableAfterDelivered !== 'occupied' ||
         result.tableAfterPayment !== 'available' ||
         result.dashboard.total_revenue_today !== paid.total ||
-        result.dashboard.active_orders_count !== 0 ||
+        result.dashboard.active_orders_count !== 1 ||
         result.kdsTicket.status !== 'done' ||
         !result.kdsTicket.completedAt ||
         result.duplicatePayment.status !== 409 ||
-        result.paymentCountAfterDuplicate !== 1
+        result.paymentCountAfterDuplicate !== 1 ||
+        !result.tenantIsolation.foreignOrderHiddenFromA ||
+        result.tenantIsolation.foreignDeliverAsAStatus !== 404 ||
+        result.takeaway.status !== 'pending' ||
+        result.takeaway.tableId !== null
     ) {
         throw new Error(`Restaurant flow assertion failed: ${JSON.stringify(result)}`);
     }

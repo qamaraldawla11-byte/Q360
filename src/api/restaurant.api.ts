@@ -1,7 +1,7 @@
 import { http } from './http';
 
 export type RestaurantTableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
-export type RestaurantOrderStatus = 'pending' | 'in_kitchen' | 'ready' | 'served' | 'paid' | 'cancelled';
+export type RestaurantOrderStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'paid' | 'cancelled';
 export type KdsStatus = 'new' | 'cooking' | 'done';
 export type RestaurantPaymentMethod = 'cash' | 'card' | 'mobile';
 
@@ -116,6 +116,9 @@ export const restaurantApi = {
 
     updateOrderStatus: (id: string, status: RestaurantOrderStatus) =>
         http.patch<RestaurantOrder>(`/restaurant/orders/${id}/status`, { status }),
+
+    markDelivered: (id: string) =>
+        http.post<RestaurantOrder>(`/restaurant/orders/${id}/deliver`, {}),
 
     completePayment: (id: string, payload: { method: RestaurantPaymentMethod; amount: number }) =>
         http.post<RestaurantOrder>(`/restaurant/orders/${id}/payments`, payload),

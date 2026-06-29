@@ -18,12 +18,15 @@ import { logAudit } from '../utils/audit.js';
 
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
-const orderStatuses = ['pending', 'in_kitchen', 'ready', 'served', 'paid', 'cancelled'] as const;
+const orderStatuses = ['pending', 'in_kitchen', 'ready', 'delivered', 'served', 'paid', 'cancelled'] as const;
 const ticketStatuses = ['new', 'cooking', 'done'] as const;
 const paymentMethods = ['cash', 'card', 'mobile'] as const;
 type TableStatus = typeof tableStatuses[number];
 type OrderStatus = typeof orderStatuses[number];
 type TicketStatus = typeof ticketStatuses[number];
+const waiterRoles = ['waiter', 'manager', 'owner', 'admin'] as const;
+const kitchenRoles = ['kitchen', 'manager', 'owner', 'admin'] as const;
+const paymentRoles = ['cashier', 'manager', 'owner', 'admin'] as const;
 const delayedKdsThresholdMinutes = 15;
 const priorityTypes = ['kds_delay', 'unpaid_orders', 'table_attention', 'sales_summary', 'top_items'] as const;
 const priorityUrgencies = ['info', 'attention', 'urgent'] as const;
@@ -76,6 +79,13 @@ const parseJson = async <T>(c: Context<AppEnv>) => {
         return null;
     }
 };
+
+const hasRole = (c: Context<AppEnv>, allowedRoles: readonly string[]) => {
+    const role = c.get('userRole');
+    return typeof role === 'string' && allowedRoles.includes(role);
+};
+
+const forbid = (c: Context<AppEnv>) => c.json({ error: 'Forbidden: Insufficient permissions' }, 403);
 
 const todayBounds = () => {
     const start = new Date();
@@ -203,6 +213,7 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
         order.status === 'pending' ||
         order.status === 'in_kitchen' ||
         order.status === 'ready' ||
+        order.status === 'delivered' ||
         order.status === 'served'
     ));
     const unpaidOrders = todayOrders.filter((order) => (
@@ -226,7 +237,7 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
         : null;
     const tablePaymentAttentionCount = new Set(
         unpaidOrders
-            .filter((order) => order.tableId && (order.status === 'ready' || order.status === 'served'))
+            .filter((order) => order.tableId && (order.status === 'ready' || order.status === 'delivered' || order.status === 'served'))
             .map((order) => order.tableId as string),
     ).size;
     const paidOrderIds = new Set(
@@ -300,7 +311,7 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
             `${tablePaymentAttentionCount} table${tablePaymentAttentionCount === 1 ? '' : 's'} may need payment attention`,
             {
                 type: 'tables',
-                label: 'Tables with ready or served unpaid orders',
+                label: 'Tables with ready or delivered unpaid orders',
                 facts: {
                     tablePaymentAttentionCount,
                 },
@@ -635,6 +646,8 @@ restaurant.patch('/tables/:id/status', async (c) => {
 });
 
 restaurant.post('/orders', async (c) => {
+    if (!hasRole(c, waiterRoles)) return forbid(c);
+
     const body = await parseJson<{
         tableId?: unknown;
         table_id?: unknown;
@@ -754,7 +767,7 @@ restaurant.get('/orders', async (c) => {
         lt(restaurantOrders.createdAt, end),
     ];
     if (c.req.query('status') === 'active') {
-        conditions.push(inArray(restaurantOrders.status, ['in_kitchen', 'ready']));
+        conditions.push(inArray(restaurantOrders.status, ['pending', 'in_kitchen', 'ready', 'delivered']));
     }
     const orders = await db.select().from(restaurantOrders)
         .where(and(...conditions))
@@ -783,6 +796,11 @@ restaurant.patch('/orders/:id/status', async (c) => {
     if (body.status === 'paid') {
         return c.json({ error: 'Use the payment endpoint to mark restaurant orders as paid' }, 409);
     }
+    if (body.status === 'ready' && !hasRole(c, kitchenRoles)) return forbid(c);
+    if (body.status === 'delivered' && !hasRole(c, waiterRoles)) return forbid(c);
+    if (body.status !== 'ready' && body.status !== 'delivered') {
+        return c.json({ error: 'Use the kitchen, delivery, or payment action for restaurant order workflow changes' }, 409);
+    }
 
     const businessId = c.get('businessId');
     const id = c.req.param('id');
@@ -790,6 +808,12 @@ restaurant.patch('/orders/:id/status', async (c) => {
         .where(and(eq(restaurantOrders.id, id), eq(restaurantOrders.businessId, businessId)))
     );
     if (!order) return c.json({ error: 'Order not found' }, 404);
+    if (body.status === 'ready' && order.status !== 'pending' && order.status !== 'in_kitchen') {
+        return c.json({ error: 'Only pending kitchen orders can be marked ready' }, 409);
+    }
+    if (body.status === 'delivered' && order.status !== 'ready') {
+        return c.json({ error: 'Only ready orders can be marked delivered' }, 409);
+    }
 
     await db.transaction(async (tx) => {
         await tx.update(restaurantOrders)
@@ -807,7 +831,29 @@ restaurant.patch('/orders/:id/status', async (c) => {
     return c.json(await orderWithItems(businessId, id));
 });
 
+restaurant.post('/orders/:id/deliver', async (c) => {
+    if (!hasRole(c, waiterRoles)) return forbid(c);
+
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const order = await first(db.select().from(restaurantOrders)
+        .where(and(eq(restaurantOrders.id, id), eq(restaurantOrders.businessId, businessId)))
+    );
+    if (!order) return c.json({ error: 'Order not found' }, 404);
+    if (order.status === 'delivered') return c.json(await orderWithItems(businessId, id));
+    if (order.status !== 'ready') {
+        return c.json({ error: 'Only ready orders can be marked delivered' }, 409);
+    }
+
+    await db.update(restaurantOrders)
+        .set({ status: 'delivered', updatedAt: new Date() })
+        .where(and(eq(restaurantOrders.id, id), eq(restaurantOrders.businessId, businessId)));
+    return c.json(await orderWithItems(businessId, id));
+});
+
 restaurant.post('/orders/:id/payments', async (c) => {
+    if (!hasRole(c, paymentRoles)) return forbid(c);
+
     const body = await parseJson<{ method?: unknown; amount?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     if (typeof body.method !== 'string' || !paymentMethods.includes(body.method as typeof paymentMethods[number])) {
@@ -831,8 +877,8 @@ restaurant.post('/orders/:id/payments', async (c) => {
         return c.json({ error: 'Order is already paid' }, 409);
     }
     if (order.status === 'cancelled') return c.json({ error: 'Cancelled orders cannot be paid' }, 409);
-    if (!['ready', 'served'].includes(order.status)) {
-        return c.json({ error: 'Order must be ready or served before payment' }, 409);
+    if (order.status !== 'delivered' && order.status !== 'served') {
+        return c.json({ error: 'Order must be delivered before payment' }, 409);
     }
 
     const total = order.total / 100;
@@ -855,7 +901,7 @@ restaurant.post('/orders/:id/payments', async (c) => {
             if (!lockedOrder) throw new Error('ORDER_NOT_FOUND');
             if (lockedOrder.status === 'paid') throw new Error('ORDER_ALREADY_PAID');
             if (lockedOrder.status === 'cancelled') throw new Error('ORDER_CANCELLED');
-            if (!['ready', 'served'].includes(lockedOrder.status)) throw new Error('ORDER_NOT_READY');
+            if (lockedOrder.status !== 'delivered' && lockedOrder.status !== 'served') throw new Error('ORDER_NOT_DELIVERED');
             const payment = await first(tx.select().from(restaurantPayments)
                 .where(and(
                     eq(restaurantPayments.businessId, businessId),
@@ -897,7 +943,7 @@ restaurant.post('/orders/:id/payments', async (c) => {
             if (error.message === 'ORDER_NOT_FOUND') return c.json({ error: 'Order not found' }, 404);
             if (error.message === 'ORDER_ALREADY_PAID') return c.json({ error: 'Order is already paid' }, 409);
             if (error.message === 'ORDER_CANCELLED') return c.json({ error: 'Cancelled orders cannot be paid' }, 409);
-            if (error.message === 'ORDER_NOT_READY') return c.json({ error: 'Order must be ready or served before payment' }, 409);
+            if (error.message === 'ORDER_NOT_DELIVERED') return c.json({ error: 'Order must be delivered before payment' }, 409);
             if (error.message === 'AMOUNT_CHANGED') return c.json({ error: `Payment amount must equal ${total.toFixed(2)}` }, 400);
         }
         throw error;
@@ -942,10 +988,15 @@ restaurant.get('/kds', async (c) => {
 });
 
 restaurant.patch('/kds/:id/status', async (c) => {
+    if (!hasRole(c, kitchenRoles)) return forbid(c);
+
     const body = await parseJson<{ status?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     if (typeof body.status !== 'string' || !ticketStatuses.includes(body.status as TicketStatus)) {
         return c.json({ error: 'Invalid KDS status' }, 400);
+    }
+    if (body.status !== 'done') {
+        return c.json({ error: 'Kitchen may only mark orders ready' }, 409);
     }
 
     const businessId = c.get('businessId');
@@ -1025,7 +1076,12 @@ restaurant.get('/dashboard', async (c) => {
                 );
             }, 0),
         active_orders_count: orders
-            .filter((order) => order.status === 'in_kitchen' || order.status === 'ready')
+            .filter((order) => (
+                order.status === 'pending' ||
+                order.status === 'in_kitchen' ||
+                order.status === 'ready' ||
+                order.status === 'delivered'
+            ))
             .length,
         avg_prep_time_minutes: prepTimes.length
             ? Math.round((prepTimes.reduce((sum, value) => sum + value, 0) / prepTimes.length) * 10) / 10

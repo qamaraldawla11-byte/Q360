@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import { Hono } from 'hono';
 import { requireDatabaseUrl } from '../utils/env.js';
 
@@ -35,6 +36,21 @@ const decodeToken = (token: string) => {
     const payload = token.split('.')[1];
     if (!payload) throw new Error('JWT is missing its payload');
     return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as TokenPayload;
+};
+
+const createRoleToken = (payload: TokenPayload) => {
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const header = encode({ alg: 'HS256', typ: 'JWT' });
+    const body = encode({
+        ...payload,
+        iat: now,
+        exp: now + 3600,
+    });
+    const signature = createHmac('sha256', process.env.JWT_SECRET!)
+        .update(`${header}.${body}`)
+        .digest('base64url');
+    return `${header}.${body}.${signature}`;
 };
 
 const requestOtpAndVerify = async (email: string) => {
@@ -166,7 +182,13 @@ if (!menuItem) {
     });
 }
 
-const order = await authedRequest<{ id: string }>(token, '/api/restaurant/orders', {
+const waiterToken = createRoleToken({
+    sub: firstPayload.sub,
+    email,
+    role: 'waiter',
+    businessId: onboardedPayload.businessId,
+});
+const order = await authedRequest<{ id: string }>(waiterToken, '/api/restaurant/orders', {
     method: 'POST',
     body: JSON.stringify({
         table_id: table.id,
