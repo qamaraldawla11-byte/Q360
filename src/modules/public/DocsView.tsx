@@ -11,9 +11,9 @@ export const DocsView = () => {
 
                 <div style={{ display: 'grid', gap: '24px' }}>
                     {[
-                        { icon: Book, title: 'Q360 Overview', desc: 'Product direction, workspace concepts, and current beta scope.' },
+                        { icon: Book, title: 'Q360 Overview', desc: 'Product direction, workspace concepts, and current access scope.' },
                         { icon: Code, title: 'Workflow Notes', desc: 'How customers, orders, invoices, and follow-up fit together.' },
-                        { icon: Cloud, title: 'Beta Foundations', desc: 'Authentication, onboarding, roles, business identity, and audit foundations.' },
+                        { icon: Cloud, title: 'Product Foundations', desc: 'Authentication, onboarding, roles, business identity, and audit foundations.' },
                     ].map((item, idx) => (
                         <div key={idx} style={{
                             display: 'flex', gap: '20px', padding: '24px', background: 'white',

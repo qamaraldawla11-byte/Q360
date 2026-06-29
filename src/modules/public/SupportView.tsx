@@ -14,7 +14,7 @@ export const SupportView = () => {
 
                 <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--fg-primary)', marginBottom: '16px' }}>Contact Support</h1>
                 <p style={{ color: 'var(--fg-secondary)', marginBottom: '32px', lineHeight: 1.5 }}>
-                    Tell us what workflow you want to run in Q360. Beta access is founder-supported while the product is being shaped with early businesses.
+                    Tell us what workflow you want to run in Q360. We will review the best next step for your business.
                 </p>
 
                 <div style={{ display: 'grid', gap: '16px' }}>
