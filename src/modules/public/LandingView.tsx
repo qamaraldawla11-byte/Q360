@@ -1,472 +1,598 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    AlertTriangle,
     ArrowRight,
-    Bot,
-    BriefcaseBusiness,
-    CalendarDays,
-    ChefHat,
-    ChevronRight,
-    ClipboardCheck,
-    FileText,
-    ListChecks,
-    PackageCheck,
-    Pill,
-    Receipt,
-    ShieldCheck,
-    ShoppingCart,
-    Sparkles,
     Table2,
-    UtensilsCrossed,
-    WalletCards,
+    ChefHat,
+    PackageCheck,
+    Receipt,
+    CalendarDays,
+    Sparkles,
     Users,
-    type LucideIcon,
+    BriefcaseBusiness,
+    FileText,
+    Pill,
+    CheckCircle2,
+    Lock,
+    Activity,
+    Info,
 } from 'lucide-react';
-import { LogoFull } from '@/components/ui/Logo';
+import { LogoFull, LogoMark } from '@/components/ui/Logo';
 
-type WorkspaceKey = 'Q360 Restaurant' | 'Q360 Commerce' | 'Q360 Services' | 'Projects' | 'Q360 Pharmacy';
-
-type WorkspacePreview = {
-    label: string;
-    value: string;
-    tone: 'green' | 'amber' | 'blue';
-};
-
-type Workspace = {
-    name: WorkspaceKey;
-    icon: LucideIcon;
-    color: string;
-    title: string;
-    desc: string;
-    note: string;
-    visualLabel: string;
-    visualStatus: string;
-    rows: WorkspacePreview[];
-};
+type WorkspaceKey = 'restaurant' | 'commerce' | 'services' | 'projects' | 'pharmacy';
 
 export const LandingView = () => {
     const navigate = useNavigate();
-    const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('Q360 Restaurant');
+    const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('restaurant');
+    const [heroWorkspace, setHeroWorkspace] = useState<Exclude<WorkspaceKey, 'pharmacy'>>('restaurant');
+    const [qApproved, setQApproved] = useState(false);
 
-    const painPoints = [
-        'Quotes waiting for follow-up',
-        'Payments that need attention',
-        'Orders and jobs without clear status',
-        'Tasks spread across WhatsApp and paper',
-        'Team updates that are hard to track',
-        'Owners carrying too much in their head',
-    ];
-
-    const workflows = [
-        {
-            title: 'Commerce flow',
-            steps: ['Customer', 'Quote', 'Order', 'Invoice', 'Payment follow-up'],
-            note: 'In active development.',
-            icon: ShoppingCart,
-        },
-        {
-            title: 'Services flow',
-            steps: ['Customer', 'Request', 'Quote', 'Job or Project', 'Tasks / Materials', 'Invoice', 'Payment follow-up'],
-            note: 'In active development.',
-            icon: BriefcaseBusiness,
-        },
-        {
-            title: 'Restaurant flow',
-            steps: ['Tables', 'Orders', 'Kitchen workflow', 'Payment', 'Daily operations'],
-            note: 'Currently the most developed workflow.',
-            icon: UtensilsCrossed,
-        },
-    ];
-
-    const workspaces: Workspace[] = [
-        {
-            name: 'Q360 Restaurant',
-            icon: UtensilsCrossed,
-            color: '#f59e0b',
-            title: 'Q360 Restaurant',
-            desc: 'Manage restaurant orders, kitchen workflows, tables, payments, and daily operations.',
-            note: 'Currently the most developed Q360 workflow.',
-            visualLabel: 'Sample restaurant workspace visual',
-            visualStatus: 'Sample visual based on Q360 workflow structure.',
-            rows: [
-                { label: 'Tables', value: '12 active', tone: 'green' },
-                { label: 'Kitchen workflow', value: '8 in progress', tone: 'amber' },
-                { label: 'Payments', value: '3 need review', tone: 'blue' },
-            ],
-        },
-        {
-            name: 'Q360 Commerce',
-            icon: ShoppingCart,
-            color: '#10b981',
-            title: 'Q360 Commerce',
-            desc: 'Organize products, customers, quotes, orders, invoices, and payment follow-up.',
-            note: 'In active development.',
-            visualLabel: 'Sample commerce quote-to-payment visual',
-            visualStatus: 'Sample visual for active development workflow.',
-            rows: [
-                { label: 'Quotes', value: '5 waiting', tone: 'amber' },
-                { label: 'Orders', value: '11 open', tone: 'blue' },
-                { label: 'Invoices', value: '4 follow-ups', tone: 'green' },
-            ],
-        },
-        {
-            name: 'Q360 Services',
-            icon: BriefcaseBusiness,
-            color: '#8b5cf6',
-            title: 'Q360 Services',
-            desc: 'Manage customer requests, jobs, tasks, materials, invoices, and client follow-up.',
-            note: 'In active development.',
-            visualLabel: 'Sample services workflow visual',
-            visualStatus: 'Sample visual for active development workflow.',
-            rows: [
-                { label: 'Requests', value: '6 open', tone: 'blue' },
-                { label: 'Jobs', value: '4 scheduled', tone: 'green' },
-                { label: 'Materials', value: '2 checks', tone: 'amber' },
-            ],
-        },
-        {
-            name: 'Projects',
-            icon: FileText,
-            color: '#3b82f6',
-            title: 'Projects',
-            desc: 'Keep milestones, tasks, materials, team updates, and client work connected.',
-            note: 'In active development.',
-            visualLabel: 'Sample project workspace visual',
-            visualStatus: 'Sample visual for active development workflow.',
-            rows: [
-                { label: 'Milestones', value: '3 active', tone: 'blue' },
-                { label: 'Tasks', value: '14 open', tone: 'green' },
-                { label: 'Updates', value: '5 new', tone: 'amber' },
-            ],
-        },
-        {
-            name: 'Q360 Pharmacy',
-            icon: Pill,
-            color: '#06b6d4',
-            title: 'Q360 Pharmacy',
-            desc: 'Future direction for medicine retail operations.',
-            note: 'Not currently marketed as prescription, clinical, or compliance software.',
-            visualLabel: 'Concept pharmacy direction visual',
-            visualStatus: 'Concept visual for future direction.',
-            rows: [
-                { label: 'Retail stock', value: 'Future', tone: 'blue' },
-                { label: 'Daily work', value: 'Future', tone: 'green' },
-                { label: 'Follow-up', value: 'Future', tone: 'amber' },
-            ],
-        },
-    ];
-
-    const activeWorkspaceData = workspaces.find((workspace) => workspace.name === activeWorkspace) ?? workspaces[0];
-
-    const qCards = [
-        {
-            title: 'Spot overdue payments',
-            desc: 'Q can highlight invoices that may need follow-up.',
-            icon: Receipt,
-        },
-        {
-            title: 'See daily priorities',
-            desc: 'Q can turn business activity into a focused list of priorities.',
-            icon: ListChecks,
-        },
-        {
-            title: 'Catch issues early',
-            desc: 'Q can flag delayed tasks, unconfirmed quotes, low stock, or missing materials where relevant data exists.',
-            icon: ClipboardCheck,
-        },
-        {
-            title: 'Prepare the next action',
-            desc: 'Q can prepare summaries, task suggestions, and draft follow-up messages.',
-            icon: Bot,
-        },
-    ];
-
-    const foundations = [
-        {
-            title: 'Role-based access',
-            desc: 'Give owners and team members access that matches their operational role.',
-            icon: Users,
-        },
-        {
-            title: 'Business workspaces',
-            desc: 'Keep business identity, team work, and selected workflows together.',
-            icon: BriefcaseBusiness,
-        },
-        {
-            title: 'Operational workflows',
-            desc: 'Start with practical flows for customers, orders, invoices, and daily work.',
-            icon: FileText,
-        },
-        {
-            title: 'Audit foundations',
-            desc: 'Build on activity records that can support clearer operational oversight.',
-            icon: ShieldCheck,
-        },
-        {
-            title: 'Modular feature access',
-            desc: 'Use workspace capabilities as they become ready for supported workflows.',
-            icon: WalletCards,
-        },
-        {
-            title: 'Business operations dashboard',
-            desc: 'Review daily activity, priorities, and workflow status from one place.',
-            icon: ClipboardCheck,
-        },
-    ];
-
-    const scrollToWorkspaces = () => {
-        document.getElementById('workspaces')?.scrollIntoView({ behavior: 'smooth' });
+    const scrollToSection = (id: string) => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     };
 
     return (
         <div className="landing-page">
+            {/* Header / Navigation */}
             <header className="landing-header">
                 <button
                     type="button"
                     onClick={() => navigate('/')}
-                    className="brand-lockup"
-                    aria-label="Q360 home"
+                    className="brand-lockup logo-white"
+                    aria-label="Q360 Home"
                 >
-                    <LogoFull height={32} />
+                    <LogoMark size={28} />
                 </button>
 
-                <nav className="landing-nav" aria-label="Landing page navigation">
-                    <button type="button" onClick={scrollToWorkspaces} style={navButtonStyle}>Workspaces</button>
-                    <button type="button" onClick={() => document.getElementById('q')?.scrollIntoView({ behavior: 'smooth' })} style={navButtonStyle}>Q</button>
+                <nav className="landing-nav" aria-label="Main Navigation">
+                    <button type="button" onClick={() => scrollToSection('workspaces')} className="nav-btn">Workspaces</button>
+                    <button type="button" onClick={() => scrollToSection('meet-q')} className="nav-btn">Q</button>
                     <button type="button" onClick={() => navigate('/login')} className="nav-cta">
-                        Request access <ArrowRight size={16} />
+                        Sign In <ArrowRight size={14} />
                     </button>
                 </nav>
             </header>
 
             <main>
-                <section className="landing-hero reveal-section">
-                    <div className="hero-copy">
-                        <div className="hero-kicker">
-                            Built for businesses that sell products, deliver services, or manage daily operational work.
-                        </div>
-
-                        <h1>
-                            One place for your business.
-                            <span>Nothing falls through.</span>
-                        </h1>
-
-                        <p>
-                            Keep customers, work, orders, invoices, payments, and priorities connected in one clear workspace.
-                        </p>
-
-                        <div className="hero-actions">
-                            <button type="button" onClick={() => navigate('/login')} className="primary-cta">
-                                Request access <ArrowRight size={20} />
-                            </button>
-                            <button type="button" onClick={scrollToWorkspaces} className="secondary-cta">
-                                Explore workspaces
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="hero-visual" aria-label="Sample Q360 business workspace visual">
-                        <WorkspacePreviewPanel
-                            title="Today in Q360"
-                            label="Sample workspace visual"
-                            note="No customer data shown"
-                            rows={[
-                                { label: 'Orders moving', value: '18', tone: 'green' },
-                                { label: 'Invoices to review', value: '4', tone: 'amber' },
-                                { label: 'Team priorities', value: '7', tone: 'blue' },
-                            ]}
-                            compact={false}
-                        />
-                    </div>
-                </section>
-
-                <section className="landing-section reveal-section">
-                    <div className="section-heading">
-                        <p style={sectionLabelStyle}>Daily business gets scattered.</p>
-                        <h2 style={sectionTitleStyle}>Important work should not live across messages, paper, and memory.</h2>
-                        <p style={sectionCopyStyle}>Quotes get forgotten. Payments need follow-up. Tasks move between people. Customer updates get lost. Q360 helps bring the daily work of your business into one clear place.</p>
-                    </div>
-                    <div className="pain-grid">
-                        {painPoints.map((point) => (
-                            <div key={point} style={quietCardStyle} className="polish-card">
-                                <ListChecks size={20} color="var(--primary)" />
-                                <span>{point}</span>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className="landing-section reveal-section">
-                    <div className="section-heading">
-                        <p style={sectionLabelStyle}>One connected workflow</p>
-                        <h2 style={sectionTitleStyle}>From customer request to payment follow-up.</h2>
-                    </div>
-                    <div className="workflow-grid">
-                        {workflows.map((flow) => (
-                            <div key={flow.title} className="workflow-card polish-card">
-                                <div className="workflow-card__top">
-                                    <div style={iconBoxStyle}>
-                                        <flow.icon size={24} />
-                                    </div>
-                                    <span className="maturity-pill">{flow.note}</span>
-                                </div>
-                                <h3>{flow.title}</h3>
-                                <div className="workflow-rail" aria-label={`${flow.title} steps`}>
-                                    {flow.steps.map((step, index) => (
-                                        <div key={step} className="workflow-step">
-                                            <span>{index + 1}</span>
-                                            <strong>{step}</strong>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section id="workspaces" className="landing-section reveal-section">
-                    <div className="industry-shell">
-                        <div className="industry-menu">
-                            <h3>Workspaces</h3>
-                            <div>
-                                {workspaces.map((workspace) => (
-                                    <button
-                                        type="button"
-                                        key={workspace.name}
-                                        onClick={() => setActiveWorkspace(workspace.name)}
-                                        className={activeWorkspace === workspace.name ? 'workspace-tab workspace-tab--active' : 'workspace-tab'}
-                                    >
-                                        <div style={{ background: activeWorkspace === workspace.name ? workspace.color : 'var(--surface-300)' }}>
-                                            <workspace.icon size={20} />
-                                        </div>
-                                        <span>{workspace.name}</span>
-                                        {activeWorkspace === workspace.name && <ChevronRight size={16} aria-hidden="true" />}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="industry-content">
-                            <div className="industry-copy">
-                                <h2>{activeWorkspaceData.title}</h2>
-                                <p>{activeWorkspaceData.desc}</p>
-                                <div className="maturity-note">
-                                    <ClipboardCheck size={15} />
-                                    {activeWorkspaceData.note}
-                                </div>
-                            </div>
-                            <WorkspacePreviewPanel
-                                title={activeWorkspaceData.title}
-                                label={activeWorkspaceData.visualLabel}
-                                note={activeWorkspaceData.visualStatus}
-                                rows={activeWorkspaceData.rows}
-                                compact
-                            />
-                        </div>
-                    </div>
-                </section>
-
-                <section id="q" className="landing-section reveal-section">
-                    <div className="q-layout">
-                        <div className="q-copy">
-                            <div style={iconBoxStyle}>
-                                <Bot size={26} />
-                            </div>
-                            <p style={sectionLabelStyle}>Meet Q</p>
-                            <h2 style={sectionTitleStyle}>Keeps track, so you do not have to.</h2>
-                            <p style={qCopyStyle}>
-                                Q is your business assistant inside Q360. It helps you spot what may need attention next using the activity already recorded in your workspace.
+                {/* 1. Hero Section */}
+                <section className="hero-section">
+                    <div className="hero-grid">
+                        <div className="hero-content">
+                            <span className="hero-badge">
+                                <Sparkles size={12} />
+                                <span>Quiet operations workspace for SMEs</span>
+                            </span>
+                            <h1>
+                                One place for your business.
+                                <span className="highlight-text">Nothing falls through.</span>
+                            </h1>
+                            <p className="hero-subtitle">
+                                A clearer way to manage the work behind your business.
                             </p>
-                        </div>
-
-                        <div className="q-panel polish-card" aria-label="Concept Today with Q panel">
-                            <div className="q-panel__header">
-                                <div>
-                                    <span>Concept</span>
-                                    <h3>Today with Q</h3>
-                                </div>
-                                <Sparkles size={22} />
-                            </div>
-                            <div className="q-insights">
-                                <InsightRow icon={Receipt} title="Overdue invoices" detail="4 invoices may need follow-up." tone="amber" />
-                                <InsightRow icon={AlertTriangle} title="Delayed tasks" detail="2 jobs moved past planned date." tone="blue" />
-                                <InsightRow icon={CalendarDays} title="Daily priorities" detail="7 items prepared for owner review." tone="green" />
-                            </div>
-                            <div className="q-panel__footer">
-                                Q prepares insights and suggested next steps. You approve important actions.
+                            <div className="hero-actions">
+                                <button type="button" onClick={() => scrollToSection('meet-q')} className="btn-primary">
+                                    See Q360 in action
+                                </button>
+                                <button type="button" onClick={() => scrollToSection('workspaces')} className="btn-secondary">
+                                    Explore workspaces
+                                </button>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="q-grid">
-                        {qCards.map((card) => (
-                            <div key={card.title} style={cardStyle} className="polish-card">
-                                <div style={iconBoxStyle}>
-                                    <card.icon size={22} />
+                        {/* Interactive Hero Visual */}
+                        <div className="hero-visual">
+                            <div className="mock-browser">
+                                <div className="browser-header">
+                                    <div className="browser-dots">
+                                        <span className="dot"></span>
+                                        <span className="dot"></span>
+                                        <span className="dot"></span>
+                                    </div>
+                                    <div className="browser-title">
+                                        <span className="logo-white"><LogoMark size={14} /></span>
+                                        <span>Q360 Workspace</span>
+                                    </div>
                                 </div>
-                                <h3>{card.title}</h3>
-                                <p>{card.desc}</p>
-                            </div>
-                        ))}
-                    </div>
+                                
+                                <div className="mock-app-layout">
+                                    {/* Sidebar */}
+                                    <div className="mock-sidebar">
+                                        <div className="sidebar-group">
+                                            <span className="group-label">Workspaces</span>
+                                            <button 
+                                                type="button" 
+                                                className={`sidebar-tab ${heroWorkspace === 'restaurant' ? 'active' : ''}`}
+                                                onClick={() => setHeroWorkspace('restaurant')}
+                                            >
+                                                <ChefHat size={14} />
+                                                <span>Restaurant</span>
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                className={`sidebar-tab ${heroWorkspace === 'commerce' ? 'active' : ''}`}
+                                                onClick={() => setHeroWorkspace('commerce')}
+                                            >
+                                                <Receipt size={14} />
+                                                <span>Commerce</span>
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                className={`sidebar-tab ${heroWorkspace === 'services' ? 'active' : ''}`}
+                                                onClick={() => setHeroWorkspace('services')}
+                                            >
+                                                <BriefcaseBusiness size={14} />
+                                                <span>Services</span>
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                className={`sidebar-tab ${heroWorkspace === 'projects' ? 'active' : ''}`}
+                                                onClick={() => setHeroWorkspace('projects')}
+                                            >
+                                                <FileText size={14} />
+                                                <span>Projects</span>
+                                            </button>
+                                        </div>
+                                    </div>
 
-                    <div className="trust-strip">
-                        <strong>Q prepares insights and suggested next steps. You approve important actions.</strong>
-                        <span>Q capabilities are being introduced gradually across Q360 workflows.</span>
+                                    {/* Main View Area */}
+                                    <div className="mock-main-view">
+                                        <div className="view-header">
+                                            <h3>{heroWorkspace.toUpperCase()} WORKSPACE</h3>
+                                            <span className="label-screenshot">Concept visual — example workflow</span>
+                                        </div>
+
+                                        <div className="view-body">
+                                            {heroWorkspace === 'restaurant' && (
+                                                <div className="restaurant-mock">
+                                                    <div className="stats-row">
+                                                        <div className="stat-pill">Active tables</div>
+                                                        <div className="stat-pill warning-pill">Review needed</div>
+                                                    </div>
+                                                    <div className="order-ticket">
+                                                        <div className="ticket-header">
+                                                            <strong>Customer request</strong>
+                                                            <span className="status-badge success-badge">Completed</span>
+                                                        </div>
+                                                        <div className="ticket-items">
+                                                            <div className="ticket-item"><span>○</span> Example item</div>
+                                                            <div className="ticket-item"><span>○</span> Example item</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {heroWorkspace === 'commerce' && (
+                                                <div className="commerce-mock">
+                                                    <div className="stats-row">
+                                                        <div className="stat-pill">Quotes awaiting review</div>
+                                                        <div className="stat-pill success-pill">Status sync</div>
+                                                    </div>
+                                                    <div className="quote-card">
+                                                        <div className="card-top">
+                                                            <strong>Quote awaiting review</strong>
+                                                            <span className="status-badge progress-badge">Awaiting review</span>
+                                                        </div>
+                                                        <p className="card-desc">Example workflow</p>
+                                                        <div className="card-value">Awaiting confirmation</div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {heroWorkspace === 'services' && (
+                                                <div className="services-mock">
+                                                    <div className="stats-row">
+                                                        <div className="stat-pill">Jobs scheduled</div>
+                                                        <div className="stat-pill warning-pill">Unassigned jobs</div>
+                                                    </div>
+                                                    <div className="job-card">
+                                                        <div className="card-top">
+                                                            <strong>Customer request</strong>
+                                                            <span className="status-badge success-badge">Scheduled</span>
+                                                        </div>
+                                                        <p className="card-desc">Service task details</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {heroWorkspace === 'projects' && (
+                                                <div className="projects-mock">
+                                                    <div className="stats-row">
+                                                        <div className="stat-pill">Milestones open</div>
+                                                        <div className="stat-pill success-pill">Tasks completed</div>
+                                                    </div>
+                                                    <div className="project-card">
+                                                        <div className="card-top">
+                                                            <strong>Milestone status</strong>
+                                                            <span className="status-badge success-badge">Approved</span>
+                                                        </div>
+                                                        <div className="milestone-steps">
+                                                            <div className="step done">✓ Task completed</div>
+                                                            <div className="step done">✓ Task completed</div>
+                                                            <div className="step progress">○ Task in progress</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
-                <section className="landing-section reveal-section">
-                    <div className="section-heading">
-                        <h2 style={sectionTitleStyle}>Built for practical business operations.</h2>
-                        <p style={sectionCopyStyle}>Q360 helps businesses keep customers, work, orders, invoices, payments, and priorities in one place.</p>
-                    </div>
-
-                    <div className="foundation-grid">
-                        {foundations.map((foundation) => (
-                            <div key={foundation.title} style={cardStyle} className="polish-card">
-                                <div style={iconBoxStyle}>
-                                    <foundation.icon size={22} />
-                                </div>
-                                <h3>{foundation.title}</h3>
-                                <p>{foundation.desc}</p>
+                {/* 2. Owner Problem Section */}
+                <section className="problem-section">
+                    <div className="spotlight-glow" aria-hidden="true"></div>
+                    <div className="section-container">
+                        <div className="problem-header">
+                            <h2>Stop carrying your business in your head.</h2>
+                            <p>Running a business shouldn’t mean chasing details across five different apps and disconnected messaging threads.</p>
+                        </div>
+                        <div className="problem-grid">
+                            <div className="problem-card">
+                                <div className="card-indicator warning-border"></div>
+                                <h3>Chasing updates</h3>
+                                <p>Checking status levels to verify if a task is completed, a customer is served, or an invoice was received.</p>
                             </div>
-                        ))}
+                            <div className="problem-card">
+                                <div className="card-indicator warning-border"></div>
+                                <h3>Missing follow-up</h3>
+                                <p>Quotes that sit unanswered, invoice reminders that get forgotten, and clients waiting for simple callbacks.</p>
+                            </div>
+                            <div className="problem-card">
+                                <div className="card-indicator warning-border"></div>
+                                <h3>Work without a clear status</h3>
+                                <p>Operational tasks that drop through the cracks because they live only on slips of paper or temporary messaging chats.</p>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
-                <section className="landing-section landing-cta-section reveal-section">
-                    <div className="cta-panel">
-                        <h2>See how Q360 works.</h2>
-                        <p>Less chasing. More clarity.</p>
-                        <span>Best suited for businesses that manage customers, quotes, orders, jobs, invoices, or payment follow-up.</span>
-                        <button type="button" onClick={() => navigate('/login')}>
-                            Request access
-                        </button>
+                {/* 3. Workspace Selector Section */}
+                <section id="workspaces" className="workspaces-section">
+                    <div className="section-container">
+                        <div className="workspaces-header">
+                            <h2>Built around the way your business works.</h2>
+                            <p>Select a workspace module to see how Q360 can illustrate workflow structures designed for your operations.</p>
+                        </div>
+
+                        <div className="workspace-tabs-container">
+                            {/* Mobile Tabs Header */}
+                            <div className="mobile-tabs-bar">
+                                <button type="button" onClick={() => setActiveWorkspace('restaurant')} className={`mobile-tab ${activeWorkspace === 'restaurant' ? 'active' : ''}`}>Restaurant</button>
+                                <button type="button" onClick={() => setActiveWorkspace('commerce')} className={`mobile-tab ${activeWorkspace === 'commerce' ? 'active' : ''}`}>Commerce</button>
+                                <button type="button" onClick={() => setActiveWorkspace('services')} className={`mobile-tab ${activeWorkspace === 'services' ? 'active' : ''}`}>Services</button>
+                                <button type="button" onClick={() => setActiveWorkspace('projects')} className={`mobile-tab ${activeWorkspace === 'projects' ? 'active' : ''}`}>Projects</button>
+                                <button type="button" onClick={() => setActiveWorkspace('pharmacy')} className={`mobile-tab ${activeWorkspace === 'pharmacy' ? 'active' : ''}`}>Pharmacy</button>
+                            </div>
+
+                            <div className="workspace-interactive-layout">
+                                {/* Desktop Sidebar Workspace Selector */}
+                                <div className="desktop-workspace-menu">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setActiveWorkspace('restaurant')}
+                                        className={`workspace-menu-btn ${activeWorkspace === 'restaurant' ? 'active' : ''}`}
+                                    >
+                                        <ChefHat size={18} />
+                                        <span>Restaurant</span>
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setActiveWorkspace('commerce')}
+                                        className={`workspace-menu-btn ${activeWorkspace === 'commerce' ? 'active' : ''}`}
+                                    >
+                                        <Receipt size={18} />
+                                        <span>Commerce</span>
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setActiveWorkspace('services')}
+                                        className={`workspace-menu-btn ${activeWorkspace === 'services' ? 'active' : ''}`}
+                                    >
+                                        <BriefcaseBusiness size={18} />
+                                        <span>Services</span>
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setActiveWorkspace('projects')}
+                                        className={`workspace-menu-btn ${activeWorkspace === 'projects' ? 'active' : ''}`}
+                                    >
+                                        <FileText size={18} />
+                                        <span>Projects</span>
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setActiveWorkspace('pharmacy')}
+                                        className={`workspace-menu-btn future-tab ${activeWorkspace === 'pharmacy' ? 'active' : ''}`}
+                                    >
+                                        <Lock size={16} />
+                                        <span>Pharmacy</span>
+                                        <span className="future-pill">Future direction</span>
+                                    </button>
+                                </div>
+
+                                {/* Active Workspace Details Panel */}
+                                <div className="workspace-preview-canvas">
+                                    {activeWorkspace === 'restaurant' && (
+                                        <div className="canvas-wrapper">
+                                            <div className="canvas-info">
+                                                <h3>Q360 Restaurant</h3>
+                                                <p>Built specifically for hospitality operations, keeping your front-of-house tables, point of sale, and back-of-house kitchen workflows in sync.</p>
+                                                <div className="module-specs">
+                                                    <span className="spec-item"><Table2 size={14} /> Floor Plan Management</span>
+                                                    <span className="spec-item"><ChefHat size={14} /> Kitchen Tickets</span>
+                                                </div>
+                                            </div>
+                                            <div className="canvas-visual">
+                                                <span className="label-visual">Concept visual — example workflow</span>
+                                                <div className="mock-interface-pane">
+                                                    <div className="pane-header">Floor Plan View</div>
+                                                    <div className="table-grid">
+                                                        <div className="table-node occupied"><span>T1</span><strong>Active</strong></div>
+                                                        <div className="table-node paying"><span>T2</span><strong>Needs attention</strong></div>
+                                                        <div className="table-node available"><span>T3</span><strong>Ready</strong></div>
+                                                        <div className="table-node occupied"><span>T4</span><strong>Active</strong></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeWorkspace === 'commerce' && (
+                                        <div className="canvas-wrapper">
+                                            <div className="canvas-info">
+                                                <h3>Q360 Commerce</h3>
+                                                <p>Manage physical goods, stock balances, draft quotes, customer order flows, invoices, and payment tracking without losing control of inventory numbers.</p>
+                                                <div className="module-specs">
+                                                    <span className="spec-item"><PackageCheck size={14} /> Catalog & Inventory Sync</span>
+                                                    <span className="spec-item"><Receipt size={14} /> Quote-to-Invoice Pipelines</span>
+                                                </div>
+                                            </div>
+                                            <div className="canvas-visual">
+                                                <span className="label-visual">Concept visual — example workflow</span>
+                                                <div className="mock-interface-pane">
+                                                    <div className="pane-header">Active Inventory Balances</div>
+                                                    <div className="list-view">
+                                                        <div className="list-item">
+                                                            <span>Example item A</span>
+                                                            <strong className="amber-text">Stock low</strong>
+                                                        </div>
+                                                        <div className="list-item">
+                                                            <span>Example item B</span>
+                                                            <strong className="green-text">Stock verified</strong>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeWorkspace === 'services' && (
+                                        <div className="canvas-wrapper">
+                                            <div className="canvas-info">
+                                                <h3>Q360 Services</h3>
+                                                <p>Ideal for field service operators, contractors, and agency teams. Log customer requests, schedule service times, track tasks on site, and invoice immediately upon completion.</p>
+                                                <div className="module-specs">
+                                                    <span className="spec-item"><CalendarDays size={14} /> Job Dispatch & Schedules</span>
+                                                    <span className="spec-item"><Users size={14} /> Team Task Tracking</span>
+                                                </div>
+                                            </div>
+                                            <div className="canvas-visual">
+                                                <span className="label-visual-concept">Concept visual — example workflow</span>
+                                                <div className="mock-interface-pane">
+                                                    <div className="pane-header">Work Scheduler</div>
+                                                    <div className="list-view">
+                                                        <div className="list-item">
+                                                            <span>Customer request A</span>
+                                                            <span className="badge-outline">Assigned</span>
+                                                        </div>
+                                                        <div className="list-item">
+                                                            <span>Customer request B</span>
+                                                            <span className="badge-outline">Assigned</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeWorkspace === 'projects' && (
+                                        <div className="canvas-wrapper">
+                                            <div className="canvas-info">
+                                                <h3>Projects & Milestones</h3>
+                                                <p>Keep longer, multi-step contracts structured. Track project tasks, record milestones, share logs with clients, and link deliverables directly to progress billings.</p>
+                                                <div className="module-specs">
+                                                    <span className="spec-item"><FileText size={14} /> Structured Milestones</span>
+                                                    <span className="spec-item"><CheckCircle2 size={14} /> Client Progress Reports</span>
+                                                </div>
+                                            </div>
+                                            <div className="canvas-visual">
+                                                <span className="label-visual-concept">Concept visual — example workflow</span>
+                                                <div className="mock-interface-pane">
+                                                    <div className="pane-header">Project Roadmap</div>
+                                                    <div className="list-view">
+                                                        <div className="list-item">
+                                                            <span>Milestone A</span>
+                                                            <strong className="green-text">Completed</strong>
+                                                        </div>
+                                                        <div className="list-item">
+                                                            <span>Milestone B</span>
+                                                            <strong className="amber-text">Review needed</strong>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeWorkspace === 'pharmacy' && (
+                                        <div className="canvas-wrapper locked-canvas">
+                                            <div className="canvas-info">
+                                                <span className="locked-badge"><Lock size={12} /> Future Direction</span>
+                                                <h3>Q360 Pharmacy</h3>
+                                                <p>In-planning extension for medicine retail operations. This module is focused on future direction and is not currently sold or supported for clinical or prescription compliance.</p>
+                                            </div>
+                                            <div className="canvas-visual locked-visual">
+                                                <span className="label-visual-concept">Concept visual — example workflow</span>
+                                                <div className="mock-interface-pane locked-pane">
+                                                    <Pill size={48} className="locked-icon" />
+                                                    <p>Pharmacy Operations Concept</p>
+                                                    <span className="lock-sub">Module in planning stages</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 4. Operational Clarity Section */}
+                <section className="clarity-section">
+                    <div className="section-container">
+                        <div className="clarity-header">
+                            <h2>What Q360 helps you stay on top of.</h2>
+                            <p>Keep your business running cleanly with a focused set of operational foundations.</p>
+                        </div>
+                        
+                        <div className="clarity-grid">
+                            <div className="clarity-card">
+                                <div className="clarity-icon"><Users size={20} /></div>
+                                <h3>Customers and follow-up</h3>
+                                <p>Store client contact histories, track sent quotes, and note diagnostic details in one central database.</p>
+                            </div>
+                            <div className="clarity-card">
+                                <div className="clarity-icon"><Activity size={20} /></div>
+                                <h3>Orders and jobs</h3>
+                                <p>Manage active dining tables, coordinate field technician dispatches, or monitor open product sales.</p>
+                            </div>
+                            <div className="clarity-card">
+                                <div className="clarity-icon"><CheckCircle2 size={20} /></div>
+                                <h3>Tasks and team activity</h3>
+                                <p>Assign check-sheets to teams, set milestones on projects, and view status changes as they are logged.</p>
+                            </div>
+                            <div className="clarity-card">
+                                <div className="clarity-icon"><Receipt size={20} /></div>
+                                <h3>Invoices and payments</h3>
+                                <p>Generate invoices from order records, track outstanding debts, and note payment transactions.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 5. Meet Q Section */}
+                <section id="meet-q" className="q-section">
+                    <div className="section-container">
+                        <div className="q-split-layout">
+                            <div className="q-copy-block">
+                                <div className="q-badge">
+                                    <span className="logo-white"><LogoMark size={16} /></span>
+                                    <span>Workspace Assistant</span>
+                                </div>
+                                <h2>Keeps track, so you do not have to.</h2>
+                                <p className="q-desc-text">
+                                    Q is your business assistant inside Q360. It helps you spot what may need attention next using the activity already recorded in your workspace.
+                                </p>
+                                <div className="trust-callout">
+                                    <Info size={16} />
+                                    <span>Q prepares insights and suggested next steps. You approve important actions.</span>
+                                </div>
+                            </div>
+
+                            <div className="q-timeline-block">
+                                <span className="label-visual-concept">Concept visual — example workflow</span>
+                                <div className="mock-timeline-card">
+                                    <div className="timeline-header">
+                                        <div className="header-info">
+                                            <h3>Activity Feed</h3>
+                                            <p>System Logs & Suggestions</p>
+                                        </div>
+                                        <div className="active-glow-q"></div>
+                                    </div>
+
+                                    <div className="timeline-events">
+                                        <div className="timeline-event">
+                                            <div className="event-marker green-bg">✓</div>
+                                            <div className="event-content">
+                                                <strong>Payment Confirmed</strong>
+                                                <p>Invoice payment received.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="timeline-event suggestion-event">
+                                            <div className="event-marker q-marker">Q</div>
+                                            <div className="event-content">
+                                                <div className="suggestion-badge">Insight Prepared</div>
+                                                <strong>Suggested Next Step</strong>
+                                                <p>Q highlights an item that may need attention.</p>
+                                                
+                                                <div className="suggestion-action-box">
+                                                    {!qApproved ? (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setQApproved(true)} 
+                                                            className="btn-approve"
+                                                        >
+                                                            Mark Suggestion Reviewed
+                                                        </button>
+                                                    ) : (
+                                                        <div className="approved-indicator">
+                                                            <CheckCircle2 size={14} />
+                                                            <span>Suggestion Marked Reviewed</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 6. Final CTA Section */}
+                <section className="final-cta-section">
+                    <div className="section-container">
+                        <div className="cta-box">
+                            <h2>See how Q360 can fit your business.</h2>
+                            <p>Less chasing. More clarity.</p>
+                            <button type="button" onClick={() => navigate('/support')} className="btn-primary-cta">
+                                Talk to the Q360 team
+                            </button>
+                        </div>
                     </div>
                 </section>
             </main>
 
+            {/* Footer */}
             <footer className="landing-footer">
-                <div>
-                    <div className="footer-logo">
-                        <LogoFull height={24} />
+                <div className="footer-container">
+                    <div className="footer-brand">
+                        <div className="footer-logo logo-white">
+                            <LogoFull height={24} />
+                        </div>
+                        <p className="copyright-text">
+                            © 2026 Qamar Technologies Ltd. All rights reserved.
+                        </p>
                     </div>
-                    <p>Copyright 2026 Qamar Technologies Ltd. All rights reserved.</p>
-                </div>
-                <div className="footer-links">
-                    <div>
-                        <strong>Platform</strong>
-                        <button type="button" onClick={scrollToWorkspaces} style={footerButtonStyle}>Workspaces</button>
-                        <button type="button" onClick={() => document.getElementById('q')?.scrollIntoView({ behavior: 'smooth' })} style={footerButtonStyle}>Q</button>
-                        <button type="button" onClick={() => navigate('/login')} style={footerButtonStyle}>Request access</button>
-                    </div>
-                    <div>
-                        <strong>Company</strong>
-                        <button type="button" onClick={() => navigate('/support')} style={footerButtonStyle}>Contact</button>
-                        <span>Privacy</span>
-                        <span>Terms</span>
+
+                    <div className="footer-navigation">
+                        <div className="footer-nav-col">
+                            <strong>Platform</strong>
+                            <button type="button" onClick={() => scrollToSection('workspaces')} className="footer-link">Workspaces</button>
+                            <button type="button" onClick={() => scrollToSection('meet-q')} className="footer-link">Q Assistant</button>
+                            <button type="button" onClick={() => navigate('/login')} className="footer-link">Sign In</button>
+                        </div>
+                        <div className="footer-nav-col">
+                            <strong>Support & Contact</strong>
+                            <button type="button" onClick={() => navigate('/support')} className="footer-link">Contact Sales</button>
+                            <span className="footer-link inactive">Privacy Policy</span>
+                            <span className="footer-link inactive">Terms of Service</span>
+                        </div>
                     </div>
                 </div>
             </footer>
@@ -476,1146 +602,1350 @@ export const LandingView = () => {
     );
 };
 
-const WorkspacePreviewPanel = ({
-    title,
-    label,
-    note,
-    rows,
-    compact,
-}: {
-    title: string;
-    label: string;
-    note: string;
-    rows: WorkspacePreview[];
-    compact: boolean;
-}) => (
-    <div className={compact ? 'workspace-preview workspace-preview--compact' : 'workspace-preview'}>
-        <div className="preview-topbar">
-            <div>
-                <span>{label}</span>
-                <h3>{title}</h3>
-            </div>
-            <div className="preview-dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-            </div>
-        </div>
-        <div className="preview-grid">
-            <div className="preview-main">
-                <div className="preview-main__toolbar">
-                    <span>Business day</span>
-                    <strong>{note}</strong>
-                </div>
-                <div className="preview-lanes">
-                    <PreviewLane icon={Table2} title="Workspace" items={['Customer request', 'Work in progress', 'Owner review']} />
-                    <PreviewLane icon={ChefHat} title="Operations" items={['Orders', 'Tasks', 'Materials']} />
-                    <PreviewLane icon={PackageCheck} title="Follow-up" items={['Invoice', 'Payment', 'Priority']} />
-                </div>
-            </div>
-            <div className="preview-side">
-                {rows.map((row) => (
-                    <div key={row.label} className={`preview-stat preview-stat--${row.tone}`}>
-                        <span>{row.label}</span>
-                        <strong>{row.value}</strong>
-                    </div>
-                ))}
-            </div>
-        </div>
-    </div>
-);
-
-const PreviewLane = ({ icon: Icon, title, items }: { icon: LucideIcon; title: string; items: string[] }) => (
-    <div className="preview-lane">
-        <div>
-            <Icon size={16} />
-            <strong>{title}</strong>
-        </div>
-        {items.map((item) => (
-            <span key={item}>{item}</span>
-        ))}
-    </div>
-);
-
-const InsightRow = ({
-    icon: Icon,
-    title,
-    detail,
-    tone,
-}: {
-    icon: LucideIcon;
-    title: string;
-    detail: string;
-    tone: 'green' | 'amber' | 'blue';
-}) => (
-    <div className={`insight-row insight-row--${tone}`}>
-        <div>
-            <Icon size={18} />
-        </div>
-        <span>
-            <strong>{title}</strong>
-            {detail}
-        </span>
-    </div>
-);
-
-const navButtonStyle: CSSProperties = {
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--fg-secondary)',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 600,
-    padding: 0,
-};
-
-const footerButtonStyle: CSSProperties = {
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--fg-muted)',
-    cursor: 'pointer',
-    font: 'inherit',
-    padding: 0,
-    textAlign: 'left',
-};
-
-const sectionTitleStyle: CSSProperties = {
-    fontSize: '38px',
-    fontWeight: 800,
-    marginBottom: '10px',
-    letterSpacing: 0,
-};
-
-const sectionCopyStyle: CSSProperties = {
-    color: 'var(--fg-secondary)',
-    fontSize: '18px',
-    lineHeight: 1.5,
-    maxWidth: '720px',
-    margin: '0 auto',
-};
-
-const qCopyStyle: CSSProperties = {
-    ...sectionCopyStyle,
-    margin: 0,
-};
-
-const sectionLabelStyle: CSSProperties = {
-    color: 'var(--primary)',
-    fontSize: '13px',
-    fontWeight: 800,
-    letterSpacing: 0,
-    textTransform: 'uppercase',
-    margin: '0 0 10px',
-};
-
-const iconBoxStyle: CSSProperties = {
-    width: '46px',
-    height: '46px',
-    borderRadius: '12px',
-    background: 'var(--surface-200)',
-    border: '1px solid var(--glass-border)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'var(--primary)',
-    marginBottom: '20px',
-};
-
-const cardStyle: CSSProperties = {
-    padding: '26px',
-    borderRadius: '8px',
-    background: 'var(--surface-100)',
-    border: '1px solid var(--glass-border)',
-    minHeight: '100%',
-};
-
-const quietCardStyle: CSSProperties = {
-    ...cardStyle,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    minHeight: '88px',
-};
-
 const landingStyles = `
     .landing-page {
         min-height: 100vh;
-        background:
-            linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-            radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.16), transparent 34rem),
-            radial-gradient(circle at 85% 18%, rgba(20, 184, 166, 0.11), transparent 28rem),
-            var(--bg-base);
-        background-size: 42px 42px, 42px 42px, auto, auto, auto;
-        color: var(--fg-primary);
+        background-color: #0A0B0D;
+        background-image: 
+            linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+        background-size: 40px 40px;
+        color: #F8FAFC;
         font-family: var(--font-sans);
         overflow-x: hidden;
+        position: relative;
     }
 
     .landing-header {
-        padding: 14px 36px;
+        padding: 20px 40px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         backdrop-filter: blur(20px);
-        background-color: rgba(8, 12, 20, 0.78);
+        background-color: rgba(10, 11, 13, 0.85);
         position: sticky;
         top: 0;
         z-index: 100;
-        border-bottom: 1px solid var(--glass-border);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     .brand-lockup {
-        display: inline-flex;
-        align-items: center;
-        padding: 7px 10px;
-        border-radius: 8px;
-        background: #fff;
+        background: transparent;
         border: 0;
         cursor: pointer;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+
+    .logo-white img {
+        filter: brightness(0) invert(1);
     }
 
     .landing-nav {
         display: flex;
-        gap: 32px;
+        gap: 28px;
         align-items: center;
     }
 
-    .nav-cta,
-    .primary-cta,
-    .secondary-cta,
-    .cta-panel button {
-        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    .nav-btn {
+        background: transparent;
+        border: none;
+        color: #94A3B8;
+        font-weight: 500;
+        font-size: 14px;
+        cursor: pointer;
+        padding: 8px 12px;
+        transition: color 150ms ease;
+    }
+
+    .nav-btn:hover {
+        color: #3B82F6;
     }
 
     .nav-cta {
-        background: var(--fg-primary);
-        color: var(--bg-base);
+        background: #F8FAFC;
+        color: #0A0B0D;
         border: none;
-        padding: 10px 24px;
+        padding: 8px 20px;
         border-radius: 999px;
         cursor: pointer;
-        font-weight: 700;
+        font-weight: 600;
         font-size: 14px;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
+        transition: background 150ms ease, transform 150ms ease;
     }
 
-    .landing-nav button:hover,
-    .footer-links button:hover {
-        color: var(--fg-primary) !important;
+    .nav-cta:hover {
+        background: #E2E8F0;
+        transform: translateY(-1px);
     }
 
-    .nav-cta:hover,
-    .primary-cta:hover,
-    .secondary-cta:hover,
-    .cta-panel button:hover,
-    .workspace-tab:hover,
-    .polish-card:hover {
-        transform: translateY(-2px);
+    /* Accessibility Focus Styles */
+    button:focus-visible,
+    a:focus-visible,
+    .nav-btn:focus-visible,
+    .nav-cta:focus-visible,
+    .btn-primary:focus-visible,
+    .btn-secondary:focus-visible,
+    .sidebar-tab:focus-visible,
+    .workspace-menu-btn:focus-visible,
+    .mobile-tab:focus-visible,
+    .btn-approve:focus-visible,
+    .btn-primary-cta:focus-visible,
+    .footer-link:focus-visible {
+        outline: 2px solid #D97706 !important;
+        outline-offset: 4px !important;
+        box-shadow: 0 0 8px rgba(217, 119, 6, 0.4) !important;
     }
 
-    .landing-page button:focus-visible,
-    .workspace-tab:focus-visible {
-        outline: 3px solid rgba(96, 165, 250, 0.42);
-        outline-offset: 4px;
-    }
-
-    .landing-hero {
-        padding: 82px 20px 68px;
-        max-width: 1180px;
+    /* 1. Hero Section */
+    .hero-section {
+        max-width: 1200px;
         margin: 0 auto;
+        padding: 80px 20px 100px;
         position: relative;
         z-index: 1;
+    }
+
+    .hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 0.95fr) minmax(420px, 1.05fr);
-        gap: 44px;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 60px;
         align-items: center;
     }
 
-    .hero-copy {
-        text-align: left;
+    .hero-content {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
     }
 
-    .hero-kicker {
+    .hero-badge {
         display: inline-flex;
         align-items: center;
-        padding: 8px 12px;
+        gap: 8px;
+        padding: 6px 14px;
         border-radius: 999px;
-        border: 1px solid var(--glass-border);
-        background: rgba(15, 23, 42, 0.72);
-        color: var(--fg-secondary);
-        font-size: 13px;
-        font-weight: 700;
-        margin-bottom: 20px;
+        background: rgba(59, 130, 246, 0.08);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        color: #3B82F6;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 24px;
     }
 
-    .landing-hero h1 {
-        font-size: 64px;
+    .hero-section h1 {
+        font-size: 52px;
         font-weight: 900;
-        line-height: 1;
-        margin: 0 0 18px;
-        letter-spacing: 0;
+        line-height: 1.15;
+        margin: 0 0 20px;
+        letter-spacing: -0.02em;
     }
 
-    .landing-hero h1 span {
-        background: linear-gradient(to right, #60a5fa, #14b8a6, #f59e0b);
+    .highlight-text {
+        background: linear-gradient(135deg, #60A5FA, #3B82F6);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         display: block;
-        padding: 6px 0;
+        padding: 4px 0;
     }
 
-    .landing-hero p {
-        font-size: 20px;
-        color: var(--fg-secondary);
-        max-width: 650px;
-        margin: 0 0 28px;
-        line-height: 1.45;
+    .hero-subtitle {
+        font-size: 18px;
+        color: #94A3B8;
+        line-height: 1.5;
+        margin: 0 0 36px;
+        max-width: 520px;
     }
 
     .hero-actions {
         display: flex;
-        gap: 14px;
+        gap: 16px;
         flex-wrap: wrap;
     }
 
-    .primary-cta {
-        background: var(--primary);
-        color: white;
+    .btn-primary {
+        background: #3B82F6;
+        color: #FFFFFF;
         border: none;
-        padding: 16px 34px;
+        padding: 14px 28px;
         border-radius: 8px;
-        font-size: 16px;
-        font-weight: 800;
+        font-size: 15px;
+        font-weight: 600;
         cursor: pointer;
-        box-shadow: 0 20px 40px -12px var(--primary-glow);
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
+        transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
     }
 
-    .secondary-cta {
-        background: rgba(15, 23, 42, 0.4);
-        color: var(--fg-primary);
-        border: 1px solid var(--glass-border);
-        padding: 16px 34px;
+    .btn-primary:hover {
+        background: #2563EB;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 24px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-secondary {
+        background: rgba(255, 255, 255, 0.04);
+        color: #F8FAFC;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 14px 28px;
         border-radius: 8px;
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 15px;
+        font-weight: 600;
         cursor: pointer;
-        backdrop-filter: blur(10px);
+        transition: background 150ms ease, border-color 150ms ease;
+    }
+
+    .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.2);
     }
 
     .hero-visual {
         position: relative;
     }
 
-    .hero-visual::before {
-        content: '';
-        position: absolute;
-        inset: 6% 3%;
-        background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(20, 184, 166, 0.18));
-        filter: blur(42px);
-        opacity: 0.72;
-        z-index: -1;
-    }
-
-    .landing-section {
-        padding: 66px 20px;
-        max-width: 1180px;
-        margin: 0 auto;
-    }
-
-    .section-heading {
-        text-align: center;
-        margin-bottom: 34px;
-    }
-
-    .pain-grid,
-    .workflow-grid,
-    .foundation-grid,
-    .q-grid {
-        display: grid;
-        gap: 16px;
-    }
-
-    .pain-grid {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
-    .workflow-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-    }
-
-    .foundation-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-    }
-
-    .q-grid {
-        grid-template-columns: repeat(4, 1fr);
-        margin-top: 24px;
-    }
-
-    .polish-card {
-        box-shadow: 0 18px 55px -36px rgba(0, 0, 0, 0.8);
-        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-    }
-
-    .polish-card:hover {
-        border-color: rgba(148, 163, 184, 0.32) !important;
-        box-shadow: 0 22px 60px -34px rgba(59, 130, 246, 0.38);
-    }
-
-    .polish-card h3 {
-        font-size: 18px;
-        font-weight: 800;
-        margin: 0 0 10px;
-        letter-spacing: 0;
-    }
-
-    .polish-card p {
-        color: var(--fg-secondary);
-        font-size: 15px;
-        line-height: 1.5;
-        margin: 0;
-    }
-
-    .workflow-card {
-        padding: 26px;
-        border-radius: 8px;
-        background: linear-gradient(180deg, rgba(23, 23, 23, 0.94), rgba(16, 20, 28, 0.94));
-        border: 1px solid var(--glass-border);
-    }
-
-    .workflow-card__top {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
-    }
-
-    .workflow-card h3 {
-        font-size: 20px;
-        font-weight: 800;
-        margin: 0 0 16px;
-        letter-spacing: 0;
-    }
-
-    .maturity-pill,
-    .maturity-note {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--fg-primary);
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid var(--glass-border);
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 800;
-        padding: 7px 10px;
-    }
-
-    .workflow-rail {
-        display: grid;
-        gap: 10px;
-        position: relative;
-    }
-
-    .workflow-step {
-        min-height: 42px;
-        display: grid;
-        grid-template-columns: 28px minmax(0, 1fr);
-        gap: 10px;
-        align-items: center;
-        color: var(--fg-secondary);
-        position: relative;
-    }
-
-    .workflow-step:not(:last-child)::after {
-        content: '';
-        position: absolute;
-        left: 13px;
-        top: 33px;
-        width: 2px;
-        height: 20px;
-        background: linear-gradient(to bottom, rgba(96, 165, 250, 0.58), rgba(20, 184, 166, 0.16));
-        animation: guidePulse 2.8s ease-in-out infinite;
-    }
-
-    .workflow-step span {
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--surface-200);
-        color: var(--fg-primary);
-        font-size: 12px;
-        font-weight: 800;
-        border: 1px solid var(--glass-border);
-    }
-
-    .workflow-step strong {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--fg-secondary);
-        line-height: 1.35;
-    }
-
-    .industry-shell {
-        background: rgba(15, 23, 42, 0.6);
-        border-radius: 8px;
-        border: 1px solid var(--glass-border);
+    .mock-browser {
+        background: #121316;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
         overflow: hidden;
-        display: grid;
-        grid-template-columns: 320px minmax(0, 1fr);
-        min-height: 520px;
-        box-shadow: var(--shadow-lg);
+        box-shadow: 0 30px 60px -15px rgba(0,0,0,0.8);
     }
 
-    .industry-menu {
-        border-right: 1px solid var(--glass-border);
-        padding: 26px;
-        background: rgba(2, 6, 23, 0.32);
-    }
-
-    .industry-menu h3 {
-        font-size: 13px;
-        font-weight: 800;
-        color: var(--primary);
-        text-transform: uppercase;
-        letter-spacing: 0;
-        margin: 0 0 18px;
-    }
-
-    .industry-menu > div {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .workspace-tab {
+    .browser-header {
+        background: #1A1B1F;
+        padding: 10px 16px;
         display: flex;
         align-items: center;
-        gap: 14px;
-        min-height: 58px;
-        padding: 12px;
-        border-radius: 8px;
-        background: transparent;
-        border: 1px solid transparent;
-        color: var(--fg-secondary);
-        cursor: pointer;
-        text-align: left;
-        transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     }
 
-    .workspace-tab--active {
-        background: var(--surface-200);
-        border-color: var(--glass-border);
-        color: var(--fg-primary);
-    }
-
-    .workspace-tab div {
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
-        color: white;
-        display: grid;
-        place-items: center;
-        flex: 0 0 auto;
-    }
-
-    .workspace-tab span {
-        font-weight: 800;
-        font-size: 15px;
-        flex: 1;
-    }
-
-    .industry-content {
-        padding: 42px;
-        display: grid;
-        grid-template-columns: minmax(0, 0.72fr) minmax(360px, 1fr);
-        gap: 30px;
-        align-items: center;
-    }
-
-    .industry-copy h2 {
-        font-size: 40px;
-        font-weight: 900;
-        margin: 0 0 14px;
-        letter-spacing: 0;
-    }
-
-    .industry-copy p {
-        font-size: 18px;
-        color: var(--fg-secondary);
-        line-height: 1.5;
-        margin: 0 0 18px;
-    }
-
-    .workspace-preview {
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 8px;
-        background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 12, 20, 0.98));
-        box-shadow: 0 28px 80px -42px rgba(96, 165, 250, 0.55);
-        overflow: hidden;
-        min-height: 420px;
-    }
-
-    .workspace-preview--compact {
-        min-height: 360px;
-    }
-
-    .preview-topbar {
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-        align-items: flex-start;
-        padding: 18px 20px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(255, 255, 255, 0.035);
-    }
-
-    .preview-topbar span,
-    .q-panel__header span {
-        display: inline-flex;
-        margin-bottom: 7px;
-        color: #93c5fd;
-        font-size: 12px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0;
-    }
-
-    .preview-topbar h3,
-    .q-panel__header h3 {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 900;
-        letter-spacing: 0;
-    }
-
-    .preview-dots {
+    .browser-dots {
         display: flex;
         gap: 6px;
-        padding-top: 4px;
+        margin-right: 20px;
     }
 
-    .preview-dots i {
+    .dot {
         width: 8px;
         height: 8px;
         border-radius: 999px;
-        background: rgba(148, 163, 184, 0.46);
+        background: rgba(255, 255, 255, 0.2);
     }
 
-    .preview-grid {
-        padding: 20px;
+    .browser-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #64748B;
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .mock-app-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 150px;
-        gap: 16px;
+        grid-template-columns: 140px minmax(0, 1fr);
+        height: 280px;
     }
 
-    .preview-main,
-    .preview-side,
-    .preview-lane {
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(255, 255, 255, 0.035);
-        border-radius: 8px;
+    .mock-sidebar {
+        background: #15161A;
+        border-right: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 16px 10px;
     }
 
-    .preview-main {
-        padding: 16px;
+    .sidebar-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
     }
 
-    .preview-main__toolbar {
+    .group-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #475569;
+        margin-bottom: 6px;
+        padding-left: 6px;
+    }
+
+    .sidebar-tab {
+        background: transparent;
+        border: none;
+        color: #64748B;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        transition: background 150ms ease, color 150ms ease;
+    }
+
+    .sidebar-tab:hover {
+        color: #94A3B8;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .sidebar-tab.active {
+        color: #F8FAFC;
+        background: rgba(217, 119, 6, 0.15);
+        border-left: 2px solid #D97706;
+    }
+
+    .mock-main-view {
+        background: #111215;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .view-header {
         display: flex;
         justify-content: space-between;
-        gap: 14px;
         align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        padding-bottom: 12px;
         margin-bottom: 16px;
-        color: var(--fg-muted);
+    }
+
+    .view-header h3 {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        color: #94A3B8;
+        letter-spacing: 0.05em;
+    }
+
+    .label-screenshot {
+        font-size: 9px;
+        background: rgba(217, 119, 6, 0.05);
+        color: #D97706;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(217, 119, 6, 0.2);
+    }
+
+    .view-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .stats-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .stat-pill {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 4px 10px;
+        border-radius: 99px;
+        font-size: 11px;
+        color: #94A3B8;
+    }
+
+    .stat-pill strong {
+        color: #F8FAFC;
+    }
+
+    .warning-pill {
+        border-color: rgba(217, 119, 6, 0.2);
+        background: rgba(217, 119, 6, 0.05);
+    }
+
+    .warning-pill strong {
+        color: #D97706;
+    }
+
+    .success-pill {
+        border-color: rgba(16, 185, 129, 0.2);
+        background: rgba(16, 185, 129, 0.05);
+    }
+
+    .success-pill strong {
+        color: #10B981;
+    }
+
+    .order-ticket,
+    .quote-card,
+    .job-card,
+    .project-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 14px;
+    }
+
+    .ticket-header,
+    .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
         font-size: 12px;
     }
 
-    .preview-main__toolbar strong {
-        color: var(--fg-secondary);
+    .status-badge {
+        font-size: 9px;
         font-weight: 700;
-        text-align: right;
+        padding: 2px 6px;
+        border-radius: 99px;
     }
 
-    .preview-lanes {
+    .success-badge {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10B981;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .progress-badge {
+        background: rgba(59, 130, 246, 0.1);
+        color: #3B82F6;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .ticket-items {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 11px;
+        color: #94A3B8;
+    }
+
+    .ticket-item span {
+        color: #D97706;
+        font-weight: bold;
+        margin-right: 4px;
+    }
+
+    .card-desc {
+        margin: 0 0 8px;
+        font-size: 11px;
+        color: #64748B;
+    }
+
+    .card-value {
+        font-size: 12px;
+        font-weight: bold;
+        color: #94A3B8;
+    }
+
+    .milestone-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 11px;
+    }
+
+    .step.done {
+        color: #10B981;
+    }
+
+    .step.progress {
+        color: #D97706;
+    }
+
+    /* 2. Owner Problem Section */
+    .problem-section {
+        position: relative;
+        padding: 100px 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .spotlight-glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 600px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.04) 0%, transparent 70%);
+        pointer-events: none;
+    }
+
+    .section-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        position: relative;
+        z-index: 1;
+    }
+
+    .problem-header,
+    .workspaces-header,
+    .clarity-header {
+        text-align: center;
+        margin-bottom: 60px;
+    }
+
+    .problem-header h2,
+    .workspaces-header h2,
+    .clarity-header h2 {
+        font-size: 36px;
+        font-weight: 800;
+        margin: 0 0 16px;
+        letter-spacing: -0.01em;
+    }
+
+    .problem-header p,
+    .workspaces-header p,
+    .clarity-header p {
+        font-size: 16px;
+        color: #94A3B8;
+        max-width: 600px;
+        margin: 0 auto;
+        line-height: 1.5;
+    }
+
+    .problem-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+    }
+
+    .problem-card {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        padding: 32px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .card-indicator {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+    }
+
+    .warning-border {
+        background: #D97706;
+    }
+
+    .problem-card h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .problem-card p {
+        margin: 0;
+        font-size: 14px;
+        color: #94A3B8;
+        line-height: 1.5;
+    }
+
+    /* 3. Workspace Selector Section */
+    .workspaces-section {
+        padding: 100px 20px;
+        background: rgba(0,0,0,0.1);
+    }
+
+    .workspace-tabs-container {
+        margin-top: 40px;
+    }
+
+    .mobile-tabs-bar {
+        display: none;
+    }
+
+    .workspace-interactive-layout {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 40px;
+        align-items: flex-start;
+    }
+
+    .desktop-workspace-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .workspace-menu-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        color: #64748B;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+    }
+
+    .workspace-menu-btn:hover {
+        color: #94A3B8;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .workspace-menu-btn.active {
+        color: #F8FAFC;
+        background: rgba(217, 119, 6, 0.12);
+        border: 1px solid rgba(217, 119, 6, 0.25);
+    }
+
+    .future-tab {
+        opacity: 0.7;
+    }
+
+    .future-tab.active {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .future-pill {
+        font-size: 9px;
+        background: rgba(255,255,255,0.05);
+        color: #64748B;
+        padding: 1px 6px;
+        border-radius: 4px;
+        margin-left: auto;
+    }
+
+    .workspace-preview-canvas {
+        background: #111215;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        min-height: 380px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        overflow: hidden;
+    }
+
+    .canvas-wrapper {
+        padding: 40px;
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 40px;
+        align-items: center;
+        height: 100%;
+    }
+
+    .canvas-info h3 {
+        font-size: 24px;
+        margin: 0 0 16px;
+        font-weight: 800;
+    }
+
+    .canvas-info p {
+        font-size: 15px;
+        color: #94A3B8;
+        line-height: 1.5;
+        margin: 0 0 28px;
+    }
+
+    .module-specs {
+        display: flex;
+        flex-direction: column;
         gap: 12px;
     }
 
-    .preview-lane {
+    .spec-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        color: #F8FAFC;
+        font-weight: 500;
+    }
+
+    .spec-item svg {
+        color: #3B82F6;
+    }
+
+    .canvas-visual {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    .label-visual,
+    .label-visual-concept {
+        font-size: 10px;
+        background: rgba(217, 119, 6, 0.05);
+        border: 1px solid rgba(217, 119, 6, 0.2);
+        color: #D97706;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+    }
+
+    .mock-interface-pane {
+        background: #16171C;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        width: 100%;
+        min-height: 200px;
+        padding: 20px;
+    }
+
+    .pane-header {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #475569;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        padding-bottom: 10px;
+        margin-bottom: 16px;
+    }
+
+    .table-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .table-node {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 6px;
         padding: 12px;
-        min-height: 210px;
+        display: flex;
+        flex-direction: column;
+        font-size: 12px;
+    }
+
+    .table-node span {
+        font-size: 10px;
+        color: #64748B;
+    }
+
+    .table-node.occupied {
+        border-color: rgba(59, 130, 246, 0.2);
+        background: rgba(59, 130, 246, 0.03);
+    }
+
+    .table-node.paying {
+        border-color: rgba(217, 119, 6, 0.2);
+        background: rgba(217, 119, 6, 0.03);
+    }
+
+    .table-node.paying strong {
+        color: #D97706;
+    }
+
+    .table-node.available {
+        border-color: rgba(16, 185, 129, 0.2);
+        background: rgba(16, 185, 129, 0.03);
+    }
+
+    .table-node.available strong {
+        color: #10B981;
+    }
+
+    .list-view {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
 
-    .preview-lane div {
+    .list-item {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        border-radius: 6px;
+        padding: 12px;
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 7px;
-        color: var(--fg-primary);
-        margin-bottom: 4px;
+        font-size: 12px;
     }
 
-    .preview-lane strong {
+    .amber-text {
+        color: #D97706;
+    }
+
+    .green-text {
+        color: #10B981;
+    }
+
+    .badge-outline {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255,255,255,0.02);
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-size: 10px;
+        color: #94A3B8;
+    }
+
+    .locked-canvas {
+        background: rgba(10, 11, 13, 0.5);
+    }
+
+    .locked-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(255,255,255,0.05);
+        color: #64748B;
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+    }
+
+    .locked-visual {
+        opacity: 0.5;
+    }
+
+    .locked-pane {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .locked-icon {
+        color: #64748B;
+        margin-bottom: 12px;
+    }
+
+    .lock-sub {
+        font-size: 10px;
+        color: #475569;
+    }
+
+    /* 4. Operational Clarity Section */
+    .clarity-section {
+        padding: 100px 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .clarity-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+
+    .clarity-card {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        padding: 28px;
+        transition: border-color 150ms ease;
+    }
+
+    .clarity-card:hover {
+        border-color: rgba(59, 130, 246, 0.2);
+    }
+
+    .clarity-icon {
+        color: #3B82F6;
+        margin-bottom: 20px;
+    }
+
+    .clarity-card h3 {
+        margin: 0 0 12px;
+        font-size: 16px;
+        font-weight: 700;
+    }
+
+    .clarity-card p {
+        margin: 0;
+        font-size: 13px;
+        color: #94A3B8;
+        line-height: 1.5;
+    }
+
+    /* 5. Meet Q Section */
+    .q-section {
+        padding: 100px 20px;
+        background: rgba(0,0,0,0.15);
+    }
+
+    .q-split-layout {
+        display: grid;
+        grid-template-columns: 0.95fr 1.05fr;
+        gap: 60px;
+        align-items: center;
+    }
+
+    .q-copy-block {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .q-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #F8FAFC;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 24px;
+    }
+
+    .q-section h2 {
+        font-size: 40px;
+        font-weight: 800;
+        margin: 0 0 20px;
+    }
+
+    .q-desc-text {
+        font-size: 16px;
+        color: #94A3B8;
+        line-height: 1.6;
+        margin: 0 0 36px;
+    }
+
+    .trust-callout {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 13px;
+        color: #94A3B8;
+        line-height: 1.45;
+    }
+
+    .trust-callout svg {
+        color: #3B82F6;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .q-timeline-block {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    .mock-timeline-card {
+        background: #111215;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        width: 100%;
+        overflow: hidden;
+        box-shadow: 0 20px 45px rgba(0,0,0,0.5);
+    }
+
+    .timeline-header {
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 16px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .header-info h3 {
+        margin: 0 0 4px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .header-info p {
+        margin: 0;
+        font-size: 11px;
+        color: #64748B;
+    }
+
+    .active-glow-q {
+        width: 8px;
+        height: 8px;
+        border-radius: 99px;
+        background: #3B82F6;
+        box-shadow: 0 0 10px #3B82F6;
+    }
+
+    .timeline-events {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        position: relative;
+    }
+
+    .timeline-events::before {
+        content: '';
+        position: absolute;
+        left: 35px;
+        top: 40px;
+        bottom: 40px;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .timeline-event {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 16px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .event-marker {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: bold;
+    }
+
+    .green-bg {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10B981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .q-marker {
+        background: rgba(255, 255, 255, 0.05);
+        color: #F8FAFC;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+    }
+
+    .event-content {
         font-size: 13px;
     }
 
-    .preview-lane span {
+    .event-content strong {
+        color: #F8FAFC;
         display: block;
-        padding: 10px;
-        border-radius: 8px;
-        background: rgba(15, 23, 42, 0.78);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        color: var(--fg-secondary);
-        font-size: 12px;
-        font-weight: 700;
+        margin-bottom: 4px;
     }
 
-    .preview-side {
-        display: grid;
-        gap: 10px;
-        padding: 12px;
-        align-content: start;
-    }
-
-    .preview-stat {
-        border-radius: 8px;
-        padding: 13px 12px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        background: rgba(15, 23, 42, 0.7);
-    }
-
-    .preview-stat span {
-        display: block;
-        color: var(--fg-muted);
-        font-size: 12px;
-        margin-bottom: 6px;
-    }
-
-    .preview-stat strong {
-        font-size: 18px;
-        color: var(--fg-primary);
-    }
-
-    .preview-stat--green {
-        box-shadow: inset 3px 0 0 rgba(16, 185, 129, 0.8);
-    }
-
-    .preview-stat--amber {
-        box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.85);
-    }
-
-    .preview-stat--blue {
-        box-shadow: inset 3px 0 0 rgba(59, 130, 246, 0.85);
-    }
-
-    .q-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(380px, 1.1fr);
-        gap: 34px;
-        align-items: center;
-        margin-bottom: 28px;
-    }
-
-    .q-panel {
-        padding: 24px;
-        border-radius: 8px;
-        background:
-            linear-gradient(135deg, rgba(59, 130, 246, 0.12), transparent 36%),
-            linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(8, 12, 20, 0.98));
-        border: 1px solid var(--glass-border);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .q-panel::after {
-        content: '';
-        position: absolute;
-        inset: auto 22px 0;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.7), transparent);
-        animation: qSignal 3.4s ease-in-out infinite;
-    }
-
-    .q-panel__header {
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-        align-items: flex-start;
-        margin-bottom: 18px;
-    }
-
-    .q-panel__header svg {
-        color: #93c5fd;
-    }
-
-    .q-insights {
-        display: grid;
-        gap: 12px;
-    }
-
-    .insight-row {
-        display: grid;
-        grid-template-columns: 42px minmax(0, 1fr);
-        gap: 12px;
-        align-items: center;
-        padding: 13px;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.035);
-    }
-
-    .insight-row > div {
-        width: 42px;
-        height: 42px;
-        border-radius: 8px;
-        display: grid;
-        place-items: center;
-        background: rgba(15, 23, 42, 0.82);
-    }
-
-    .insight-row--green > div {
-        color: #34d399;
-    }
-
-    .insight-row--amber > div {
-        color: #fbbf24;
-    }
-
-    .insight-row--blue > div {
-        color: #60a5fa;
-    }
-
-    .insight-row span {
-        color: var(--fg-secondary);
-        font-size: 14px;
+    .event-content p {
+        margin: 0;
+        color: #94A3B8;
         line-height: 1.45;
     }
 
-    .insight-row strong {
-        display: block;
-        color: var(--fg-primary);
-        margin-bottom: 2px;
-    }
-
-    .q-panel__footer {
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid rgba(148, 163, 184, 0.16);
-        color: var(--fg-secondary);
-        font-size: 14px;
-        line-height: 1.45;
-    }
-
-    .trust-strip {
-        margin-top: 20px;
-        padding: 18px 22px;
+    .suggestion-event {
+        background: rgba(59, 130, 246, 0.02);
+        border: 1px solid rgba(59, 130, 246, 0.1);
         border-radius: 8px;
-        border: 1px solid var(--glass-border);
-        background: var(--surface-100);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        color: var(--fg-secondary);
+        padding: 16px;
+        margin-left: -8px;
     }
 
-    .trust-strip strong {
-        color: var(--fg-primary);
+    .suggestion-badge {
+        display: inline-block;
+        font-size: 9px;
+        background: rgba(59, 130, 246, 0.1);
+        color: #3B82F6;
+        border: 1px solid rgba(59, 130, 246, 0.25);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: bold;
+        margin-bottom: 8px;
     }
 
-    .trust-strip span {
-        font-size: 14px;
+    .suggestion-action-box {
+        margin-top: 14px;
     }
 
-    .cta-panel {
-        max-width: 920px;
-        margin: 0 auto;
-        padding: 58px 36px;
-        background:
-            linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(20, 184, 166, 0.08)),
-            linear-gradient(135deg, #0a0a0a 0%, #171717 100%);
-        border-radius: 8px;
-        border: 1px solid var(--glass-border);
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .cta-panel h2 {
-        font-size: 40px;
-        font-weight: 900;
-        margin: 0 0 14px;
-        letter-spacing: 0;
-    }
-
-    .cta-panel p {
-        color: var(--fg-secondary);
-        font-size: 18px;
-        margin: 0 auto 14px;
-        max-width: 620px;
-        line-height: 1.5;
-    }
-
-    .cta-panel span {
-        display: block;
-        color: var(--fg-muted);
-        font-size: 14px;
-        margin: 0 auto 28px;
-        max-width: 640px;
-        line-height: 1.5;
-    }
-
-    .cta-panel button {
-        background: var(--fg-primary);
-        color: var(--bg-base);
+    .btn-approve {
+        background: #3B82F6;
+        color: #FFFFFF;
         border: none;
-        padding: 16px 42px;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: 800;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
         cursor: pointer;
+        transition: background 150ms ease;
     }
 
-    .landing-footer {
-        padding: 54px 36px 32px;
-        max-width: 1180px;
+    .btn-approve:hover {
+        background: #2563EB;
+    }
+
+    .approved-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #10B981;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    /* 6. Final CTA Section */
+    .final-cta-section {
+        padding: 100px 20px 120px;
+        border-top: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .cta-box {
+        max-width: 900px;
         margin: 0 auto;
-        border-top: 1px solid var(--glass-border);
+        padding: 60px 40px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.02) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        text-align: center;
+    }
+
+    .cta-box h2 {
+        font-size: 36px;
+        font-weight: 800;
+        margin: 0 0 16px;
+    }
+
+    .cta-box p {
+        font-size: 18px;
+        color: #94A3B8;
+        margin: 0 auto 36px;
+    }
+
+    .btn-primary-cta {
+        background: #F8FAFC;
+        color: #0A0B0D;
+        border: none;
+        padding: 14px 36px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 150ms ease, transform 150ms ease;
+    }
+
+    .btn-primary-cta:hover {
+        background: #E2E8F0;
+        transform: translateY(-1px);
+    }
+
+    /* Footer */
+    .landing-footer {
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        background: #060708;
+        padding: 60px 20px 40px;
+    }
+
+    .footer-container {
+        max-width: 1200px;
+        margin: 0 auto;
         display: flex;
         justify-content: space-between;
-        color: var(--fg-muted);
-        font-size: 14px;
+        gap: 60px;
+    }
+
+    .footer-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        max-width: 320px;
     }
 
     .footer-logo {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 9px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        background: #fff;
+        margin-bottom: 16px;
     }
 
-    .footer-links {
+    .copyright-text {
+        font-size: 13px;
+        color: #475569;
+        margin: 0;
+    }
+
+    .footer-navigation {
         display: flex;
-        gap: 54px;
+        gap: 80px;
     }
 
-    .footer-links > div {
+    .footer-nav-col {
         display: flex;
         flex-direction: column;
         gap: 12px;
     }
 
-    .footer-links strong {
-        color: white;
+    .footer-nav-col strong {
+        color: #F8FAFC;
+        font-size: 14px;
+        margin-bottom: 6px;
     }
 
-    .reveal-section {
-        animation: sectionIn 560ms ease both;
-        animation-timeline: view();
-        animation-range: entry 0% cover 24%;
+    .footer-link {
+        background: transparent;
+        border: none;
+        color: #64748B;
+        font-size: 13px;
+        padding: 0;
+        cursor: pointer;
+        text-align: left;
+        transition: color 150ms ease;
     }
 
-    @keyframes sectionIn {
-        from { opacity: 0; transform: translateY(16px); }
-        to { opacity: 1; transform: translateY(0); }
+    .footer-link:hover {
+        color: #3B82F6;
     }
 
-    @keyframes guidePulse {
-        0%, 100% { opacity: 0.28; transform: scaleY(0.75); transform-origin: top; }
-        50% { opacity: 0.9; transform: scaleY(1); transform-origin: top; }
+    .footer-link.inactive {
+        cursor: default;
     }
 
-    @keyframes qSignal {
-        0%, 100% { opacity: 0.18; transform: translateX(-18%); }
-        50% { opacity: 0.8; transform: translateX(18%); }
+    .footer-link.inactive:hover {
+        color: #64748B;
     }
 
-    @media (max-width: 1080px) {
-        .landing-hero,
-        .industry-content,
-        .q-layout {
+    /* Responsive adjustments */
+    @media (max-width: 1024px) {
+        .hero-grid,
+        .workspace-interactive-layout,
+        .q-split-layout {
             grid-template-columns: 1fr;
+            gap: 40px;
         }
 
-        .hero-copy {
+        .hero-content {
+            align-items: center;
             text-align: center;
         }
 
-        .landing-hero p,
-        .hero-actions {
+        .hero-subtitle {
             margin-left: auto;
             margin-right: auto;
+        }
+
+        .hero-actions {
             justify-content: center;
         }
 
-        .industry-content {
-            align-items: stretch;
-        }
-    }
-
-    @media (max-width: 1000px) {
-        .q-grid,
-        .foundation-grid {
-            grid-template-columns: repeat(2, 1fr);
+        .desktop-workspace-menu {
+            display: none;
         }
 
-        .workflow-grid,
-        .pain-grid {
+        .mobile-tabs-bar {
+            display: flex;
+            overflow-x: auto;
+            gap: 12px;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .mobile-tab {
+            flex-shrink: 0;
+        }
+
+        .mobile-tab.active {
+            color: #F8FAFC;
+            background: rgba(217, 119, 6, 0.12);
+            border-color: rgba(217, 119, 6, 0.25);
+        }
+
+        .problem-grid,
+        .clarity-grid {
             grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        .canvas-wrapper {
+            grid-template-columns: 1fr;
+            padding: 30px;
         }
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 768px) {
         .landing-header {
-            padding: 14px 20px;
+            padding: 16px 20px;
         }
 
         .landing-nav {
             gap: 16px;
         }
 
-        .landing-hero {
-            padding: 64px 18px 46px;
-        }
-
-        .landing-hero h1 {
-            font-size: 48px;
-        }
-
-        .landing-section {
-            padding: 48px 18px;
-        }
-
-        .industry-shell {
-            grid-template-columns: 1fr;
-            min-height: 0;
-        }
-
-        .industry-menu {
-            border-right: 0;
-            border-bottom: 1px solid var(--glass-border);
-            padding: 20px;
-        }
-
-        .industry-content {
-            padding: 28px;
-        }
-
-        .industry-copy h2 {
-            font-size: 32px;
-        }
-
-        .preview-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .preview-side {
-            grid-template-columns: repeat(3, 1fr);
-        }
-    }
-
-    @media (max-width: 640px) {
-        .landing-nav button:first-child,
-        .landing-nav button:nth-child(2) {
+        .nav-btn {
             display: none;
         }
 
-        .nav-cta {
-            padding: 10px 16px;
-        }
-
-        .landing-hero h1 {
-            font-size: 39px;
-        }
-
-        .landing-hero p {
-            font-size: 17px;
-        }
-
-        .hero-kicker {
-            border-radius: 8px;
-            line-height: 1.4;
-        }
-
-        .primary-cta,
-        .secondary-cta {
-            width: 100%;
-            justify-content: center;
-        }
-
-        .preview-lanes,
-        .preview-side,
-        .q-grid,
-        .foundation-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .workspace-preview {
-            min-height: 0;
-        }
-
-        .preview-lane {
-            min-height: 0;
-        }
-
-        .q-layout {
-            grid-template-columns: 1fr;
-        }
-
-        .trust-strip {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-
-        .cta-panel {
-            padding: 42px 22px;
-        }
-
-        .cta-panel h2 {
+        .hero-section h1 {
             font-size: 32px;
         }
 
-        .landing-footer {
-            display: block;
-            padding-left: 20px;
-            padding-right: 20px;
+        .problem-header h2,
+        .workspaces-header h2,
+        .clarity-header h2,
+        .q-section h2,
+        .cta-box h2 {
+            font-size: 24px;
         }
 
-        .footer-links {
-            margin-top: 28px;
-            gap: 36px;
+        .footer-container {
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .footer-navigation {
+            gap: 40px;
+        }
+
+        .hero-grid, .workspace-interactive-layout, .q-split-layout {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            gap: 24px;
+        }
+
+        .hero-visual, .workspace-preview-canvas, .q-timeline-block {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        .canvas-wrapper {
+            padding: 20px;
         }
     }
 
+    @media (max-width: 375px) {
+        .hero-section h1 {
+            font-size: 28px;
+        }
+        .problem-header h2,
+        .workspaces-header h2,
+        .clarity-header h2,
+        .q-section h2,
+        .cta-box h2 {
+            font-size: 22px;
+        }
+        .hero-actions .btn-primary,
+        .hero-actions .btn-secondary {
+            width: 100%;
+            text-align: center;
+        }
+    }
+
+    /* Motion respects system settings */
     @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
         *::after {
-            animation-duration: 1ms !important;
+            animation-duration: 0.01ms !important;
             animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
             scroll-behavior: auto !important;
-            transition-duration: 1ms !important;
-        }
-
-        .reveal-section {
-            animation: none;
         }
     }
 `;
