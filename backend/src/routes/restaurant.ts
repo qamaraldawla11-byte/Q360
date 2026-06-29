@@ -14,6 +14,7 @@ import {
 } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
+import { logAudit } from '../utils/audit.js';
 
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
@@ -23,6 +24,48 @@ const paymentMethods = ['cash', 'card', 'mobile'] as const;
 type TableStatus = typeof tableStatuses[number];
 type OrderStatus = typeof orderStatuses[number];
 type TicketStatus = typeof ticketStatuses[number];
+const delayedKdsThresholdMinutes = 15;
+const priorityTypes = ['kds_delay', 'unpaid_orders', 'table_attention', 'sales_summary', 'top_items'] as const;
+const priorityUrgencies = ['info', 'attention', 'urgent'] as const;
+const evidenceTypes = ['kds', 'orders', 'tables', 'payments', 'menu_items', 'sales'] as const;
+type PriorityType = typeof priorityTypes[number];
+type PriorityUrgency = typeof priorityUrgencies[number];
+type EvidenceType = typeof evidenceTypes[number];
+
+interface BusinessPulseEvidence {
+    type: EvidenceType;
+    label: string;
+    facts: Record<string, string | number | null>;
+}
+
+interface BusinessPulsePriority {
+    type: PriorityType;
+    urgency: PriorityUrgency;
+    title: string;
+    evidence: BusinessPulseEvidence;
+    dataFreshnessTimestamp: string;
+}
+
+interface BusinessPulseSnapshot {
+    generatedAt: string;
+    openOrderCount: number;
+    unpaidOrderCount: number;
+    delayedKdsTicketCount: number;
+    oldestDelayedKdsDurationMinutes: number | null;
+    tablePaymentAttentionCount: number;
+    todaySalesSummary: {
+        grossSales: number;
+        paidOrderCount: number;
+        completedPaymentCount: number;
+        currencyMinorUnit: 'cents';
+    };
+    topSellingMenuItems: {
+        name: string;
+        quantitySold: number;
+        grossSales: number;
+    }[];
+    priorities: BusinessPulsePriority[];
+}
 
 restaurant.use('/*', authMiddleware);
 
@@ -42,6 +85,282 @@ const todayBounds = () => {
     return { start, end };
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isValidEvidence = (value: unknown): value is BusinessPulseEvidence => {
+    if (!isRecord(value)) return false;
+    if (!evidenceTypes.includes(value.type as EvidenceType)) return false;
+    if (typeof value.label !== 'string' || value.label.length === 0) return false;
+    if (!isRecord(value.facts)) return false;
+    return Object.values(value.facts).every((fact) => (
+        typeof fact === 'string' ||
+        typeof fact === 'number' ||
+        fact === null
+    ));
+};
+
+const isValidPriority = (value: unknown): value is BusinessPulsePriority => {
+    if (!isRecord(value)) return false;
+    return (
+        priorityTypes.includes(value.type as PriorityType) &&
+        priorityUrgencies.includes(value.urgency as PriorityUrgency) &&
+        typeof value.title === 'string' &&
+        value.title.length > 0 &&
+        isValidEvidence(value.evidence) &&
+        typeof value.dataFreshnessTimestamp === 'string' &&
+        !Number.isNaN(Date.parse(value.dataFreshnessTimestamp))
+    );
+};
+
+const validateBusinessPulseSnapshot = (value: unknown): BusinessPulseSnapshot => {
+    if (!isRecord(value)) throw new Error('INVALID_BUSINESS_PULSE_SNAPSHOT');
+    const summary = value.todaySalesSummary;
+    if (
+        typeof value.generatedAt !== 'string' ||
+        Number.isNaN(Date.parse(value.generatedAt)) ||
+        typeof value.openOrderCount !== 'number' ||
+        typeof value.unpaidOrderCount !== 'number' ||
+        typeof value.delayedKdsTicketCount !== 'number' ||
+        !(typeof value.oldestDelayedKdsDurationMinutes === 'number' || value.oldestDelayedKdsDurationMinutes === null) ||
+        typeof value.tablePaymentAttentionCount !== 'number' ||
+        !isRecord(summary) ||
+        typeof summary.grossSales !== 'number' ||
+        typeof summary.paidOrderCount !== 'number' ||
+        typeof summary.completedPaymentCount !== 'number' ||
+        summary.currencyMinorUnit !== 'cents' ||
+        !Array.isArray(value.topSellingMenuItems) ||
+        !Array.isArray(value.priorities)
+    ) {
+        throw new Error('INVALID_BUSINESS_PULSE_SNAPSHOT');
+    }
+
+    for (const item of value.topSellingMenuItems) {
+        if (
+            !isRecord(item) ||
+            typeof item.name !== 'string' ||
+            item.name.length === 0 ||
+            typeof item.quantitySold !== 'number' ||
+            typeof item.grossSales !== 'number'
+        ) {
+            throw new Error('INVALID_BUSINESS_PULSE_SNAPSHOT');
+        }
+    }
+
+    if (!value.priorities.every(isValidPriority)) {
+        throw new Error('INVALID_BUSINESS_PULSE_SNAPSHOT');
+    }
+
+    return value as unknown as BusinessPulseSnapshot;
+};
+
+const minutesSince = (date: Date, now: Date) =>
+    Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
+
+const buildPriority = (
+    type: PriorityType,
+    urgency: PriorityUrgency,
+    title: string,
+    evidence: BusinessPulseEvidence,
+    dataFreshnessTimestamp: string,
+): BusinessPulsePriority => ({
+    type,
+    urgency,
+    title,
+    evidence,
+    dataFreshnessTimestamp,
+});
+
+const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessPulseSnapshot> => {
+    const generatedAtDate = new Date();
+    const generatedAt = generatedAtDate.toISOString();
+    const { start, end } = todayBounds();
+    const todayOrders = await db.select().from(restaurantOrders)
+        .where(and(
+            eq(restaurantOrders.businessId, businessId),
+            gte(restaurantOrders.createdAt, start),
+            lt(restaurantOrders.createdAt, end),
+        ));
+    const orderIds = todayOrders.map((order) => order.id);
+    const nonCancelledOrderIds = todayOrders
+        .filter((order) => order.status !== 'cancelled')
+        .map((order) => order.id);
+    const payments = orderIds.length > 0
+        ? await db.select().from(restaurantPayments)
+            .where(and(
+                eq(restaurantPayments.businessId, businessId),
+                inArray(restaurantPayments.orderId, orderIds),
+            ))
+        : [];
+    const completedPaymentsToday = payments.filter((payment) => (
+        payment.status === 'completed' &&
+        payment.paidAt &&
+        payment.paidAt >= start &&
+        payment.paidAt < end
+    ));
+    const completedPaymentOrderIds = new Set(completedPaymentsToday.map((payment) => payment.orderId));
+    const openOrders = todayOrders.filter((order) => (
+        order.status === 'pending' ||
+        order.status === 'in_kitchen' ||
+        order.status === 'ready' ||
+        order.status === 'served'
+    ));
+    const unpaidOrders = todayOrders.filter((order) => (
+        order.status !== 'paid' &&
+        order.status !== 'cancelled' &&
+        !completedPaymentOrderIds.has(order.id)
+    ));
+    const activeTickets = await db.select().from(kdsTickets)
+        .where(and(
+            eq(kdsTickets.businessId, businessId),
+            or(eq(kdsTickets.status, 'new'), eq(kdsTickets.status, 'cooking')),
+        ));
+    const delayedTickets = activeTickets
+        .map((ticket) => ({
+            ticket,
+            durationMinutes: minutesSince(ticket.createdAt, generatedAtDate),
+        }))
+        .filter((entry) => entry.durationMinutes >= delayedKdsThresholdMinutes);
+    const oldestDelayedKdsDurationMinutes = delayedTickets.length
+        ? Math.max(...delayedTickets.map((entry) => entry.durationMinutes))
+        : null;
+    const tablePaymentAttentionCount = new Set(
+        unpaidOrders
+            .filter((order) => order.tableId && (order.status === 'ready' || order.status === 'served'))
+            .map((order) => order.tableId as string),
+    ).size;
+    const paidOrderIds = new Set(
+        todayOrders
+            .filter((order) => order.status === 'paid')
+            .map((order) => order.id),
+    );
+    const completedPaidPaymentsToday = completedPaymentsToday
+        .filter((payment) => paidOrderIds.has(payment.orderId));
+    const grossSales = completedPaidPaymentsToday
+        .reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
+    const paidOrderCount = new Set(
+        completedPaidPaymentsToday.map((payment) => payment.orderId),
+    ).size;
+    const orderItems = nonCancelledOrderIds.length > 0
+        ? await db.select().from(restaurantOrderItems)
+            .where(inArray(restaurantOrderItems.orderId, nonCancelledOrderIds))
+        : [];
+    const topItemsByName = new Map<string, { quantitySold: number; grossSales: number }>();
+    for (const item of orderItems) {
+        const previous = topItemsByName.get(item.name) ?? { quantitySold: 0, grossSales: 0 };
+        previous.quantitySold += item.quantity;
+        previous.grossSales += item.quantity * item.unitPrice;
+        topItemsByName.set(item.name, previous);
+    }
+    const topSellingMenuItems = [...topItemsByName.entries()]
+        .map(([name, values]) => ({ name, ...values }))
+        .sort((a, b) => b.quantitySold - a.quantitySold || b.grossSales - a.grossSales || a.name.localeCompare(b.name))
+        .slice(0, 5);
+    const priorities: BusinessPulsePriority[] = [];
+
+    if (delayedTickets.length > 0) {
+        priorities.push(buildPriority(
+            'kds_delay',
+            oldestDelayedKdsDurationMinutes && oldestDelayedKdsDurationMinutes >= 30 ? 'urgent' : 'attention',
+            `${delayedTickets.length} kitchen ticket${delayedTickets.length === 1 ? '' : 's'} delayed`,
+            {
+                type: 'kds',
+                label: 'Delayed KDS tickets',
+                facts: {
+                    delayedTicketCount: delayedTickets.length,
+                    oldestDurationMinutes: oldestDelayedKdsDurationMinutes,
+                    delayThresholdMinutes: delayedKdsThresholdMinutes,
+                },
+            },
+            generatedAt,
+        ));
+    }
+
+    if (unpaidOrders.length > 0) {
+        priorities.push(buildPriority(
+            'unpaid_orders',
+            unpaidOrders.length >= 3 ? 'urgent' : 'attention',
+            `${unpaidOrders.length} unpaid order${unpaidOrders.length === 1 ? '' : 's'}`,
+            {
+                type: 'orders',
+                label: 'Open unpaid orders',
+                facts: {
+                    unpaidOrderCount: unpaidOrders.length,
+                    openOrderCount: openOrders.length,
+                },
+            },
+            generatedAt,
+        ));
+    }
+
+    if (tablePaymentAttentionCount > 0) {
+        priorities.push(buildPriority(
+            'table_attention',
+            'attention',
+            `${tablePaymentAttentionCount} table${tablePaymentAttentionCount === 1 ? '' : 's'} may need payment attention`,
+            {
+                type: 'tables',
+                label: 'Tables with ready or served unpaid orders',
+                facts: {
+                    tablePaymentAttentionCount,
+                },
+            },
+            generatedAt,
+        ));
+    }
+
+    priorities.push(buildPriority(
+        'sales_summary',
+        'info',
+        'Today sales snapshot is ready',
+        {
+            type: 'sales',
+            label: 'Today completed payments',
+            facts: {
+                grossSales,
+                paidOrderCount,
+                completedPaymentCount: completedPaidPaymentsToday.length,
+            },
+        },
+        generatedAt,
+    ));
+
+    if (topSellingMenuItems.length > 0) {
+        priorities.push(buildPriority(
+            'top_items',
+            'info',
+            'Top-selling menu items are available',
+            {
+                type: 'menu_items',
+                label: 'Top-selling items today',
+                facts: {
+                    itemCount: topSellingMenuItems.length,
+                    topItemName: topSellingMenuItems[0]?.name ?? null,
+                    topItemQuantitySold: topSellingMenuItems[0]?.quantitySold ?? null,
+                },
+            },
+            generatedAt,
+        ));
+    }
+
+    return validateBusinessPulseSnapshot({
+        generatedAt,
+        openOrderCount: openOrders.length,
+        unpaidOrderCount: unpaidOrders.length,
+        delayedKdsTicketCount: delayedTickets.length,
+        oldestDelayedKdsDurationMinutes,
+        tablePaymentAttentionCount,
+        todaySalesSummary: {
+            grossSales,
+            paidOrderCount,
+            completedPaymentCount: completedPaidPaymentsToday.length,
+            currencyMinorUnit: 'cents',
+        },
+        topSellingMenuItems,
+        priorities,
+    });
+};
+
 const orderWithItems = async (businessId: string, orderId: string) => {
     const order = await first(db.select().from(restaurantOrders)
         .where(and(eq(restaurantOrders.id, orderId), eq(restaurantOrders.businessId, businessId)))
@@ -56,6 +375,24 @@ const orderWithItems = async (businessId: string, orderId: string) => {
         ));
     return { ...order, items, payments };
 };
+
+restaurant.get('/business-pulse/snapshot', async (c) => {
+    try {
+        const businessId = c.get('businessId');
+        const snapshot = await buildBusinessPulseSnapshot(businessId);
+        await logAudit(c, 'Q_BUSINESS_PULSE_SNAPSHOT_VIEWED', 'RESTAURANT_BUSINESS_PULSE', null, {
+            openOrderCount: snapshot.openOrderCount,
+            unpaidOrderCount: snapshot.unpaidOrderCount,
+            delayedKdsTicketCount: snapshot.delayedKdsTicketCount,
+            tablePaymentAttentionCount: snapshot.tablePaymentAttentionCount,
+            topSellingMenuItemCount: snapshot.topSellingMenuItems.length,
+            generatedAt: snapshot.generatedAt,
+        });
+        return c.json(snapshot);
+    } catch {
+        return c.json({ error: 'Unable to generate Restaurant Business Pulse snapshot' }, 500);
+    }
+});
 
 const ensureCategory = async (executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0], businessId: string, categoryId?: string, categoryName?: string) => {
     if (categoryId) {

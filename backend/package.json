@@ -12,6 +12,7 @@
         "db:backup": "tsx src/scripts/backup.ts",
         "db:backup:list": "tsx src/scripts/backup.ts --list",
         "verify:restaurant": "tsx src/scripts/verify_restaurant_core.ts",
+        "verify:business-pulse": "tsx src/scripts/verify_business_pulse_snapshot.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:otp": "tsx src/scripts/verify_otp.ts",
         "verify:resend-live": "node dist/scripts/verify_resend_live.js"
