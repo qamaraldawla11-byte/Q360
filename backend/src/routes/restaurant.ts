@@ -12,6 +12,7 @@ import {
     restaurantOrders,
     restaurantPayments,
     restaurantTables,
+    users,
 } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
@@ -96,7 +97,36 @@ const hasRole = (c: Context<AppEnv>, allowedRoles: readonly string[]) => {
     return typeof role === 'string' && allowedRoles.includes(role);
 };
 
-const forbid = (c: Context<AppEnv>) => c.json({ error: 'Forbidden: Insufficient permissions' }, 403);
+const forbid = (c: Context<AppEnv>, message = 'Forbidden: Insufficient permissions') => c.json({ error: message }, 403);
+
+const isLegacyRestaurantOwner = async (c: Context<AppEnv>) => {
+    const role = c.get('userRole');
+    if (role !== 'user' && role !== undefined && role !== null && role !== '') return false;
+
+    const user = await first(db.select({
+        id: users.id,
+        businessId: users.businessId,
+        userType: users.userType,
+        segment: users.segment,
+        onboardingCompleted: users.onboardingCompleted,
+        primaryWorkspace: users.primaryWorkspace,
+    }).from(users).where(and(
+        eq(users.id, c.get('userId')),
+        eq(users.businessId, c.get('businessId')),
+    )));
+
+    return Boolean(
+        user?.onboardingCompleted &&
+        user.userType === 'sme' &&
+        user.segment === 'restaurant' &&
+        user.primaryWorkspace === '/app/restaurant'
+    );
+};
+
+const canCreateOrder = async (c: Context<AppEnv>, orderType: OrderType) =>
+    hasRole(c, waiterRoles) ||
+    (orderType === 'takeaway' && hasRole(c, ['cashier'])) ||
+    await isLegacyRestaurantOwner(c);
 
 const serviceStatusFor = (order: typeof restaurantOrders.$inferSelect): ServiceStatus => {
     if (order.serviceStatus) return order.serviceStatus;
@@ -703,8 +733,6 @@ restaurant.patch('/tables/:id/status', async (c) => {
 });
 
 restaurant.post('/orders', async (c) => {
-    if (!hasRole(c, waiterRoles)) return forbid(c);
-
     const body = await parseJson<{
         tableId?: unknown;
         table_id?: unknown;
@@ -745,6 +773,7 @@ restaurant.post('/orders', async (c) => {
     if (orderType === 'dine_in' && tableId !== undefined && tableId !== null && typeof tableId !== 'string') {
         return c.json({ error: 'Dine-in table id is invalid' }, 400);
     }
+    if (!await canCreateOrder(c, orderType)) return forbid(c, 'You do not have permission to create orders');
     const requestedPaymentTiming = body.paymentTiming ?? body.payment_timing;
     if (requestedPaymentTiming !== undefined && typeof requestedPaymentTiming !== 'string') {
         return c.json({ error: 'Invalid payment timing' }, 400);

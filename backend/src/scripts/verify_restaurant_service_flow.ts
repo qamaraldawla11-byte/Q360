@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import { spawn, spawnSync } from 'child_process';
+import { createServer } from 'net';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
     businesses,
@@ -25,7 +26,24 @@ const businessId = 'biz_verify_restaurant_service_flow';
 const businessBId = 'biz_verify_restaurant_service_flow_b';
 const userId = 'usr_verify_restaurant_service_flow';
 const userBId = 'usr_verify_restaurant_service_flow_b';
-const port = 33000 + (process.pid % 1000);
+const legacyOwnerUserId = 'usr_verify_restaurant_service_flow_legacy_owner';
+
+const getAvailablePort = () => new Promise<number>((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+        const address = probe.address();
+        probe.close(() => {
+            if (address && typeof address === 'object') {
+                resolve(address.port);
+            } else {
+                reject(new Error('Unable to allocate verification server port'));
+            }
+        });
+    });
+});
+
+const port = await getAvailablePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-service-flow-test-secret';
 const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
@@ -84,7 +102,7 @@ const resetFixture = async () => {
     await db.delete(menuItems).where(inArray(menuItems.businessId, businessesUnderTest));
     await db.delete(menuCategories).where(inArray(menuCategories.businessId, businessesUnderTest));
     await db.delete(restaurantMenus).where(inArray(restaurantMenus.businessId, businessesUnderTest));
-    await db.delete(users).where(inArray(users.id, [userId, userBId]));
+    await db.delete(users).where(inArray(users.id, [userId, userBId, legacyOwnerUserId]));
     await db.delete(businesses).where(inArray(businesses.id, businessesUnderTest));
 
     await db.insert(businesses).values([
@@ -94,6 +112,16 @@ const resetFixture = async () => {
     await db.insert(users).values([
         { id: userId, email: 'verify-restaurant-service-flow@example.com', role: 'admin', businessId, onboardingCompleted: true },
         { id: userBId, email: 'verify-restaurant-service-flow-b@example.com', role: 'admin', businessId: businessBId, onboardingCompleted: true },
+        {
+            id: legacyOwnerUserId,
+            email: 'verify-restaurant-service-flow-owner@example.com',
+            role: 'user',
+            businessId,
+            userType: 'sme',
+            segment: 'restaurant',
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
     ]);
 
     for (const tenantId of businessesUnderTest) {
@@ -185,6 +213,108 @@ try {
     const tables = await request<{ id: string; label: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
     const table = tables.find((entry) => entry.label === 'T1');
     if (!itemId || !table) throw new Error('Fixture menu or table missing');
+
+    console.log('[verify:restaurant-service-flow] POS role permissions...');
+    const ownerCreate = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-owner-role-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'owner' });
+    const legacyOwnerCreate = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-legacy-owner-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
+    const waiterCreate = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-waiter-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const kitchenCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-kitchen-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'kitchen' });
+    const cashierTakeawayCreate = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cashier-takeaway-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const cashierDineInCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            table_id: table.id,
+            order_type: 'dine_in',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cashier-dine-in-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const unknownRoleCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-unknown-role-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'chef' });
+    const missingRoleCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-missing-role-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: '' });
+    const crossTenantCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cross-tenant-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const cashierCrossTenantCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cashier-cross-tenant-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: userBId, role: 'cashier' });
+    const legacyRoleUserCrossTenantCreate = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-legacy-user-cross-tenant-create',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
 
     console.log('[verify:restaurant-service-flow] Dine-in lifecycle...');
     const dineIn = await request<FlowOrder>('/api/restaurant/orders', {
@@ -330,6 +460,19 @@ try {
             finalStatus: paidAfter.status,
         },
         guards: {
+            ownerCreateStatus: ownerCreate.serviceStatus,
+            legacyOwnerCreateStatus: legacyOwnerCreate.serviceStatus,
+            waiterCreateStatus: waiterCreate.serviceStatus,
+            kitchenCreateStatus: kitchenCreate.status,
+            cashierTakeawayCreateStatus: cashierTakeawayCreate.serviceStatus,
+            cashierTakeawayTableId: cashierTakeawayCreate.tableId,
+            cashierDineInCreateStatus: cashierDineInCreate.status,
+            unknownRoleCreateStatus: unknownRoleCreate.status,
+            missingRoleCreateStatus: missingRoleCreate.status,
+            crossTenantCreateStatus: crossTenantCreate.status,
+            cashierCrossTenantCreateStatus: cashierCrossTenantCreate.status,
+            legacyRoleUserCrossTenantCreateStatus: legacyRoleUserCrossTenantCreate.status,
+            createForbiddenMessage: kitchenCreate.body,
             invalidEarlyDineInPaymentStatus: invalidEarlyPayment.status,
             invalidJumpStatus: invalidJump.status,
             foreignDeliverStatus: foreignDeliver.status,
@@ -357,6 +500,18 @@ try {
         result.takeawayPayAfter.serviceAfterCollect !== 'collected' ||
         result.takeawayPayAfter.paymentStatus !== 'paid' ||
         result.takeawayPayAfter.finalStatus !== 'closed' ||
+        result.guards.ownerCreateStatus !== 'pending' ||
+        result.guards.legacyOwnerCreateStatus !== 'pending' ||
+        result.guards.waiterCreateStatus !== 'pending' ||
+        result.guards.kitchenCreateStatus !== 403 ||
+        result.guards.cashierTakeawayCreateStatus !== 'pending' ||
+        result.guards.cashierTakeawayTableId !== null ||
+        result.guards.cashierDineInCreateStatus !== 403 ||
+        result.guards.unknownRoleCreateStatus !== 403 ||
+        result.guards.missingRoleCreateStatus !== 403 ||
+        result.guards.crossTenantCreateStatus !== 404 ||
+        result.guards.cashierCrossTenantCreateStatus !== 404 ||
+        result.guards.legacyRoleUserCrossTenantCreateStatus !== 403 ||
         result.guards.invalidEarlyDineInPaymentStatus !== 409 ||
         result.guards.invalidJumpStatus !== 409 ||
         result.guards.foreignDeliverStatus !== 404 ||

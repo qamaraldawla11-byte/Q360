@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { ShoppingCart, Trash2, ArrowRight, Loader2 } from 'lucide-react';
 import {
     restaurantApi,
@@ -83,8 +84,13 @@ export const PosView = () => {
             setSubmissionKey(crypto.randomUUID());
             setTables(await restaurantApi.getTables());
             setMessage({ kind: 'success', text: 'Order sent to kitchen.' });
-        } catch {
-            setMessage({ kind: 'error', text: 'Order could not be sent. Your cart was kept.' });
+        } catch (error) {
+            setMessage({
+                kind: 'error',
+                text: axios.isAxiosError(error) && error.response?.status === 403
+                    ? 'You do not have permission to create orders'
+                    : 'Order could not be sent. Your cart was kept.',
+            });
         } finally {
             setIsSubmitting(false);
         }
