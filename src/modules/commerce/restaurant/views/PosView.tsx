@@ -3,6 +3,7 @@ import { ShoppingCart, Trash2, ArrowRight, Loader2 } from 'lucide-react';
 import {
     restaurantApi,
     type RestaurantMenuItem,
+    type RestaurantPaymentTiming,
     type RestaurantTable,
 } from '@/api/restaurant.api';
 
@@ -14,6 +15,8 @@ export const PosView = () => {
     const [selectedCategory, setSelectedCategory] = useState('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [selectedTable, setSelectedTable] = useState('');
+    const [paymentTiming, setPaymentTiming] = useState<RestaurantPaymentTiming>('pay_after_service');
+    const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -65,6 +68,9 @@ export const PosView = () => {
         try {
             await restaurantApi.createOrder({
                 table_id: selectedTable || undefined,
+                order_type: selectedTable ? 'dine_in' : 'takeaway',
+                payment_timing: paymentTiming,
+                idempotency_key: submissionKey,
                 items: cart.map((item) => ({
                     menu_item_id: item.id,
                     quantity: item.quantity,
@@ -73,6 +79,8 @@ export const PosView = () => {
             });
             setCart([]);
             setSelectedTable('');
+            setPaymentTiming('pay_after_service');
+            setSubmissionKey(crypto.randomUUID());
             setTables(await restaurantApi.getTables());
             setMessage({ kind: 'success', text: 'Order sent to kitchen.' });
         } catch {
@@ -185,6 +193,19 @@ export const PosView = () => {
                         {!tables.some((table) => table.status === 'available') && (
                             <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>No available tables. Create or free a table in Floor / Tables.</div>
                         )}
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                        <label htmlFor="restaurant-payment-timing" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>PAYMENT TIMING</label>
+                        <select
+                            id="restaurant-payment-timing"
+                            value={paymentTiming}
+                            onChange={(event) => setPaymentTiming(event.target.value as RestaurantPaymentTiming)}
+                            style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
+                        >
+                            <option value="pay_after_service">Pay after service</option>
+                            <option value="pay_before_service">Pay before service</option>
+                        </select>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>

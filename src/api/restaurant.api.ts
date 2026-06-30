@@ -1,7 +1,11 @@
 import { http } from './http';
 
 export type RestaurantTableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
-export type RestaurantOrderStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'paid' | 'cancelled';
+export type RestaurantOrderStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'collected' | 'closed' | 'paid' | 'cancelled';
+export type RestaurantOrderType = 'dine_in' | 'takeaway';
+export type RestaurantServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled';
+export type RestaurantPaymentStatus = 'unpaid' | 'paid' | 'refunded';
+export type RestaurantPaymentTiming = 'pay_before_service' | 'pay_after_service';
 export type KdsStatus = 'new' | 'cooking' | 'done';
 export type RestaurantPaymentMethod = 'cash' | 'card' | 'mobile';
 
@@ -56,6 +60,11 @@ export interface RestaurantOrder {
     businessId: string;
     tableId: string | null;
     status: RestaurantOrderStatus;
+    orderType: RestaurantOrderType;
+    serviceStatus: RestaurantServiceStatus;
+    paymentStatus: RestaurantPaymentStatus;
+    paymentTiming: RestaurantPaymentTiming;
+    idempotencyKey: string | null;
     createdBy: string;
     total: number;
     createdAt: string;
@@ -108,6 +117,9 @@ export const restaurantApi = {
 
     createOrder: (payload: {
         table_id?: string;
+        order_type?: RestaurantOrderType;
+        payment_timing?: RestaurantPaymentTiming;
+        idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
     }) => http.post<RestaurantOrder>('/restaurant/orders', payload),
 

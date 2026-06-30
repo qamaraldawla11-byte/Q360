@@ -15,6 +15,8 @@ const statusLabels: Record<RestaurantOrderStatus, string> = {
     ready: 'Ready',
     delivered: 'Delivered',
     served: 'Delivered',
+    collected: 'Collected',
+    closed: 'Closed',
     paid: 'Paid',
     cancelled: 'Cancelled',
 };
@@ -25,9 +27,16 @@ const statusColors: Record<RestaurantOrderStatus, { background: string; color: s
     ready: { background: '#dcfce7', color: '#166534' },
     delivered: { background: '#e0f2fe', color: '#075985' },
     served: { background: '#e0f2fe', color: '#075985' },
+    collected: { background: '#fef3c7', color: '#78350f' },
+    closed: { background: '#dcfce7', color: '#166534' },
     paid: { background: '#dcfce7', color: '#166534' },
     cancelled: { background: '#fee2e2', color: '#991b1b' },
 };
+
+const canTakePayment = (order: RestaurantOrder) => order.paymentStatus === 'unpaid' && (
+    order.paymentTiming === 'pay_before_service' ||
+    (order.orderType === 'takeaway' ? order.serviceStatus === 'collected' : order.serviceStatus === 'delivered')
+);
 
 export const BillingView = () => {
     const [orders, setOrders] = useState<RestaurantOrder[]>([]);
@@ -57,9 +66,9 @@ export const BillingView = () => {
     }, [load]);
 
     const visibleOrders = useMemo(() => orders.filter((order) => {
-        if (tab === 'Service') return order.status === 'ready';
-        if (tab === 'Payment') return order.status === 'delivered' || order.status === 'served';
-        if (tab === 'Paid') return order.status === 'paid';
+        if (tab === 'Service') return order.serviceStatus === 'ready';
+        if (tab === 'Payment') return canTakePayment(order);
+        if (tab === 'Paid') return order.paymentStatus === 'paid';
         return true;
     }), [orders, tab]);
 
@@ -124,8 +133,10 @@ export const BillingView = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {visibleOrders.map((order) => (
-                            <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        {visibleOrders.map((order) => {
+                            const orderCanTakePayment = canTakePayment(order);
+                            return (
+                                <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                 <td style={{ padding: '16px', fontFamily: 'monospace' }}>#{order.id.slice(-8)}</td>
                                 <td style={{ padding: '16px' }}>{tableLabel(order.tableId)}</td>
                                 <td style={{ padding: '16px' }}>{new Date(order.createdAt).toLocaleTimeString()}</td>
@@ -136,7 +147,7 @@ export const BillingView = () => {
                                     </span>
                                 </td>
                                 <td style={{ padding: '16px' }}>
-                                    {order.status === 'ready' ? (
+                                    {order.serviceStatus === 'ready' ? (
                                         <button
                                             onClick={() => markDelivered(order)}
                                             disabled={deliveringId === order.id}
@@ -145,7 +156,7 @@ export const BillingView = () => {
                                         >
                                             {order.tableId ? 'Mark Delivered' : 'Mark Handed Over'}
                                         </button>
-                                    ) : order.status === 'delivered' || order.status === 'served' ? (
+                                    ) : orderCanTakePayment ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                             <select
                                                 aria-label={`Payment method for order ${order.id.slice(-8)}`}
@@ -170,14 +181,15 @@ export const BillingView = () => {
                                                 Mark as Paid
                                             </button>
                                         </div>
-                                    ) : order.status === 'paid' ? (
+                                    ) : order.paymentStatus === 'paid' ? (
                                         <span style={{ color: '#166534', fontWeight: 600 }}>PAID</span>
                                     ) : (
                                         <span style={{ color: '#475569' }}>Awaiting service step</span>
                                     )}
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                         {!visibleOrders.length && (
                             <tr>
                                 <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#475569' }}>No orders in this view</td>

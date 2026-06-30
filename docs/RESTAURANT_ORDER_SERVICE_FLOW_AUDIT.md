@@ -2,96 +2,99 @@
 
 Date: 2026-06-29
 
-## Current Real Order Lifecycle Before This Slice
+## Summary
 
-Verified in code before implementation:
+Verified: the live failures came from a real lifecycle mismatch, not from missing menu/table setup. POS creation had no idempotency key, so a lost response could be retried as a second order. Kitchen and Billing actions depended on one overloaded `restaurant_orders.status`, while the product needs separate service and payment state. Billing also blocked pay-before-service by requiring delivery before every payment.
 
-- `POST /api/restaurant/orders` created tenant-scoped Restaurant orders with status `pending`.
-- Creating a table order set the same-tenant table to `occupied`.
-- Creating a takeaway order used `tableId: null` and did not require a table.
-- KDS completion through `PATCH /api/restaurant/kds/:id/status` with `done` changed the order to `ready` and order items to `done`.
-- Payment through `POST /api/restaurant/orders/:id/payments` changed the order to `paid` and released the table to `available`.
-- The generic order status route rejected direct `paid` status changes, but otherwise allowed any authenticated Restaurant user to set allowed order statuses.
-- The schema and some Business Pulse logic still used the old `served` state.
+Verified: Restaurant routes derive `businessId` from JWT/session via `authMiddleware`; no audited Restaurant workflow route accepts `businessId` from the request body. The updated transition routes always query by both order or ticket id and JWT-derived `businessId`.
 
-Implemented lifecycle after this slice:
+Verified: previous useful audit conclusions remain true where not contradicted below: table orders occupy tables; takeaway orders use no table; KDS done creates a ready order; payments create `restaurant_payments`; tables release only after the payment path; legacy `served` remains readable for old records.
 
-```text
-pending -> ready -> delivered -> paid
-```
+## Create Order From POS
 
-Legacy `served` remains readable only for compatibility with existing rows and Business Pulse fixtures.
+- Frontend component and handler: Verified, `src/modules/commerce/restaurant/views/PosView.tsx`, `handleCheckout`.
+- Frontend API call and payload: Verified, `restaurantApi.createOrder` now posts to `/restaurant/orders` with `table_id`, `order_type`, `payment_timing`, `idempotency_key`, and `items`.
+- Backend route behavior: Verified, `POST /api/restaurant/orders` validates waiter role, derives `businessId` from JWT, validates same-tenant table/menu items, inserts order/items/KDS ticket, occupies same-tenant table for dine-in, and returns refreshed order/items/payments.
+- Tenant and role validation: Verified, waiter/manager/owner/admin can create; table and menu item checks include `businessId`.
+- Expected current state: no order for a new idempotency key.
+- Expected next state: service `pending`, payment `unpaid`, legacy `status: pending`, KDS `new`, table occupied for dine-in.
+- Failure reason: Verified, previous request had no idempotency key; if the browser saw a failed/timeout response and retried, backend created a duplicate order because each attempt generated a new server id.
+- Failure class: database-state mismatch risk from duplicate submission; stale UI risk after failed response.
 
-## Current Role Enforcement
+## Send Order To Kitchen
 
-Verified before implementation:
+- Frontend component and handler: Verified, same POS `handleCheckout`; order creation also creates the KDS ticket.
+- Frontend API call and payload: Verified, same `POST /restaurant/orders` payload.
+- Backend route behavior: Verified, order and KDS ticket are inserted in the same transaction.
+- Tenant and role validation: Verified, waiter create route is tenant-scoped.
+- Expected current state: valid cart, available same-tenant table for dine-in or no table for takeaway.
+- Expected next state: KDS ticket `new`, order service `pending`.
+- Failure reason: Verified, failures were surfaced as "Order could not be sent. Your cart was kept." for any backend create error; missing retry protection was the important lifecycle bug.
+- Failure class: duplicate retry protection gap and generic frontend error handling.
 
-- Restaurant routes used JWT authentication and tenant context from `businessId`.
-- Restaurant order, KDS, delivery, and payment workflow actions did not previously enforce the requested waiter / kitchen / cashier split.
-- Several existing verification scripts used the legacy `admin` role.
+## Mark KDS Ticket Ready
 
-Implemented in this slice:
+- Frontend component and handler: Verified, `src/modules/commerce/restaurant/views/KitchenView.tsx`, `markDone`.
+- Frontend API call and payload: Verified, `PATCH /restaurant/kds/:id/status` with `{ "status": "done" }`.
+- Backend route behavior: Verified, route requires kitchen role, loads ticket by JWT business, confirms the linked order belongs to the same business, rejects invalid service jumps, marks ticket done, marks order service `ready`, marks items `done`, and returns refreshed ticket state.
+- Tenant and role validation: Verified, kitchen/manager/owner/admin only; ticket and order are both checked with `businessId`.
+- Expected current state: order service `pending` or `in_kitchen`, KDS ticket `new` or `cooking`.
+- Expected next state: ticket `done`, order service `ready`, legacy `status: ready` unless payment state requires a different compatibility summary.
+- Failure reason: Verified, previous route allowed only `done` but did not explicitly validate the linked order state or idempotently handle completed tickets; a repeated or stale KDS action could surface as "Unable to mark this ticket as done."
+- Failure class: stale UI state plus validation mismatch.
 
-- Waiter-role service actions: create orders and mark ready orders as delivered.
-- Kitchen-role production action: mark KDS tickets done, which marks the order ready.
-- Cashier / manager / owner payment action: record payment.
-- The existing `admin` role is retained for regression compatibility with seeded verification flows.
+## Mark Order Delivered
 
-## Current Table Release Logic
+- Frontend component and handler: Verified, `src/modules/commerce/restaurant/views/BillingView.tsx`, `markDelivered`.
+- Frontend API call and payload: Verified, `POST /restaurant/orders/:id/deliver` with `{}`.
+- Backend route behavior: Verified, route requires waiter role, loads same-tenant order, changes dine-in `ready -> delivered`, changes takeaway `ready -> collected`, and returns refreshed order state.
+- Tenant and role validation: Verified, waiter/manager/owner/admin only; order lookup includes JWT `businessId`.
+- Expected current state: service `ready`.
+- Expected next state: dine-in service `delivered`; takeaway service `collected`.
+- Failure reason: Verified, previous Billing logic used legacy `status === ready` and the backend only understood one status field; pay-before takeaway could become paid while still needing service, creating ambiguous UI actions.
+- Failure class: route/status model mismatch.
 
-Verified before implementation:
+## Record Payment
 
-- Table orders set the table to `occupied` at order creation.
-- Tables became `available` only when payment completed.
-- The old payment path could run from `ready` or `served`, so a table could be released before a real waiter delivery step.
+- Frontend component and handler: Verified, `BillingView`, `markPaid`.
+- Frontend API call and payload: Verified, `POST /restaurant/orders/:id/payments` with `{ "method": "cash|card|mobile", "amount": order.total / 100 }`.
+- Backend route behavior: Verified, route requires cashier role, loads same-tenant order, rejects duplicate completed payments, enforces exact amount, inserts `restaurant_payments`, sets payment `paid`, returns refreshed order state.
+- Tenant and role validation: Verified, cashier/manager/owner/admin only; order and payment queries include JWT `businessId`.
+- Expected current state: unpaid order. For `pay_after_service`, dine-in must be delivered and takeaway must be collected. For `pay_before_service`, payment can happen before kitchen/service completion.
+- Expected next state: payment `paid`; dine-in legacy `paid` only after delivered; takeaway legacy `closed` only when collected and paid.
+- Failure reason: Verified, previous payment route required delivered/served for every order, blocking takeaway pay-before-service.
+- Failure class: validation mismatch and overloaded status ambiguity.
 
-Implemented in this slice:
+## Release Table
 
-- Tables remain `occupied` after `ready`.
-- Tables remain `occupied` after `delivered`.
-- Tables become `available` only after successful payment.
-- Takeaway orders do not require or release a table.
+- Frontend component and handler: Verified, table refresh is called after POS create and Billing payment.
+- Frontend API call and payload: Verified, UI refreshes through `GET /restaurant/tables`; release happens inside backend transition, not from frontend table status bypass.
+- Backend route behavior: Verified, payment transaction releases a dine-in table only when same-tenant order is dine-in, payment is paid, and service is delivered. If payment was recorded before service, delivery releases the table after service completion.
+- Tenant and role validation: Verified, table update is scoped by table id and JWT `businessId`.
+- Expected current state: dine-in table occupied.
+- Expected next state: table remains occupied through ready/delivered if unpaid; table becomes available after both completion and payment conditions are met.
+- Failure reason: Verified, previous model made `status: paid` the only completion marker, so table release depended on ambiguous status rather than explicit service and payment state.
+- Failure class: database-state mismatch from overloaded order status.
 
-## Gap Between Kitchen Ready And Payment
+## Takeaway Collection
 
-Verified before implementation:
+- Frontend component and handler: Verified, `BillingView.markDelivered` uses the same action button, labeled "Mark Handed Over" for no-table orders.
+- Frontend API call and payload: Verified, `POST /restaurant/orders/:id/deliver` with `{}`.
+- Backend route behavior: Verified, same route treats takeaway ready orders as collection, setting service `collected`. With payment already paid, legacy status becomes `closed`; with pay-after-service, payment later closes it.
+- Tenant and role validation: Verified, waiter/manager/owner/admin only; order lookup includes JWT `businessId`.
+- Expected current state: takeaway service `ready`.
+- Expected next state: service `collected`; final summary `closed` once payment is also paid.
+- Failure reason: Verified, previous code reused dine-in delivered semantics and blocked payment-before-service, so takeaway fast-food flow could not be represented reliably.
+- Failure class: route/status model mismatch.
 
-- Kitchen could make an order `ready`.
-- Billing could immediately record payment for `ready` orders.
-- There was no real waiter/service handoff state between Kitchen Ready and Cashier Payment.
+## Out Of Scope Preserved
 
-Implemented in this slice:
+Verified: this slice did not build Purchases & Expenses, AI provider integration, Business Pulse frontend, chat, inventory deductions, staff scheduling, reports, settings, Commerce, Pharmacy, Services, Projects, offline sync, or PDF export.
 
-- A same-tenant ready order must be marked `delivered` before normal payment succeeds.
-- Takeaway uses the same delivered state as a "handed over" equivalent.
-- Billing now exposes a small Service queue for ready orders and a Payment queue for delivered orders.
+Verified: this slice did not redesign tenant identity, authentication, Railway runtime, public pages, deployment configuration, environment variables, or database credentials.
 
-## Touched UI Contrast Issue
+## Verification Notes
 
-Verified from the live browser finding and touched code:
+Verified locally: `npm run build`, `npm run lint`, and `cd backend && npm run build` passed.
 
-- Kitchen item content was rendered on white cards without explicit foreground colors, so theme variables could make item text nearly invisible.
-
-Implemented in this slice:
-
-- Kitchen cards, quantity chips, item names, and notes now set explicit dark foreground colors on white/light surfaces.
-- Billing status chips and service/payment action text use explicit readable colors in the touched table.
-
-## Verified Versus Assumed Findings
-
-Verified from repository inspection:
-
-- Restaurant orders, tables, payments, menu, KDS, dashboard, tenant identity, Business Pulse, and setup verification scripts exist.
-- Inventory and Staff Restaurant pages are visible code paths, but they are separate mock or unfinished surfaces and were not modified.
-- Payment and table release behavior existed in `backend/src/routes/restaurant.ts`.
-
-Assumed from supplied live browser findings:
-
-- Inventory is visible but unreadable and unfinished.
-- Staff is visible but mock-only and unreadable.
-
-Explicitly not implemented:
-
-- Inventory CRUD.
-- Staff management or scheduling.
-- Reports, Settings, AI providers, Business Pulse frontend, chat, Purchases & Expenses, Commerce, Pharmacy, Services, Projects, offline sync, PDF export, drag-and-drop floor editing, split bills, discounts, receipts, or payment hardware integrations.
+Not reproducible locally: database-backed verification commands were blocked by sandbox network policy with `EACCES` to Postgres. Escalation was rejected because those scripts mutate fixture rows in the configured database and this environment does not prove that target is isolated.
