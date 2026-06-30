@@ -1,8 +1,9 @@
 import { createHmac } from 'crypto';
 import { Hono } from 'hono';
 import { and, eq, inArray } from 'drizzle-orm';
-import { requireDatabaseUrl } from '../utils/env.js';
+import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
 
+requireQ360StagingDatabaseGuard('verify:business-pulse');
 requireDatabaseUrl();
 
 process.env.JWT_SECRET ||= 'business-pulse-snapshot-test-secret';

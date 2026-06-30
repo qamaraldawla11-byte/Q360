@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { closeDatabase, db } from './client.js';
+import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
 import {
   inventoryItems,
   menuCategories,
@@ -11,6 +11,11 @@ import {
   users,
   businesses,
 } from './schema.js';
+
+requireQ360StagingDatabaseGuard('db:seed');
+requireDatabaseUrl();
+
+const { closeDatabase, db } = await import('./client.js');
 
 console.log('Seeding database...');
 

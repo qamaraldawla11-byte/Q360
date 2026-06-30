@@ -20,6 +20,7 @@ test-results/
 .env.*.local
 backend/.env
 backend/.env.local
+backend/.env.staging
 backend/.env.*.local
 
 # Database files

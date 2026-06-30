@@ -1,8 +1,7 @@
 import { createHmac } from 'crypto';
 import { spawn } from 'child_process';
 import { and, eq, inArray } from 'drizzle-orm';
-import { closeDatabase, db } from '../db/client.js';
-import { requireDatabaseUrl } from '../utils/env.js';
+import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
 import {
     businesses,
     menuCategories,
@@ -12,7 +11,10 @@ import {
     users,
 } from '../db/schema.js';
 
+requireQ360StagingDatabaseGuard('verify:restaurant-setup');
 requireDatabaseUrl();
+
+const { closeDatabase, db } = await import('../db/client.js');
 
 const businessA = 'biz_verify_restaurant_setup_a';
 const businessB = 'biz_verify_restaurant_setup_b';

@@ -1,7 +1,8 @@
 import { createHmac } from 'crypto';
 import { Hono } from 'hono';
-import { requireDatabaseUrl } from '../utils/env.js';
+import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
 
+requireQ360StagingDatabaseGuard('verify:tenant-identity');
 requireDatabaseUrl();
 
 process.env.JWT_SECRET ||= 'tenant-identity-verification-secret';
