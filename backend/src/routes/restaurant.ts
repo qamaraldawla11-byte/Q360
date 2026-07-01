@@ -560,6 +560,51 @@ const orderWithItems = async (businessId: string, orderId: string) => {
     };
 };
 
+const integratedPaymentSummary = (
+    payment: typeof restaurantPayments.$inferSelect,
+    cashReceived?: number,
+    changeDue?: number,
+) => ({
+    id: payment.id,
+    method: payment.method,
+    amount: payment.amount,
+    status: payment.status,
+    paidAt: payment.paidAt,
+    ...(typeof cashReceived === 'number' ? { cashReceived } : {}),
+    ...(typeof changeDue === 'number' ? { changeDue } : {}),
+});
+
+const payNowOrderResponse = async (
+    businessId: string,
+    orderId: string,
+    cashReceived?: number,
+    changeDue?: number,
+) => {
+    const order = await orderWithItems(businessId, orderId);
+    if (!order) return null;
+    const payment = await first(db.select().from(restaurantPayments)
+        .where(and(
+            eq(restaurantPayments.businessId, businessId),
+            eq(restaurantPayments.orderId, orderId),
+            eq(restaurantPayments.status, 'completed'),
+        ))
+    );
+    const ticket = await first(db.select().from(kdsTickets)
+        .where(and(eq(kdsTickets.businessId, businessId), eq(kdsTickets.orderId, orderId)))
+    );
+    if (!payment) return null;
+    return {
+        order,
+        payment: integratedPaymentSummary(payment, cashReceived, changeDue),
+        kitchen: {
+            ticket: ticket ? await kdsTicketWithOrder(businessId, ticket.id) : null,
+        },
+        visibleOrderNumber: order.visibleOrderNumber,
+        displayOrderNumber: order.displayOrderNumber,
+        nextAction: 'sent_to_kitchen' as const,
+    };
+};
+
 restaurant.get('/business-pulse/snapshot', async (c) => {
     try {
         const businessId = c.get('businessId');
@@ -818,6 +863,234 @@ restaurant.patch('/tables/:id/status', async (c) => {
     ));
 });
 
+restaurant.post('/orders/pay-now', async (c) => {
+    if (!hasRole(c, paymentRoles)) return forbid(c);
+
+    const body = await parseJson<{
+        tableId?: unknown;
+        table_id?: unknown;
+        orderType?: unknown;
+        order_type?: unknown;
+        paymentMethod?: unknown;
+        payment_method?: unknown;
+        cashReceived?: unknown;
+        cash_received?: unknown;
+        idempotencyKey?: unknown;
+        idempotency_key?: unknown;
+        items?: {
+            menuItemId?: unknown;
+            menu_item_id?: unknown;
+            quantity?: unknown;
+            notes?: unknown;
+        }[];
+    }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+        return c.json({ error: 'At least one item is required' }, 400);
+    }
+    const tableId = body.tableId ?? body.table_id;
+    if (tableId !== undefined && tableId !== null) {
+        return c.json({ error: 'Pay-now is only available for takeaway orders' }, 409);
+    }
+    const requestedOrderType = body.orderType ?? body.order_type;
+    if (requestedOrderType !== undefined && requestedOrderType !== 'takeaway') {
+        return c.json({ error: 'Dine-in pay-now is not allowed' }, 409);
+    }
+    const paymentMethodValue = body.paymentMethod ?? body.payment_method;
+    if (
+        typeof paymentMethodValue !== 'string' ||
+        !['cash', 'card', 'manual'].includes(paymentMethodValue)
+    ) {
+        return c.json({ error: 'Payment method must be cash, card, or manual' }, 400);
+    }
+    const idempotencyKeyValue = body.idempotencyKey ?? body.idempotency_key;
+    if (
+        idempotencyKeyValue !== undefined &&
+        idempotencyKeyValue !== null &&
+        (typeof idempotencyKeyValue !== 'string' || idempotencyKeyValue.trim().length > 120)
+    ) {
+        return c.json({ error: 'Invalid idempotency key' }, 400);
+    }
+    const idempotencyKey = typeof idempotencyKeyValue === 'string'
+        ? idempotencyKeyValue.trim() || null
+        : null;
+    for (const item of body.items) {
+        const menuItemId = item.menuItemId ?? item.menu_item_id;
+        if (
+            typeof menuItemId !== 'string' ||
+            typeof item.quantity !== 'number' ||
+            !Number.isSafeInteger(item.quantity) ||
+            item.quantity <= 0 ||
+            (item.notes !== undefined && typeof item.notes !== 'string')
+        ) {
+            return c.json({ error: 'Each item requires a menu_item_id and positive integer quantity' }, 400);
+        }
+    }
+
+    const businessId = c.get('businessId');
+    if (idempotencyKey) {
+        const existingOrder = await first(db.select().from(restaurantOrders)
+            .where(and(
+                eq(restaurantOrders.businessId, businessId),
+                eq(restaurantOrders.idempotencyKey, idempotencyKey),
+            ))
+        );
+        if (existingOrder) {
+            const existingResponse = await payNowOrderResponse(businessId, existingOrder.id);
+            if (existingResponse) return c.json(existingResponse);
+            return c.json({ error: 'Idempotency key is already used by a non-pay-now order' }, 409);
+        }
+    }
+
+    const orderId = randomUUID();
+    let cashReceived: number | undefined;
+    let changeDue: number | undefined;
+    try {
+        let created = false;
+        for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
+            try {
+                await db.transaction(async (tx) => {
+                    const requests = new Map<string, { quantity: number; notes: string | null }>();
+                    for (const item of body.items!) {
+                        const id = (item.menuItemId ?? item.menu_item_id) as string;
+                        const previous = requests.get(id);
+                        requests.set(id, {
+                            quantity: (previous?.quantity || 0) + (item.quantity as number),
+                            notes: typeof item.notes === 'string' ? item.notes.trim() || null : previous?.notes || null,
+                        });
+                    }
+                    const canonicalItems = [];
+                    for (const [id, request] of requests.entries()) {
+                        const item = await first(tx.select().from(menuItems)
+                            .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId)))
+                        );
+                        if (!item) throw new Error('ITEM_NOT_FOUND');
+                        if (!item.isAvailable) throw new Error('ITEM_UNAVAILABLE');
+                        canonicalItems.push({ item, ...request });
+                    }
+                    const total = canonicalItems.reduce(
+                        (sum, entry) => sum + entry.item.price * entry.quantity,
+                        0,
+                    );
+                    const amount = total / 100;
+                    const cashReceivedValue = body.cashReceived ?? body.cash_received;
+                    if (paymentMethodValue === 'cash') {
+                        if (typeof cashReceivedValue !== 'number' || !Number.isFinite(cashReceivedValue)) {
+                            throw new Error('INVALID_CASH_RECEIVED');
+                        }
+                        if (cashReceivedValue + 0.005 < amount) {
+                            throw new Error('SHORT_CASH_RECEIVED');
+                        }
+                        cashReceived = Math.round(cashReceivedValue * 100) / 100;
+                        changeDue = Math.max(0, Math.round((cashReceived - amount) * 100) / 100);
+                    } else if (cashReceivedValue !== undefined && cashReceivedValue !== null && typeof cashReceivedValue !== 'number') {
+                        throw new Error('INVALID_CASH_RECEIVED');
+                    }
+
+                    const now = new Date();
+                    const orderNumberDate = orderNumberDateFor(now);
+                    await tx.execute(sql`
+                        SELECT pg_advisory_xact_lock(hashtext(${businessId}), hashtext(${orderNumberDate}))
+                    `);
+                    const sequenceRows = await tx.select({
+                        nextNumber: sql<number>`COALESCE(MAX(${restaurantOrders.visibleOrderNumber}), 0) + 1`,
+                    }).from(restaurantOrders)
+                        .where(and(
+                            eq(restaurantOrders.businessId, businessId),
+                            eq(restaurantOrders.orderNumberDate, orderNumberDate),
+                        ));
+                    const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
+
+                    await tx.insert(restaurantOrders).values({
+                        id: orderId,
+                        businessId,
+                        visibleOrderNumber,
+                        orderNumberDate,
+                        tableId: null,
+                        status: 'pending',
+                        orderType: 'takeaway',
+                        serviceStatus: 'pending',
+                        paymentStatus: 'paid',
+                        paymentTiming: 'pay_before_service',
+                        idempotencyKey,
+                        createdBy: c.get('userId'),
+                        total,
+                        createdAt: now,
+                        updatedAt: now,
+                    });
+                    await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
+                        id: randomUUID(),
+                        orderId,
+                        menuItemId: entry.item.id,
+                        name: entry.item.name,
+                        quantity: entry.quantity,
+                        unitPrice: entry.item.price,
+                        notes: entry.notes,
+                        status: 'pending' as const,
+                    })));
+                    await tx.insert(restaurantPayments).values({
+                        id: randomUUID(),
+                        businessId,
+                        orderId,
+                        method: paymentMethodValue as 'cash' | 'card' | 'manual',
+                        amount,
+                        status: 'completed',
+                        paidAt: now,
+                    });
+                    await tx.insert(kdsTickets).values({
+                        id: randomUUID(),
+                        orderId,
+                        businessId,
+                        status: 'new',
+                        createdAt: now,
+                        completedAt: null,
+                    });
+                });
+                created = true;
+            } catch (error) {
+                if (isUniqueOrderNumberConflict(error) && attempt < 4) continue;
+                throw error;
+            }
+        }
+        await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
+            orderType: 'takeaway',
+            paymentTiming: 'pay_before_service',
+            tableId: null,
+            idempotencyKey: Boolean(idempotencyKey),
+        });
+        const createdOrder = await orderWithItems(businessId, orderId);
+        await logAudit(c, 'RESTAURANT_ORDER_PAYMENT_COMPLETED', 'RESTAURANT_ORDER', orderId, {
+            method: paymentMethodValue,
+            amount: createdOrder ? createdOrder.total / 100 : null,
+            orderType: 'takeaway',
+            paymentTiming: 'pay_before_service',
+            integratedPayNow: true,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'ITEM_NOT_FOUND') return c.json({ error: 'Menu item not found' }, 404);
+        if (message === 'ITEM_UNAVAILABLE') return c.json({ error: 'Menu item is unavailable' }, 409);
+        if (message === 'INVALID_CASH_RECEIVED') return c.json({ error: 'Cash received must be a valid amount' }, 400);
+        if (message === 'SHORT_CASH_RECEIVED') return c.json({ error: 'Cash received must be at least the order total' }, 400);
+        if (message.includes('restaurant_orders_business_idempotency_key_idx') && idempotencyKey) {
+            const existingOrder = await first(db.select().from(restaurantOrders)
+                .where(and(
+                    eq(restaurantOrders.businessId, businessId),
+                    eq(restaurantOrders.idempotencyKey, idempotencyKey),
+                ))
+            );
+            if (existingOrder) {
+                const existingResponse = await payNowOrderResponse(businessId, existingOrder.id);
+                if (existingResponse) return c.json(existingResponse);
+            }
+        }
+        throw error;
+    }
+
+    const response = await payNowOrderResponse(businessId, orderId, cashReceived, changeDue);
+    return c.json(response, 201);
+});
+
 restaurant.post('/orders', async (c) => {
     const body = await parseJson<{
         tableId?: unknown;
@@ -870,6 +1143,9 @@ restaurant.post('/orders', async (c) => {
     const paymentTiming: PaymentTiming = typeof requestedPaymentTiming === 'string'
         ? requestedPaymentTiming as PaymentTiming
         : 'pay_after_service';
+    if (orderType === 'dine_in' && paymentTiming === 'pay_before_service') {
+        return c.json({ error: 'Dine-in pay-now is not allowed' }, 409);
+    }
     const idempotencyKeyValue = body.idempotencyKey ?? body.idempotency_key;
     if (
         idempotencyKeyValue !== undefined &&

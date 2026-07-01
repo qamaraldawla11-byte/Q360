@@ -164,6 +164,25 @@ type FlowOrder = {
     cancelledAt: string | null;
 };
 
+type IntegratedPayNowResult = {
+    order: FlowOrder & { payments?: unknown[] };
+    payment: {
+        id: string;
+        method: 'cash' | 'card' | 'manual';
+        amount: number;
+        status: 'completed';
+        paidAt: string | null;
+        cashReceived?: number;
+        changeDue?: number;
+    };
+    kitchen: {
+        ticket: { id: string; order: { id: string } | null } | null;
+    };
+    visibleOrderNumber: number | null;
+    displayOrderNumber: string;
+    nextAction: 'sent_to_kitchen';
+};
+
 const firstTicketForOrder = async (orderId: string) => {
     const tickets = await request<{ id: string; order: ({ id: string; displayOrderNumber: string } & Record<string, unknown>) | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
     const ticket = tickets.find((entry) => entry.order?.id === orderId);
@@ -229,6 +248,114 @@ try {
     const table = tables.find((entry) => entry.label === 'T1');
     const table2 = tables.find((entry) => entry.label === 'T2');
     if (!itemId || !itemBId || !table || !table2) throw new Error('Fixture menu or table missing');
+
+    console.log('[verify:restaurant-service-flow] Integrated takeaway pay-now flow...');
+    const payNowCash = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-cash',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const payNowCard = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'card',
+            idempotency_key: 'flow-pay-now-card',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const payNowManual = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'manual',
+            idempotency_key: 'flow-pay-now-manual',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const payNowDuplicateFirst = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 11,
+            idempotency_key: 'flow-pay-now-duplicate',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const payNowDuplicateSecond = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 11,
+            idempotency_key: 'flow-pay-now-duplicate',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const shortCashPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 1,
+            idempotency_key: 'flow-pay-now-short-cash',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const dineInPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            table_id: table.id,
+            order_type: 'dine_in',
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-dine-in',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const craftedDineInPayBefore = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            table_id: table.id,
+            order_type: 'dine_in',
+            payment_timing: 'pay_before_service',
+            idempotency_key: 'flow-crafted-dine-in-pay-before',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const waiterPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-waiter',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const kitchenPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-kitchen',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'kitchen' });
+    const crossTenantPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'card',
+            idempotency_key: 'flow-pay-now-cross-tenant',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: userBId, role: 'cashier' });
+    const integratedOrderIds = [payNowCash.order.id, payNowCard.order.id, payNowManual.order.id, payNowDuplicateFirst.order.id];
+    const integratedOrders = await db.select().from(restaurantOrders)
+        .where(and(eq(restaurantOrders.businessId, businessId), inArray(restaurantOrders.id, integratedOrderIds)));
+    const integratedPayments = await db.select().from(restaurantPayments)
+        .where(and(eq(restaurantPayments.businessId, businessId), inArray(restaurantPayments.orderId, integratedOrderIds)));
+    const integratedTickets = await db.select().from(kdsTickets)
+        .where(and(eq(kdsTickets.businessId, businessId), inArray(kdsTickets.orderId, integratedOrderIds)));
 
     console.log('[verify:restaurant-service-flow] POS role permissions...');
     const ownerCreate = await request<FlowOrder>('/api/restaurant/orders', {
@@ -625,6 +752,42 @@ try {
             kitchenPaymentStatus: kitchenPayment.status,
             paymentCount: payments.length,
         },
+        integratedPayNow: {
+            cash: {
+                orderType: payNowCash.order.orderType,
+                serviceStatus: payNowCash.order.serviceStatus,
+                paymentStatus: payNowCash.order.paymentStatus,
+                paymentTiming: payNowCash.order.paymentTiming,
+                method: payNowCash.payment.method,
+                amount: payNowCash.payment.amount,
+                cashReceived: payNowCash.payment.cashReceived,
+                changeDue: payNowCash.payment.changeDue,
+                ticketOrderId: payNowCash.kitchen.ticket?.order?.id,
+                nextAction: payNowCash.nextAction,
+                displayOrderNumber: payNowCash.displayOrderNumber,
+            },
+            card: {
+                paymentStatus: payNowCard.order.paymentStatus,
+                method: payNowCard.payment.method,
+                cashReceivedPresent: 'cashReceived' in payNowCard.payment,
+            },
+            manual: {
+                paymentStatus: payNowManual.order.paymentStatus,
+                method: payNowManual.payment.method,
+                cashReceivedPresent: 'cashReceived' in payNowManual.payment,
+            },
+            duplicateSameOrder: payNowDuplicateFirst.order.id === payNowDuplicateSecond.order.id,
+            duplicateSamePayment: payNowDuplicateFirst.payment.id === payNowDuplicateSecond.payment.id,
+            shortCashStatus: shortCashPayNow.status,
+            dineInPayNowStatus: dineInPayNow.status,
+            craftedDineInPayBeforeStatus: craftedDineInPayBefore.status,
+            waiterStatus: waiterPayNow.status,
+            kitchenStatus: kitchenPayNow.status,
+            crossTenantStatus: crossTenantPayNow.status,
+            exactOrderCount: integratedOrders.length,
+            exactPaymentCount: integratedPayments.length,
+            exactTicketCount: integratedTickets.length,
+        },
         cancellation: {
             cashierTakeawayStatus: cancelledTakeaway.status,
             cashierTakeawayServiceStatus: cancelledTakeaway.serviceStatus,
@@ -702,6 +865,34 @@ try {
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
         result.guards.paymentCount !== 3 ||
+        result.integratedPayNow.cash.orderType !== 'takeaway' ||
+        result.integratedPayNow.cash.serviceStatus !== 'pending' ||
+        result.integratedPayNow.cash.paymentStatus !== 'paid' ||
+        result.integratedPayNow.cash.paymentTiming !== 'pay_before_service' ||
+        result.integratedPayNow.cash.method !== 'cash' ||
+        result.integratedPayNow.cash.amount !== payNowCash.order.total / 100 ||
+        result.integratedPayNow.cash.cashReceived !== 20 ||
+        result.integratedPayNow.cash.changeDue !== 20 - (payNowCash.order.total / 100) ||
+        result.integratedPayNow.cash.ticketOrderId !== payNowCash.order.id ||
+        result.integratedPayNow.cash.nextAction !== 'sent_to_kitchen' ||
+        result.integratedPayNow.cash.displayOrderNumber !== '#1' ||
+        result.integratedPayNow.card.paymentStatus !== 'paid' ||
+        result.integratedPayNow.card.method !== 'card' ||
+        result.integratedPayNow.card.cashReceivedPresent ||
+        result.integratedPayNow.manual.paymentStatus !== 'paid' ||
+        result.integratedPayNow.manual.method !== 'manual' ||
+        result.integratedPayNow.manual.cashReceivedPresent ||
+        !result.integratedPayNow.duplicateSameOrder ||
+        !result.integratedPayNow.duplicateSamePayment ||
+        result.integratedPayNow.shortCashStatus !== 400 ||
+        result.integratedPayNow.dineInPayNowStatus !== 409 ||
+        result.integratedPayNow.craftedDineInPayBeforeStatus !== 409 ||
+        result.integratedPayNow.waiterStatus !== 403 ||
+        result.integratedPayNow.kitchenStatus !== 403 ||
+        result.integratedPayNow.crossTenantStatus !== 404 ||
+        result.integratedPayNow.exactOrderCount !== 4 ||
+        result.integratedPayNow.exactPaymentCount !== 4 ||
+        result.integratedPayNow.exactTicketCount !== 4 ||
         result.cancellation.cashierTakeawayStatus !== 'cancelled' ||
         result.cancellation.cashierTakeawayServiceStatus !== 'cancelled' ||
         result.cancellation.cashierTakeawayReason !== 'Customer changed order' ||
@@ -718,7 +909,7 @@ try {
         result.cancellation.crossTenantCancelStatus !== 404 ||
         result.cancellation.auditCount < 1 ||
         !result.cancellation.auditTenantScoped ||
-        result.numbering.firstOrderNumber !== '#1' ||
+        !/^#\d+$/.test(result.numbering.firstOrderNumber) ||
         result.numbering.tenantBOrderNumber !== '#1' ||
         !result.numbering.tenantBNumbersStartAtOne ||
         !result.numbering.noTenantDuplicates ||

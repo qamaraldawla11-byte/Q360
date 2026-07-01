@@ -4,11 +4,13 @@ import { ShoppingCart, Trash2, ArrowRight, Loader2 } from 'lucide-react';
 import {
     restaurantApi,
     type RestaurantMenuItem,
+    type RestaurantPaymentMethod,
     type RestaurantPaymentTiming,
     type RestaurantTable,
 } from '@/api/restaurant.api';
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
+type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
 
 export const PosView = () => {
     const [categories, setCategories] = useState<{ id: string; name: string; items: RestaurantMenuItem[] }[]>([]);
@@ -17,6 +19,8 @@ export const PosView = () => {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [selectedTable, setSelectedTable] = useState('');
     const [paymentTiming, setPaymentTiming] = useState<RestaurantPaymentTiming>('pay_after_service');
+    const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
+    const [cashReceived, setCashReceived] = useState('');
     const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,28 +72,53 @@ export const PosView = () => {
     };
 
     const totalCents = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const totalAmount = totalCents / 100;
+    const isPayNow = !selectedTable && paymentTiming === 'pay_before_service';
+    const cashReceivedAmount = Number(cashReceived);
+    const hasValidCashReceived = cashReceived.trim() !== '' && Number.isFinite(cashReceivedAmount);
+    const changeDue = paymentMethod === 'cash' && hasValidCashReceived
+        ? Math.max(0, cashReceivedAmount - totalAmount)
+        : 0;
+    const isShortCash = isPayNow && paymentMethod === 'cash' && (!hasValidCashReceived || cashReceivedAmount + 0.005 < totalAmount);
 
     const handleCheckout = async () => {
         if (!cart.length || isSubmitting) return;
         setIsSubmitting(true);
         try {
-            await restaurantApi.createOrder({
-                table_id: selectedTable || undefined,
-                order_type: selectedTable ? 'dine_in' : 'takeaway',
-                payment_timing: paymentTiming,
-                idempotency_key: submissionKey,
-                items: cart.map((item) => ({
-                    menu_item_id: item.id,
-                    quantity: item.quantity,
-                    notes: item.notes,
-                })),
-            });
+            const orderItems = cart.map((item) => ({
+                menu_item_id: item.id,
+                quantity: item.quantity,
+                notes: item.notes,
+            }));
+            const result = isPayNow
+                ? await restaurantApi.createPayNowTakeawayOrder({
+                    payment_method: paymentMethod,
+                    cash_received: paymentMethod === 'cash' ? cashReceivedAmount : undefined,
+                    idempotency_key: submissionKey,
+                    items: orderItems,
+                })
+                : await restaurantApi.createOrder({
+                    table_id: selectedTable || undefined,
+                    order_type: selectedTable ? 'dine_in' : 'takeaway',
+                    payment_timing: paymentTiming,
+                    idempotency_key: submissionKey,
+                    items: orderItems,
+                });
+            const displayOrderNumber = isPayNow ? result.displayOrderNumber : result.displayOrderNumber;
             setCart([]);
             setSelectedTable('');
             setPaymentTiming('pay_after_service');
+            setPaymentMethod('cash');
+            setCashReceived('');
             setSubmissionKey(crypto.randomUUID());
-            setTables(await restaurantApi.getTables());
-            setMessage({ kind: 'success', text: 'Order sent to kitchen.' });
+            const [menu, tableData] = await Promise.all([
+                restaurantApi.getMenu(),
+                restaurantApi.getTables(),
+            ]);
+            setCategories(menu.categories);
+            setTables(tableData);
+            setSelectedCategory((current) => current || menu.categories[0]?.id || '');
+            setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen.` });
         } catch (error) {
             setMessage({
                 kind: 'error',
@@ -194,7 +223,10 @@ export const PosView = () => {
                         <select
                             id="restaurant-table"
                             value={selectedTable}
-                            onChange={(event) => setSelectedTable(event.target.value)}
+                            onChange={(event) => {
+                                setSelectedTable(event.target.value);
+                                if (event.target.value) setPaymentTiming('pay_after_service');
+                            }}
                             style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
                         >
                             <option value="">No Table (Takeaway)</option>
@@ -215,10 +247,49 @@ export const PosView = () => {
                             onChange={(event) => setPaymentTiming(event.target.value as RestaurantPaymentTiming)}
                             style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
                         >
-                            <option value="pay_after_service">Pay after service</option>
-                            <option value="pay_before_service" disabled={Boolean(selectedTable)}>Pay before service</option>
+                            <option value="pay_after_service">Pay later</option>
+                            {!selectedTable && <option value="pay_before_service">Pay now</option>}
                         </select>
+                        {selectedTable && (
+                            <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>Dine-in orders are pay later.</div>
+                        )}
                     </div>
+
+                    {isPayNow && (
+                        <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div>
+                                <label htmlFor="restaurant-payment-method" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>PAYMENT METHOD</label>
+                                <select
+                                    id="restaurant-payment-method"
+                                    value={paymentMethod}
+                                    onChange={(event) => setPaymentMethod(event.target.value as PosPaymentMethod)}
+                                    style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
+                                >
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Card</option>
+                                    <option value="manual">Manual</option>
+                                </select>
+                            </div>
+                            {paymentMethod === 'cash' && (
+                                <div>
+                                    <label htmlFor="restaurant-cash-received" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>CASH RECEIVED</label>
+                                    <input
+                                        id="restaurant-cash-received"
+                                        type="number"
+                                        min={0}
+                                        step="0.01"
+                                        value={cashReceived}
+                                        onChange={(event) => setCashReceived(event.target.value)}
+                                        style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
+                                    />
+                                    <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isShortCash ? '#b91c1c' : '#475569', fontWeight: 700 }}>
+                                        <span>Change due</span>
+                                        <span>${changeDue.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
                         <span>Subtotal</span><span>${(totalCents / 100).toFixed(2)}</span>
@@ -232,16 +303,16 @@ export const PosView = () => {
 
                     <button
                         onClick={handleCheckout}
-                        disabled={!cart.length || isSubmitting}
+                        disabled={!cart.length || isSubmitting || isShortCash}
                         style={{
                             width: '100%', padding: '16px', background: 'var(--accent-primary)', color: 'white',
                             border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700, fontSize: '16px',
-                            cursor: cart.length && !isSubmitting ? 'pointer' : 'not-allowed',
-                            opacity: cart.length && !isSubmitting ? 1 : 0.6,
+                            cursor: cart.length && !isSubmitting && !isShortCash ? 'pointer' : 'not-allowed',
+                            opacity: cart.length && !isSubmitting && !isShortCash ? 1 : 0.6,
                             display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
                         }}
                     >
-                        {isSubmitting ? <><Loader2 size={20} /> Sending...</> : <>Send to Kitchen <ArrowRight size={20} /></>}
+                        {isSubmitting ? <><Loader2 size={20} /> Sending...</> : <>{isPayNow ? 'Pay & Send to Kitchen' : 'Send to Kitchen'} <ArrowRight size={20} /></>}
                     </button>
                 </div>
             </div>

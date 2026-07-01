@@ -55,6 +55,16 @@ export interface RestaurantPayment {
     paidAt: string | null;
 }
 
+export interface RestaurantIntegratedPaymentSummary {
+    id: string;
+    method: RestaurantPaymentMethod;
+    amount: number;
+    status: 'completed' | 'refunded';
+    paidAt: string | null;
+    cashReceived?: number;
+    changeDue?: number;
+}
+
 export interface RestaurantOrder {
     id: string;
     businessId: string;
@@ -102,6 +112,17 @@ export interface KdsTicket {
     order: KdsOrder | null;
 }
 
+export interface RestaurantPayNowOrderResult {
+    order: RestaurantOrder;
+    payment: RestaurantIntegratedPaymentSummary;
+    kitchen: {
+        ticket: KdsTicket | null;
+    };
+    visibleOrderNumber: number | null;
+    displayOrderNumber: string;
+    nextAction: 'sent_to_kitchen';
+}
+
 export interface RestaurantDashboard {
     total_revenue_today: number;
     active_orders_count: number;
@@ -140,6 +161,13 @@ export const restaurantApi = {
         idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
     }) => http.post<RestaurantOrder>('/restaurant/orders', payload),
+
+    createPayNowTakeawayOrder: (payload: {
+        payment_method: Exclude<RestaurantPaymentMethod, 'mobile'>;
+        cash_received?: number;
+        idempotency_key?: string;
+        items: { menu_item_id: string; quantity: number; notes?: string }[];
+    }) => http.post<RestaurantPayNowOrderResult>('/restaurant/orders/pay-now', payload),
 
     getOrders: (active = false) =>
         http.get<RestaurantOrder[]>(`/restaurant/orders${active ? '?status=active' : ''}`),
