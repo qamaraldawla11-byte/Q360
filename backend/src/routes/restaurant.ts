@@ -129,6 +129,9 @@ const canCreateOrder = async (c: Context<AppEnv>, orderType: OrderType) =>
     (orderType === 'takeaway' && hasRole(c, ['cashier'])) ||
     await isLegacyRestaurantOwner(c);
 
+const canMarkKitchenReady = async (c: Context<AppEnv>) =>
+    hasRole(c, kitchenRoles) || await isLegacyRestaurantOwner(c);
+
 const serviceStatusFor = (order: typeof restaurantOrders.$inferSelect): ServiceStatus => {
     if (order.serviceStatus) return order.serviceStatus;
     if (order.status === 'cancelled') return 'cancelled';
@@ -1673,7 +1676,7 @@ restaurant.get('/kds', async (c) => {
 });
 
 restaurant.patch('/kds/:id/status', async (c) => {
-    if (!hasRole(c, kitchenRoles)) return forbid(c);
+    if (!await canMarkKitchenReady(c)) return forbid(c);
 
     const body = await parseJson<{ status?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);

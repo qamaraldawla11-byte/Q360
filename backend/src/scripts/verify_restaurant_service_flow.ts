@@ -20,7 +20,7 @@ import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/en
 requireQ360StagingDatabaseGuard('verify:restaurant-service-flow');
 requireDatabaseUrl();
 
-const { closeDatabase, db } = await import('../db/client.js');
+const { closeDatabase, db, first } = await import('../db/client.js');
 const { ensureRestaurantServiceFlowSchema } = await import('../db/restaurantServiceFlowMigration.js');
 
 const businessId = 'biz_verify_restaurant_service_flow';
@@ -184,20 +184,38 @@ type IntegratedPayNowResult = {
 };
 
 const firstTicketForOrder = async (orderId: string) => {
-    const tickets = await request<{ id: string; order: ({ id: string; displayOrderNumber: string } & Record<string, unknown>) | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
-    const ticket = tickets.find((entry) => entry.order?.id === orderId);
+    const ticket = await first(db.select({ id: kdsTickets.id }).from(kdsTickets)
+        .where(and(eq(kdsTickets.businessId, businessId), eq(kdsTickets.orderId, orderId)))
+    );
     if (!ticket) throw new Error(`No KDS ticket found for ${orderId}`);
-    return ticket;
+    return {
+        id: ticket.id,
+        order: { id: orderId, displayOrderNumber: '' },
+    };
 };
 
-const markReady = async (orderId: string) => {
+const markReady = async (
+    orderId: string,
+    tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string },
+) => {
     const ticket = await firstTicketForOrder(orderId);
     const updated = await request<{ id: string; status: string; completedAt: string | null; order: { id: string; displayOrderNumber: string } | null }>(`/api/restaurant/kds/${ticket.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'done' }),
-    }, { role: 'kitchen' });
+    }, tokenOptions ?? { role: 'kitchen' });
     return { ticket, updated };
 };
+
+const createKitchenReadyFixtureOrder = async (itemId: string, idempotencyKey: string) =>
+    request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: idempotencyKey,
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
 
 let serverOutput = '';
 let server: ReturnType<typeof spawn> | undefined;
@@ -248,6 +266,52 @@ try {
     const table = tables.find((entry) => entry.label === 'T1');
     const table2 = tables.find((entry) => entry.label === 'T2');
     if (!itemId || !itemBId || !table || !table2) throw new Error('Fixture menu or table missing');
+
+    console.log('[verify:restaurant-service-flow] Kitchen Ready permissions...');
+    const kitchenReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-kitchen');
+    const kitchenReady = await markReady(kitchenReadyOrder.id, { role: 'kitchen' });
+    const duplicateKitchenReady = await request<{ id: string; status: string; completedAt: string | null }>(`/api/restaurant/kds/${kitchenReady.ticket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'kitchen' });
+    const ownerReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-owner');
+    const ownerReady = await markReady(ownerReadyOrder.id, { role: 'owner' });
+    const managerReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-manager');
+    const managerReady = await markReady(managerReadyOrder.id, { role: 'manager' });
+    const adminReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-admin');
+    const adminReady = await markReady(adminReadyOrder.id, { role: 'admin' });
+    const legacyReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-legacy-owner');
+    const legacyOwnerReady = await markReady(legacyReadyOrder.id, {
+        userId: legacyOwnerUserId,
+        role: 'user',
+        email: 'verify-restaurant-service-flow-owner@example.com',
+    });
+    const rejectedReadyOrder = await createKitchenReadyFixtureOrder(itemId, 'flow-ready-reject-matrix');
+    const rejectedReadyTicket = await firstTicketForOrder(rejectedReadyOrder.id);
+    const waiterReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'waiter' });
+    const cashierReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'cashier' });
+    const unknownReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'chef' });
+    const missingRoleReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: '' });
+    const genericUserReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { businessId: businessBId, userId: userBId, role: 'user' });
+    const crossTenantReady = await requestResponse(`/api/restaurant/kds/${rejectedReadyTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { businessId: businessBId, userId: userBId, role: 'manager' });
 
     console.log('[verify:restaurant-service-flow] Integrated takeaway pay-now flow...');
     const payNowCash = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
@@ -752,6 +816,21 @@ try {
             kitchenPaymentStatus: kitchenPayment.status,
             paymentCount: payments.length,
         },
+        kitchenReadyPermissions: {
+            kitchenStatus: kitchenReady.updated.status,
+            ownerStatus: ownerReady.updated.status,
+            managerStatus: managerReady.updated.status,
+            adminStatus: adminReady.updated.status,
+            legacyOwnerStatus: legacyOwnerReady.updated.status,
+            legacyOwnerOrderId: legacyOwnerReady.updated.order?.id,
+            waiterStatus: waiterReady.status,
+            cashierStatus: cashierReady.status,
+            unknownStatus: unknownReady.status,
+            missingRoleStatus: missingRoleReady.status,
+            genericUserOtherBusinessStatus: genericUserReady.status,
+            crossTenantStatus: crossTenantReady.status,
+            duplicateReadyStatus: duplicateKitchenReady.status,
+        },
         integratedPayNow: {
             cash: {
                 orderType: payNowCash.order.orderType,
@@ -865,6 +944,19 @@ try {
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
         result.guards.paymentCount !== 3 ||
+        result.kitchenReadyPermissions.kitchenStatus !== 'done' ||
+        result.kitchenReadyPermissions.ownerStatus !== 'done' ||
+        result.kitchenReadyPermissions.managerStatus !== 'done' ||
+        result.kitchenReadyPermissions.adminStatus !== 'done' ||
+        result.kitchenReadyPermissions.legacyOwnerStatus !== 'done' ||
+        result.kitchenReadyPermissions.legacyOwnerOrderId !== legacyReadyOrder.id ||
+        result.kitchenReadyPermissions.waiterStatus !== 403 ||
+        result.kitchenReadyPermissions.cashierStatus !== 403 ||
+        result.kitchenReadyPermissions.unknownStatus !== 403 ||
+        result.kitchenReadyPermissions.missingRoleStatus !== 403 ||
+        result.kitchenReadyPermissions.genericUserOtherBusinessStatus !== 403 ||
+        result.kitchenReadyPermissions.crossTenantStatus !== 404 ||
+        result.kitchenReadyPermissions.duplicateReadyStatus !== 'done' ||
         result.integratedPayNow.cash.orderType !== 'takeaway' ||
         result.integratedPayNow.cash.serviceStatus !== 'pending' ||
         result.integratedPayNow.cash.paymentStatus !== 'paid' ||
@@ -875,7 +967,7 @@ try {
         result.integratedPayNow.cash.changeDue !== 20 - (payNowCash.order.total / 100) ||
         result.integratedPayNow.cash.ticketOrderId !== payNowCash.order.id ||
         result.integratedPayNow.cash.nextAction !== 'sent_to_kitchen' ||
-        result.integratedPayNow.cash.displayOrderNumber !== '#1' ||
+        !/^#\d+$/.test(result.integratedPayNow.cash.displayOrderNumber) ||
         result.integratedPayNow.card.paymentStatus !== 'paid' ||
         result.integratedPayNow.card.method !== 'card' ||
         result.integratedPayNow.card.cashReceivedPresent ||
