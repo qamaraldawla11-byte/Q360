@@ -13,7 +13,10 @@ export const ensureRestaurantServiceFlowSchema = () => {
             ADD COLUMN IF NOT EXISTS payment_timing text,
             ADD COLUMN IF NOT EXISTS idempotency_key text,
             ADD COLUMN IF NOT EXISTS visible_order_number integer,
-            ADD COLUMN IF NOT EXISTS order_number_date text
+            ADD COLUMN IF NOT EXISTS order_number_date text,
+            ADD COLUMN IF NOT EXISTS cancellation_reason text,
+            ADD COLUMN IF NOT EXISTS cancelled_by text,
+            ADD COLUMN IF NOT EXISTS cancelled_at timestamp
         `);
         await db.execute(sql`
             CREATE UNIQUE INDEX IF NOT EXISTS restaurant_orders_business_idempotency_key_idx

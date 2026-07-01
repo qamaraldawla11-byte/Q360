@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
 import {
     businesses,
+    auditLogs,
     kdsTickets,
     menuCategories,
     menuItems,
@@ -47,18 +48,27 @@ const port = await getAvailablePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-service-flow-test-secret';
 const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
+const tokenCache = new Map<string, string>();
 
 const createToken = async (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
-    const now = Math.floor(Date.now() / 1000);
     const tokenRole = options?.role ?? 'admin';
-    return sign({
-        sub: options?.userId ?? userId,
-        email: options?.email ?? `${tokenRole}-verify-restaurant-service-flow@example.com`,
+    const tokenBusinessId = options?.businessId ?? businessId;
+    const tokenUserId = options?.userId ?? userId;
+    const tokenEmail = options?.email ?? `${tokenRole}-verify-restaurant-service-flow@example.com`;
+    const cacheKey = JSON.stringify({ tokenBusinessId, tokenUserId, tokenRole, tokenEmail });
+    const cached = tokenCache.get(cacheKey);
+    if (cached) return cached;
+    const now = Math.floor(Date.now() / 1000);
+    const token = await sign({
+        sub: tokenUserId,
+        email: tokenEmail,
         role: tokenRole,
-        businessId: options?.businessId ?? businessId,
+        businessId: tokenBusinessId,
         iat: now,
         exp: now + 3600,
     }, secret, 'HS256');
+    tokenCache.set(cacheKey, token);
+    return token;
 };
 
 const requestResponse = async (path: string, init?: RequestInit, tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
@@ -149,6 +159,9 @@ type FlowOrder = {
     serviceStatus: string;
     paymentStatus: string;
     paymentTiming: string;
+    cancellationReason: string | null;
+    cancelledBy: string | null;
+    cancelledAt: string | null;
 };
 
 const firstTicketForOrder = async (orderId: string) => {
@@ -160,7 +173,7 @@ const firstTicketForOrder = async (orderId: string) => {
 
 const markReady = async (orderId: string) => {
     const ticket = await firstTicketForOrder(orderId);
-    const updated = await request<{ id: string; status: string; completedAt: string | null }>(`/api/restaurant/kds/${ticket.id}/status`, {
+    const updated = await request<{ id: string; status: string; completedAt: string | null; order: { id: string; displayOrderNumber: string } | null }>(`/api/restaurant/kds/${ticket.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'done' }),
     }, { role: 'kitchen' });
@@ -214,7 +227,8 @@ try {
     const itemBId = menuB.categories.flatMap((category) => category.items)[0]?.id;
     const tables = await request<{ id: string; label: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
     const table = tables.find((entry) => entry.label === 'T1');
-    if (!itemId || !itemBId || !table) throw new Error('Fixture menu or table missing');
+    const table2 = tables.find((entry) => entry.label === 'T2');
+    if (!itemId || !itemBId || !table || !table2) throw new Error('Fixture menu or table missing');
 
     console.log('[verify:restaurant-service-flow] POS role permissions...');
     const ownerCreate = await request<FlowOrder>('/api/restaurant/orders', {
@@ -318,6 +332,81 @@ try {
         }),
     }, { businessId: businessBId, userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
 
+    console.log('[verify:restaurant-service-flow] Cancellation flow...');
+    const cancelTakeaway = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cancel-takeaway',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const cancelledTakeaway = await request<FlowOrder>(`/api/restaurant/orders/${cancelTakeaway.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Customer changed order' }),
+    }, { role: 'cashier' });
+    const cancelDineIn = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            table_id: table2.id,
+            order_type: 'dine_in',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cancel-dine-in',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const cancelDineInTicket = await firstTicketForOrder(cancelDineIn.id);
+    const cancelledDineIn = await request<FlowOrder>(`/api/restaurant/orders/${cancelDineIn.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Guest left before preparation' }),
+    }, { role: 'waiter' });
+    const tableAfterCancel = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
+    const readyCancelled = await requestResponse(`/api/restaurant/kds/${cancelDineInTicket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'kitchen' });
+    const deliverCancelled = await requestResponse(`/api/restaurant/orders/${cancelDineIn.id}/deliver`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    const payCancelled = await requestResponse(`/api/restaurant/orders/${cancelDineIn.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: cancelDineIn.total / 100 }),
+    }, { role: 'cashier' });
+    const kitchenCancelOrder = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-kitchen-cannot-cancel',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const kitchenCancel = await requestResponse(`/api/restaurant/orders/${kitchenCancelOrder.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Kitchen cannot cancel' }),
+    }, { role: 'kitchen' });
+    const crossTenantCancelOrder = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-cross-tenant-cancel',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const crossTenantCancel = await requestResponse(`/api/restaurant/orders/${crossTenantCancelOrder.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Foreign tenant cancel attempt' }),
+    }, { businessId: businessBId, userId: userBId, role: 'manager' });
+    const cancellationAudit = await db.select().from(auditLogs)
+        .where(and(
+            eq(auditLogs.businessId, businessId),
+            eq(auditLogs.entityId, cancelDineIn.id),
+            eq(auditLogs.action, 'RESTAURANT_ORDER_CANCELLED'),
+        ));
+
     console.log('[verify:restaurant-service-flow] Dine-in lifecycle...');
     const dineIn = await request<FlowOrder>('/api/restaurant/orders', {
         method: 'POST',
@@ -389,6 +478,10 @@ try {
         method: 'POST',
         body: JSON.stringify({ method: 'card', amount: takeawayBefore.total / 100 }),
     }, { role: 'cashier' });
+    const paidOrderCancel = await requestResponse(`/api/restaurant/orders/${takeawayBefore.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Paid orders cannot cancel' }),
+    }, { role: 'manager' });
     await markReady(takeawayBefore.id);
     const readyBefore = (await request<FlowOrder[]>('/api/restaurant/orders', undefined, { role: 'waiter' }))
         .find((order) => order.id === takeawayBefore.id);
@@ -532,6 +625,24 @@ try {
             kitchenPaymentStatus: kitchenPayment.status,
             paymentCount: payments.length,
         },
+        cancellation: {
+            cashierTakeawayStatus: cancelledTakeaway.status,
+            cashierTakeawayServiceStatus: cancelledTakeaway.serviceStatus,
+            cashierTakeawayReason: cancelledTakeaway.cancellationReason,
+            dineInStatus: cancelledDineIn.status,
+            dineInServiceStatus: cancelledDineIn.serviceStatus,
+            dineInCancelledBySet: typeof cancelledDineIn.cancelledBy === 'string' && cancelledDineIn.cancelledBy.length > 0,
+            dineInCancelledAtSet: typeof cancelledDineIn.cancelledAt === 'string' && cancelledDineIn.cancelledAt.length > 0,
+            tableAfterCancel: tableAfterCancel.find((entry) => entry.id === table2.id)?.status,
+            readyCancelledStatus: readyCancelled.status,
+            deliverCancelledStatus: deliverCancelled.status,
+            payCancelledStatus: payCancelled.status,
+            paidOrderCancelStatus: paidOrderCancel.status,
+            kitchenCancelStatus: kitchenCancel.status,
+            crossTenantCancelStatus: crossTenantCancel.status,
+            auditCount: cancellationAudit.length,
+            auditTenantScoped: cancellationAudit.every((entry) => entry.businessId === businessId),
+        },
         numbering: {
             firstOrderNumber: ownerCreate.displayOrderNumber,
             tenantBOrderNumber: tenantBOrder.displayOrderNumber,
@@ -591,6 +702,22 @@ try {
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
         result.guards.paymentCount !== 3 ||
+        result.cancellation.cashierTakeawayStatus !== 'cancelled' ||
+        result.cancellation.cashierTakeawayServiceStatus !== 'cancelled' ||
+        result.cancellation.cashierTakeawayReason !== 'Customer changed order' ||
+        result.cancellation.dineInStatus !== 'cancelled' ||
+        result.cancellation.dineInServiceStatus !== 'cancelled' ||
+        !result.cancellation.dineInCancelledBySet ||
+        !result.cancellation.dineInCancelledAtSet ||
+        result.cancellation.tableAfterCancel !== 'available' ||
+        result.cancellation.readyCancelledStatus !== 409 ||
+        result.cancellation.deliverCancelledStatus !== 409 ||
+        result.cancellation.payCancelledStatus !== 409 ||
+        result.cancellation.paidOrderCancelStatus !== 409 ||
+        result.cancellation.kitchenCancelStatus !== 403 ||
+        result.cancellation.crossTenantCancelStatus !== 404 ||
+        result.cancellation.auditCount < 1 ||
+        !result.cancellation.auditTenantScoped ||
         result.numbering.firstOrderNumber !== '#1' ||
         result.numbering.tenantBOrderNumber !== '#1' ||
         !result.numbering.tenantBNumbersStartAtOne ||

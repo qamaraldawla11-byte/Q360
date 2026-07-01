@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Clock, CheckCircle2 } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
+import axios from 'axios';
 import { restaurantApi, type KdsTicket } from '@/api/restaurant.api';
 
 export const KitchenView = () => {
@@ -27,10 +28,15 @@ export const KitchenView = () => {
     const markDone = async (ticketId: string) => {
         setUpdatingId(ticketId);
         try {
-            await restaurantApi.updateKdsStatus(ticketId, 'done');
+            const updated = await restaurantApi.updateKdsStatus(ticketId, 'done');
+            setTickets((current) => current.filter((ticket) => ticket.id !== updated.id));
+            setError('');
+        } catch (caught) {
+            const message = axios.isAxiosError(caught) && typeof caught.response?.data?.error === 'string'
+                ? caught.response.data.error
+                : 'Unable to mark this ticket as ready. Refresh and try again.';
+            setError(message);
             await loadTickets();
-        } catch {
-            setError('Unable to mark this ticket as done.');
         } finally {
             setUpdatingId(null);
         }

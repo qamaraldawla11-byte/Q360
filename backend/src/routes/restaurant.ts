@@ -21,7 +21,7 @@ import { logAudit } from '../utils/audit.js';
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
 const orderStatuses = ['pending', 'in_kitchen', 'ready', 'delivered', 'served', 'collected', 'closed', 'paid', 'cancelled'] as const;
-const ticketStatuses = ['new', 'cooking', 'done'] as const;
+const ticketStatuses = ['new', 'cooking', 'done', 'cancelled'] as const;
 const paymentMethods = ['cash', 'card', 'manual', 'mobile'] as const;
 const orderTypes = ['dine_in', 'takeaway'] as const;
 const paymentTimings = ['pay_before_service', 'pay_after_service'] as const;
@@ -35,6 +35,7 @@ type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
 const waiterRoles = ['waiter', 'manager', 'owner', 'admin'] as const;
 const kitchenRoles = ['kitchen', 'manager', 'owner', 'admin'] as const;
 const paymentRoles = ['cashier', 'manager', 'owner', 'admin'] as const;
+const orderCancelRoles = ['waiter', 'cashier', 'manager', 'owner', 'admin'] as const;
 const delayedKdsThresholdMinutes = 15;
 const priorityTypes = ['kds_delay', 'unpaid_orders', 'table_attention', 'sales_summary', 'top_items'] as const;
 const priorityUrgencies = ['info', 'attention', 'urgent'] as const;
@@ -152,6 +153,40 @@ const paymentStatusFor = (
     return order.status === 'paid' || completedPayment ? 'paid' : 'unpaid';
 };
 
+const isOrderPaid = (
+    order: typeof restaurantOrders.$inferSelect,
+    completedPayment?: { id: string } | null,
+) => paymentStatusFor(order, completedPayment) === 'paid' || order.status === 'paid';
+
+const isOrderClosedForCancellation = (
+    serviceStatus: ServiceStatus,
+    legacyStatus: string,
+) => serviceStatus === 'closed' || legacyStatus === 'closed' || legacyStatus === 'cancelled';
+
+const canCancelOrder = (
+    c: Context<AppEnv>,
+    order: typeof restaurantOrders.$inferSelect,
+    serviceStatus: ServiceStatus,
+    paymentStatus: PaymentStatus,
+) => {
+    if (paymentStatus === 'paid') return false;
+    if (isOrderClosedForCancellation(serviceStatus, order.status)) return false;
+    const role = c.get('userRole');
+    const orderType = orderTypeFor(order);
+    if (role === 'kitchen' || !hasRole(c, orderCancelRoles)) return false;
+    if (role === 'waiter') {
+        return (
+            orderType === 'dine_in' &&
+            serviceStatus === 'pending' &&
+            order.createdBy === c.get('userId')
+        );
+    }
+    if (role === 'cashier') {
+        return orderType === 'takeaway' && serviceStatus === 'pending';
+    }
+    return role === 'manager' || role === 'owner' || role === 'admin';
+};
+
 const legacyStatusFor = (
     orderType: OrderType,
     serviceStatus: ServiceStatus,
@@ -183,6 +218,46 @@ const displayOrderNumberFor = (order: typeof restaurantOrders.$inferSelect) =>
 
 const isUniqueOrderNumberConflict = (error: unknown) =>
     error instanceof Error && error.message.includes('restaurant_orders_business_daily_visible_number_idx');
+
+const kitchenOrderPayload = (
+    order: typeof restaurantOrders.$inferSelect,
+    items: typeof restaurantOrderItems.$inferSelect[],
+) => ({
+    id: order.id,
+    businessId: order.businessId,
+    displayOrderNumber: displayOrderNumberFor(order),
+    tableId: order.tableId,
+    orderType: orderTypeFor(order),
+    serviceStatus: serviceStatusFor(order),
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    items,
+});
+
+const kdsTicketWithOrder = async (businessId: string, ticketId: string) => {
+    const ticket = await first(db.select().from(kdsTickets)
+        .where(and(eq(kdsTickets.id, ticketId), eq(kdsTickets.businessId, businessId)))
+    );
+    if (!ticket) return null;
+    const order = await first(db.select().from(restaurantOrders)
+        .where(and(eq(restaurantOrders.id, ticket.orderId), eq(restaurantOrders.businessId, businessId)))
+    );
+    const items = await db.select().from(restaurantOrderItems)
+        .where(eq(restaurantOrderItems.orderId, ticket.orderId));
+    const table = order?.tableId
+        ? await first(db.select().from(restaurantTables)
+            .where(and(
+                eq(restaurantTables.id, order.tableId),
+                eq(restaurantTables.businessId, businessId),
+            ))
+        )
+        : null;
+    return {
+        ...ticket,
+        order: order ? kitchenOrderPayload(order, items) : null,
+        tableLabel: table?.label ?? null,
+    };
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1052,6 +1127,9 @@ restaurant.post('/orders/:id/deliver', async (c) => {
     if (orderType === 'dine_in' && !hasRole(c, waiterRoles)) return forbid(c);
     if (orderType === 'takeaway' && !hasRole(c, paymentRoles)) return forbid(c);
     const currentServiceStatus = serviceStatusFor(order);
+    if (currentServiceStatus === 'cancelled' || order.status === 'cancelled') {
+        return c.json({ error: 'Cancelled orders cannot be delivered or collected' }, 409);
+    }
     const currentPaymentStatus = paymentStatusFor(order);
     const nextServiceStatus: ServiceStatus = orderType === 'takeaway' ? 'collected' : 'delivered';
     if (currentServiceStatus === nextServiceStatus) return c.json(await orderWithItems(businessId, id));
@@ -1215,6 +1293,73 @@ restaurant.post('/orders/:id/payments', async (c) => {
     return c.json(await orderWithItems(businessId, id), 201);
 });
 
+restaurant.post('/orders/:id/cancel', async (c) => {
+    const body = await parseJson<{ reason?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) return c.json({ error: 'Cancellation reason is required' }, 400);
+
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const order = await first(db.select().from(restaurantOrders)
+        .where(and(eq(restaurantOrders.id, id), eq(restaurantOrders.businessId, businessId)))
+    );
+    if (!order) return c.json({ error: 'Order not found' }, 404);
+    const existingPayment = await first(db.select().from(restaurantPayments)
+        .where(and(
+            eq(restaurantPayments.businessId, businessId),
+            eq(restaurantPayments.orderId, id),
+            eq(restaurantPayments.status, 'completed'),
+        ))
+    );
+    const serviceStatus = serviceStatusFor(order);
+    const paymentStatus = paymentStatusFor(order, existingPayment);
+    if (isOrderPaid(order, existingPayment)) return c.json({ error: 'Paid orders cannot be cancelled' }, 409);
+    if (isOrderClosedForCancellation(serviceStatus, order.status)) {
+        return c.json({ error: 'Closed or cancelled orders cannot be cancelled' }, 409);
+    }
+    if (!canCancelOrder(c, order, serviceStatus, paymentStatus)) return forbid(c);
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+        await tx.update(restaurantOrders)
+            .set({
+                status: 'cancelled',
+                serviceStatus: 'cancelled',
+                cancellationReason: reason,
+                cancelledBy: c.get('userId'),
+                cancelledAt: now,
+                updatedAt: now,
+            })
+            .where(and(eq(restaurantOrders.id, id), eq(restaurantOrders.businessId, businessId)));
+        await tx.update(kdsTickets)
+            .set({
+                status: 'cancelled',
+                completedAt: now,
+            })
+            .where(and(eq(kdsTickets.orderId, id), eq(kdsTickets.businessId, businessId)));
+        if (order.tableId && orderTypeFor(order) === 'dine_in') {
+            await tx.update(restaurantTables)
+                .set({ status: 'available' })
+                .where(and(
+                    eq(restaurantTables.id, order.tableId),
+                    eq(restaurantTables.businessId, businessId),
+                ));
+        }
+    });
+    await logAudit(c, 'RESTAURANT_ORDER_CANCELLED', 'RESTAURANT_ORDER', id, {
+        actorUserId: c.get('userId'),
+        businessId,
+        reason,
+        orderId: id,
+        displayOrderNumber: displayOrderNumberFor(order),
+        cancelledAt: now.toISOString(),
+        previousServiceStatus: serviceStatus,
+        previousPaymentStatus: paymentStatus,
+    });
+    return c.json(await orderWithItems(businessId, id));
+});
+
 restaurant.get('/kds', async (c) => {
     const businessId = c.get('businessId');
     const tickets = await db.select().from(kdsTickets)
@@ -1231,6 +1376,7 @@ restaurant.get('/kds', async (c) => {
                 eq(restaurantOrders.businessId, businessId),
             ))
         );
+        if (order && serviceStatusFor(order) === 'cancelled') continue;
         const items = await db.select().from(restaurantOrderItems)
             .where(eq(restaurantOrderItems.orderId, ticket.orderId));
         const table = order?.tableId
@@ -1243,17 +1389,7 @@ restaurant.get('/kds', async (c) => {
             : null;
         payload.push({
             ...ticket,
-            order: order ? {
-                id: order.id,
-                businessId: order.businessId,
-                displayOrderNumber: displayOrderNumberFor(order),
-                tableId: order.tableId,
-                orderType: orderTypeFor(order),
-                serviceStatus: serviceStatusFor(order),
-                createdAt: order.createdAt,
-                updatedAt: order.updatedAt,
-                items,
-            } : null,
+            order: order ? kitchenOrderPayload(order, items) : null,
             tableLabel: table?.label ?? null,
         });
     }
@@ -1282,10 +1418,11 @@ restaurant.patch('/kds/:id/status', async (c) => {
         .where(and(eq(restaurantOrders.id, ticket.orderId), eq(restaurantOrders.businessId, businessId)))
     );
     if (!order) return c.json({ error: 'Order not found' }, 404);
+    if (ticket.status === 'cancelled' || serviceStatusFor(order) === 'cancelled' || order.status === 'cancelled') {
+        return c.json({ error: 'Cancelled orders cannot be marked ready' }, 409);
+    }
     if (ticket.status === 'done' && serviceStatusFor(order) === 'ready') {
-        return c.json(await first(db.select().from(kdsTickets)
-            .where(and(eq(kdsTickets.id, id), eq(kdsTickets.businessId, businessId)))
-        ));
+        return c.json(await kdsTicketWithOrder(businessId, id));
     }
     const currentServiceStatus = serviceStatusFor(order);
     if (currentServiceStatus !== 'pending' && currentServiceStatus !== 'in_kitchen') {
@@ -1323,9 +1460,7 @@ restaurant.patch('/kds/:id/status', async (c) => {
         previousServiceStatus: currentServiceStatus,
         nextServiceStatus: 'ready',
     });
-    return c.json(await first(db.select().from(kdsTickets)
-        .where(and(eq(kdsTickets.id, id), eq(kdsTickets.businessId, businessId)))
-    ));
+    return c.json(await kdsTicketWithOrder(businessId, id));
 });
 
 restaurant.get('/dashboard', async (c) => {

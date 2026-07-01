@@ -6,6 +6,7 @@ import {
     type RestaurantPaymentMethod,
     type RestaurantTable,
 } from '@/api/restaurant.api';
+import { useAuthStore } from '@/store/auth.store';
 
 type BillingTab = 'Today' | 'Service' | 'Payment' | 'Paid';
 
@@ -40,12 +41,38 @@ const canTakePayment = (order: RestaurantOrder) => order.paymentStatus === 'unpa
 
 const formatOrderNumber = (order: RestaurantOrder) => order.displayOrderNumber || 'Order pending number';
 
+const currentTokenRole = () => {
+    const token = localStorage.getItem('auth_token');
+    const payload = token?.split('.')[1];
+    if (!payload) return '';
+    try {
+        const parsed = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { role?: unknown };
+        return typeof parsed.role === 'string' ? parsed.role : '';
+    } catch {
+        return '';
+    }
+};
+
+const canCancel = (order: RestaurantOrder, role: string, userId?: string) => {
+    if (order.paymentStatus === 'paid' || order.status === 'paid' || order.status === 'closed' || order.status === 'cancelled') return false;
+    if (order.serviceStatus === 'closed' || order.serviceStatus === 'cancelled') return false;
+    if (role === 'waiter') {
+        return order.orderType === 'dine_in' && order.serviceStatus === 'pending' && order.createdBy === userId;
+    }
+    if (role === 'cashier') {
+        return order.orderType === 'takeaway' && order.serviceStatus === 'pending';
+    }
+    return role === 'manager' || role === 'owner' || role === 'admin';
+};
+
 export const BillingView = () => {
+    const user = useAuthStore((state) => state.user);
     const [orders, setOrders] = useState<RestaurantOrder[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
     const [tab, setTab] = useState<BillingTab>('Today');
     const [payingId, setPayingId] = useState<string | null>(null);
     const [deliveringId, setDeliveringId] = useState<string | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [paymentMethods, setPaymentMethods] = useState<Record<string, RestaurantPaymentMethod>>({});
     const [cashReceived, setCashReceived] = useState<Record<string, string>>({});
     const [error, setError] = useState('');
@@ -120,6 +147,27 @@ export const BillingView = () => {
         }
     };
 
+    const cancelOrder = async (order: RestaurantOrder) => {
+        if (!window.confirm(`Cancel ${formatOrderNumber(order)}? This keeps the order in history.`)) return;
+        const reason = window.prompt('Cancellation reason');
+        const trimmedReason = reason?.trim();
+        if (!trimmedReason) {
+            setError('Cancellation reason is required.');
+            return;
+        }
+        setCancellingId(order.id);
+        try {
+            const updated = await restaurantApi.cancelOrder(order.id, { reason: trimmedReason });
+            setOrders((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
+            setError('');
+            await load();
+        } catch {
+            setError('Unable to cancel this order.');
+        } finally {
+            setCancellingId(null);
+        }
+    };
+
     return (
         <div>
             <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Orders & Payments</h1>
@@ -151,6 +199,7 @@ export const BillingView = () => {
                     <tbody>
                         {visibleOrders.map((order) => {
                             const orderCanTakePayment = canTakePayment(order);
+                            const orderCanCancel = canCancel(order, currentTokenRole(), user?.id);
                             const method = paymentMethods[order.id] ?? 'cash';
                             const total = order.total / 100;
                             const received = Number(cashReceived[order.id] ?? '');
@@ -158,6 +207,15 @@ export const BillingView = () => {
                                 ? Math.max(0, received - total)
                                 : 0;
                             const cashIsShort = method === 'cash' && (!Number.isFinite(received) || received < total);
+                            const cancelButton = orderCanCancel ? (
+                                <button
+                                    onClick={() => cancelOrder(order)}
+                                    disabled={cancellingId === order.id}
+                                    style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff1f2', color: '#991b1b', fontWeight: 700, cursor: cancellingId === order.id ? 'wait' : 'pointer' }}
+                                >
+                                    Cancel Order
+                                </button>
+                            ) : null;
                             return (
                                 <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                 <td style={{ padding: '16px', fontWeight: 800 }}>{formatOrderNumber(order)}</td>
@@ -170,15 +228,24 @@ export const BillingView = () => {
                                     </span>
                                 </td>
                                 <td style={{ padding: '16px' }}>
-                                    {order.serviceStatus === 'ready' ? (
-                                        <button
-                                            onClick={() => markDelivered(order)}
-                                            disabled={deliveringId === order.id}
-                                            className="btn-primary"
-                                            style={{ padding: '7px 12px', cursor: deliveringId === order.id ? 'wait' : 'pointer' }}
-                                        >
-                                            {order.orderType === 'takeaway' ? 'Mark Collected' : 'Mark Delivered'}
-                                        </button>
+                                    {order.status === 'cancelled' ? (
+                                        <div style={{ display: 'grid', gap: 4 }}>
+                                            <span style={{ color: '#991b1b', fontWeight: 700 }}>Cancelled</span>
+                                            {order.cancellationReason && <span style={{ color: '#64748b', fontSize: 12 }}>{order.cancellationReason}</span>}
+                                            {order.cancelledBy && <span style={{ color: '#64748b', fontSize: 12 }}>By {order.cancelledBy}</span>}
+                                        </div>
+                                    ) : order.serviceStatus === 'ready' ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <button
+                                                onClick={() => markDelivered(order)}
+                                                disabled={deliveringId === order.id}
+                                                className="btn-primary"
+                                                style={{ padding: '7px 12px', cursor: deliveringId === order.id ? 'wait' : 'pointer' }}
+                                            >
+                                                {order.orderType === 'takeaway' ? 'Mark Collected' : 'Mark Delivered'}
+                                            </button>
+                                            {cancelButton}
+                                        </div>
                                     ) : orderCanTakePayment ? (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                             <select
@@ -229,11 +296,15 @@ export const BillingView = () => {
                                             >
                                                 Confirm Payment
                                             </button>
+                                            {cancelButton}
                                         </div>
                                     ) : order.paymentStatus === 'paid' ? (
                                         <span style={{ color: '#166534', fontWeight: 600 }}>PAID</span>
                                     ) : (
-                                        <span style={{ color: '#475569' }}>Awaiting service step</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <span style={{ color: '#475569' }}>Awaiting service step</span>
+                                            {cancelButton}
+                                        </div>
                                     )}
                                 </td>
                             </tr>

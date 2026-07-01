@@ -132,6 +132,9 @@ export const restaurantOrders = pgTable('restaurant_orders', {
     paymentStatus: text('payment_status').$type<'unpaid' | 'paid' | 'refunded'>(),
     paymentTiming: text('payment_timing').$type<'pay_before_service' | 'pay_after_service'>(),
     idempotencyKey: text('idempotency_key'),
+    cancellationReason: text('cancellation_reason'),
+    cancelledBy: text('cancelled_by'),
+    cancelledAt: timestamp('cancelled_at'),
     createdBy: text('created_by').notNull(),
     total: integer('total').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -153,7 +156,7 @@ export const kdsTickets = pgTable('kds_tickets', {
     id: text('id').primaryKey(),
     orderId: text('order_id').notNull(),
     businessId: text('business_id').default('biz_main').notNull(),
-    status: text('status').$type<'new' | 'cooking' | 'done'>().default('new').notNull(),
+    status: text('status').$type<'new' | 'cooking' | 'done' | 'cancelled'>().default('new').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     completedAt: timestamp('completed_at'),
 });

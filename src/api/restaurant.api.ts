@@ -6,7 +6,7 @@ export type RestaurantOrderType = 'dine_in' | 'takeaway';
 export type RestaurantServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled';
 export type RestaurantPaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type RestaurantPaymentTiming = 'pay_before_service' | 'pay_after_service';
-export type KdsStatus = 'new' | 'cooking' | 'done';
+export type KdsStatus = 'new' | 'cooking' | 'done' | 'cancelled';
 export type RestaurantPaymentMethod = 'cash' | 'card' | 'manual' | 'mobile';
 
 export interface RestaurantMenuItem {
@@ -68,6 +68,9 @@ export interface RestaurantOrder {
     paymentStatus: RestaurantPaymentStatus;
     paymentTiming: RestaurantPaymentTiming;
     idempotencyKey: string | null;
+    cancellationReason: string | null;
+    cancelledBy: string | null;
+    cancelledAt: string | null;
     createdBy: string;
     total: number;
     createdAt: string;
@@ -149,6 +152,9 @@ export const restaurantApi = {
 
     completePayment: (id: string, payload: { method: RestaurantPaymentMethod; amount: number }) =>
         http.post<RestaurantOrder>(`/restaurant/orders/${id}/payments`, payload),
+
+    cancelOrder: (id: string, payload: { reason: string }) =>
+        http.post<RestaurantOrder>(`/restaurant/orders/${id}/cancel`, payload),
 
     getKds: () => http.get<KdsTicket[]>('/restaurant/kds'),
 
