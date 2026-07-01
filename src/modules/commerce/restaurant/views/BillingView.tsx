@@ -38,6 +38,8 @@ const canTakePayment = (order: RestaurantOrder) => order.paymentStatus === 'unpa
     (order.orderType === 'takeaway' ? order.serviceStatus === 'collected' : order.serviceStatus === 'delivered')
 );
 
+const formatOrderNumber = (order: RestaurantOrder) => order.displayOrderNumber || 'Order pending number';
+
 export const BillingView = () => {
     const [orders, setOrders] = useState<RestaurantOrder[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -45,6 +47,7 @@ export const BillingView = () => {
     const [payingId, setPayingId] = useState<string | null>(null);
     const [deliveringId, setDeliveringId] = useState<string | null>(null);
     const [paymentMethods, setPaymentMethods] = useState<Record<string, RestaurantPaymentMethod>>({});
+    const [cashReceived, setCashReceived] = useState<Record<string, string>>({});
     const [error, setError] = useState('');
 
     const load = useCallback(async () => {
@@ -57,7 +60,7 @@ export const BillingView = () => {
             setTables(tableData);
             setError('');
         } catch {
-            setError('Unable to load today’s orders.');
+            setError("Unable to load today's orders.");
         }
     }, []);
 
@@ -74,15 +77,27 @@ export const BillingView = () => {
 
     const runningTotal = visibleOrders.reduce((sum, order) => sum + order.total, 0);
     const tableLabel = (tableId: string | null) =>
-        tables.find((table) => table.id === tableId)?.label || (tableId ? tableId : 'Takeaway');
+        tables.find((table) => table.id === tableId)?.label || (tableId ? 'Table pending' : 'Takeaway');
 
     const markPaid = async (order: RestaurantOrder) => {
         const method = paymentMethods[order.id] ?? 'cash';
+        const total = order.total / 100;
+        const received = Number(cashReceived[order.id] ?? '');
+        if (method === 'cash' && (!Number.isFinite(received) || received < total)) {
+            setError('Cash received must be at least the order total.');
+            return;
+        }
         setPayingId(order.id);
         try {
-            await restaurantApi.completePayment(order.id, {
+            const updated = await restaurantApi.completePayment(order.id, {
                 method,
-                amount: order.total / 100,
+                amount: total,
+            });
+            setOrders((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
+            setCashReceived((current) => {
+                const next = { ...current };
+                delete next[order.id];
+                return next;
             });
             await load();
         } catch {
@@ -95,10 +110,11 @@ export const BillingView = () => {
     const markDelivered = async (order: RestaurantOrder) => {
         setDeliveringId(order.id);
         try {
-            await restaurantApi.markDelivered(order.id);
+            const updated = await restaurantApi.markDelivered(order.id);
+            setOrders((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
             await load();
         } catch {
-            setError('Unable to mark this order as delivered.');
+            setError(order.orderType === 'takeaway' ? 'Unable to mark this order as collected.' : 'Unable to mark this order as delivered.');
         } finally {
             setDeliveringId(null);
         }
@@ -106,7 +122,7 @@ export const BillingView = () => {
 
     return (
         <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Order History & Billing</h1>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Orders & Payments</h1>
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                 {(['Today', 'Service', 'Payment', 'Paid'] as const).map((value) => (
                     <button
@@ -124,7 +140,7 @@ export const BillingView = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                            <th style={{ padding: '16px' }}>ID</th>
+                            <th style={{ padding: '16px' }}>Order</th>
                             <th style={{ padding: '16px' }}>Table</th>
                             <th style={{ padding: '16px' }}>Time</th>
                             <th style={{ padding: '16px' }}>Total</th>
@@ -135,9 +151,16 @@ export const BillingView = () => {
                     <tbody>
                         {visibleOrders.map((order) => {
                             const orderCanTakePayment = canTakePayment(order);
+                            const method = paymentMethods[order.id] ?? 'cash';
+                            const total = order.total / 100;
+                            const received = Number(cashReceived[order.id] ?? '');
+                            const changeDue = method === 'cash' && Number.isFinite(received)
+                                ? Math.max(0, received - total)
+                                : 0;
+                            const cashIsShort = method === 'cash' && (!Number.isFinite(received) || received < total);
                             return (
                                 <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                <td style={{ padding: '16px', fontFamily: 'monospace' }}>#{order.id.slice(-8)}</td>
+                                <td style={{ padding: '16px', fontWeight: 800 }}>{formatOrderNumber(order)}</td>
                                 <td style={{ padding: '16px' }}>{tableLabel(order.tableId)}</td>
                                 <td style={{ padding: '16px' }}>{new Date(order.createdAt).toLocaleTimeString()}</td>
                                 <td style={{ padding: '16px', fontWeight: 600 }}>${(order.total / 100).toFixed(2)}</td>
@@ -154,13 +177,13 @@ export const BillingView = () => {
                                             className="btn-primary"
                                             style={{ padding: '7px 12px', cursor: deliveringId === order.id ? 'wait' : 'pointer' }}
                                         >
-                                            {order.tableId ? 'Mark Delivered' : 'Mark Handed Over'}
+                                            {order.orderType === 'takeaway' ? 'Mark Collected' : 'Mark Delivered'}
                                         </button>
                                     ) : orderCanTakePayment ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                             <select
-                                                aria-label={`Payment method for order ${order.id.slice(-8)}`}
-                                                value={paymentMethods[order.id] ?? 'cash'}
+                                                aria-label={`Payment method for order ${formatOrderNumber(order)}`}
+                                                value={method}
                                                 onChange={(event) => setPaymentMethods((current) => ({
                                                     ...current,
                                                     [order.id]: event.target.value as RestaurantPaymentMethod,
@@ -170,15 +193,41 @@ export const BillingView = () => {
                                             >
                                                 <option value="cash">Cash</option>
                                                 <option value="card">Card</option>
+                                                <option value="manual">Manual</option>
                                                 <option value="mobile">Mobile</option>
                                             </select>
+                                            {method === 'cash' && (
+                                                <div style={{ display: 'grid', gap: 4, minWidth: 150 }}>
+                                                    <label htmlFor={`cash-${order.id}`} style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                                                        Total ${total.toFixed(2)}
+                                                    </label>
+                                                    <input
+                                                        id={`cash-${order.id}`}
+                                                        type="number"
+                                                        min={total}
+                                                        step="0.01"
+                                                        inputMode="decimal"
+                                                        placeholder="Cash received"
+                                                        value={cashReceived[order.id] ?? ''}
+                                                        onChange={(event) => setCashReceived((current) => ({
+                                                            ...current,
+                                                            [order.id]: event.target.value,
+                                                        }))}
+                                                        disabled={payingId === order.id}
+                                                        style={{ padding: '7px 8px', borderRadius: 8, border: `1px solid ${cashIsShort ? '#dc2626' : '#cbd5e1'}`, background: '#ffffff', color: '#0f172a' }}
+                                                    />
+                                                    <span style={{ fontSize: 12, fontWeight: 700, color: cashIsShort ? '#b91c1c' : '#166534' }}>
+                                                        Change ${changeDue.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            )}
                                             <button
                                                 onClick={() => markPaid(order)}
-                                                disabled={payingId === order.id}
+                                                disabled={payingId === order.id || cashIsShort}
                                                 className="btn-primary"
-                                                style={{ padding: '7px 12px', cursor: payingId === order.id ? 'wait' : 'pointer' }}
+                                                style={{ padding: '7px 12px', cursor: payingId === order.id ? 'wait' : cashIsShort ? 'not-allowed' : 'pointer', opacity: cashIsShort ? 0.6 : 1 }}
                                             >
-                                                Mark as Paid
+                                                Confirm Payment
                                             </button>
                                         </div>
                                     ) : order.paymentStatus === 'paid' ? (

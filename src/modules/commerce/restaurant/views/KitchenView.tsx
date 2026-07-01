@@ -59,7 +59,7 @@ export const KitchenView = () => {
                         <div key={ticket.id} style={{ background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: `1px solid ${isLate ? '#ef4444' : 'var(--border-subtle)'}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)', background: headerColor, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
-                                    <span style={{ fontWeight: 800, fontSize: '16px' }}>#{ticket.orderId.slice(-4)}</span>
+                                    <span style={{ fontWeight: 800, fontSize: '16px' }}>{ticket.order?.displayOrderNumber ?? 'Order pending number'}</span>
                                     <span style={{ marginLeft: '8px', fontSize: '13px', color: '#64748b' }}>{ticket.tableLabel || 'Takeaway'}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>

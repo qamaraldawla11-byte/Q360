@@ -7,7 +7,7 @@ export type RestaurantServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'deli
 export type RestaurantPaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type RestaurantPaymentTiming = 'pay_before_service' | 'pay_after_service';
 export type KdsStatus = 'new' | 'cooking' | 'done';
-export type RestaurantPaymentMethod = 'cash' | 'card' | 'mobile';
+export type RestaurantPaymentMethod = 'cash' | 'card' | 'manual' | 'mobile';
 
 export interface RestaurantMenuItem {
     id: string;
@@ -58,6 +58,9 @@ export interface RestaurantPayment {
 export interface RestaurantOrder {
     id: string;
     businessId: string;
+    displayOrderNumber: string;
+    visibleOrderNumber: number | null;
+    orderNumberDate: string | null;
     tableId: string | null;
     status: RestaurantOrderStatus;
     orderType: RestaurantOrderType;
@@ -73,6 +76,18 @@ export interface RestaurantOrder {
     payments?: RestaurantPayment[];
 }
 
+export interface KdsOrder {
+    id: string;
+    businessId: string;
+    displayOrderNumber: string;
+    tableId: string | null;
+    orderType: RestaurantOrderType;
+    serviceStatus: RestaurantServiceStatus;
+    createdAt: string;
+    updatedAt: string;
+    items: RestaurantOrderItem[];
+}
+
 export interface KdsTicket {
     id: string;
     orderId: string;
@@ -81,7 +96,7 @@ export interface KdsTicket {
     createdAt: string;
     completedAt: string | null;
     tableLabel: string | null;
-    order: RestaurantOrder | null;
+    order: KdsOrder | null;
 }
 
 export interface RestaurantDashboard {

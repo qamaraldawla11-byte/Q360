@@ -11,12 +11,19 @@ export const ensureRestaurantServiceFlowSchema = () => {
             ADD COLUMN IF NOT EXISTS service_status text,
             ADD COLUMN IF NOT EXISTS payment_status text,
             ADD COLUMN IF NOT EXISTS payment_timing text,
-            ADD COLUMN IF NOT EXISTS idempotency_key text
+            ADD COLUMN IF NOT EXISTS idempotency_key text,
+            ADD COLUMN IF NOT EXISTS visible_order_number integer,
+            ADD COLUMN IF NOT EXISTS order_number_date text
         `);
         await db.execute(sql`
             CREATE UNIQUE INDEX IF NOT EXISTS restaurant_orders_business_idempotency_key_idx
             ON restaurant_orders (business_id, idempotency_key)
             WHERE idempotency_key IS NOT NULL
+        `);
+        await db.execute(sql`
+            CREATE UNIQUE INDEX IF NOT EXISTS restaurant_orders_business_daily_visible_number_idx
+            ON restaurant_orders (business_id, order_number_date, visible_order_number)
+            WHERE visible_order_number IS NOT NULL AND order_number_date IS NOT NULL
         `);
     })();
     return migrationPromise;

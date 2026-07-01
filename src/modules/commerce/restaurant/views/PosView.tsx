@@ -47,6 +47,12 @@ export const PosView = () => {
         return () => window.clearTimeout(timeout);
     }, [message]);
 
+    useEffect(() => {
+        if (selectedTable && paymentTiming === 'pay_before_service') {
+            setPaymentTiming('pay_after_service');
+        }
+    }, [paymentTiming, selectedTable]);
+
     const menuItems = useMemo(
         () => categories.find((category) => category.id === selectedCategory)?.items || [],
         [categories, selectedCategory],
@@ -210,7 +216,7 @@ export const PosView = () => {
                             style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
                         >
                             <option value="pay_after_service">Pay after service</option>
-                            <option value="pay_before_service">Pay before service</option>
+                            <option value="pay_before_service" disabled={Boolean(selectedTable)}>Pay before service</option>
                         </select>
                     </div>
 

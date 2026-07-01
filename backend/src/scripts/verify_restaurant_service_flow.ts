@@ -1,7 +1,7 @@
-import { createHmac } from 'crypto';
 import { spawn, spawnSync } from 'child_process';
 import { createServer } from 'net';
 import { and, eq, inArray } from 'drizzle-orm';
+import { sign } from 'hono/jwt';
 import {
     businesses,
     kdsTickets,
@@ -48,28 +48,24 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-service-flow-test-secret';
 const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
 
-const createToken = (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
-    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const createToken = async (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const now = Math.floor(Date.now() / 1000);
     const tokenRole = options?.role ?? 'admin';
-    const header = encode({ alg: 'HS256', typ: 'JWT' });
-    const payload = encode({
+    return sign({
         sub: options?.userId ?? userId,
         email: options?.email ?? `${tokenRole}-verify-restaurant-service-flow@example.com`,
         role: tokenRole,
         businessId: options?.businessId ?? businessId,
         iat: now,
         exp: now + 3600,
-    });
-    const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
-    return `${header}.${payload}.${signature}`;
+    }, secret, 'HS256');
 };
 
 const requestResponse = async (path: string, init?: RequestInit, tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const response = await fetch(`${baseUrl}${path}`, {
         ...init,
         headers: {
-            Authorization: `Bearer ${createToken(tokenOptions)}`,
+            Authorization: `Bearer ${await createToken(tokenOptions)}`,
             'Content-Type': 'application/json',
             ...init?.headers,
         },
@@ -143,6 +139,9 @@ const resetFixture = async () => {
 
 type FlowOrder = {
     id: string;
+    displayOrderNumber: string;
+    visibleOrderNumber: number | null;
+    orderNumberDate: string | null;
     status: string;
     tableId: string | null;
     total: number;
@@ -153,7 +152,7 @@ type FlowOrder = {
 };
 
 const firstTicketForOrder = async (orderId: string) => {
-    const tickets = await request<{ id: string; order: { id: string } | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
+    const tickets = await request<{ id: string; order: ({ id: string; displayOrderNumber: string } & Record<string, unknown>) | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
     const ticket = tickets.find((entry) => entry.order?.id === orderId);
     if (!ticket) throw new Error(`No KDS ticket found for ${orderId}`);
     return ticket;
@@ -161,10 +160,11 @@ const firstTicketForOrder = async (orderId: string) => {
 
 const markReady = async (orderId: string) => {
     const ticket = await firstTicketForOrder(orderId);
-    return request<{ status: string; completedAt: string | null }>(`/api/restaurant/kds/${ticket.id}/status`, {
+    const updated = await request<{ id: string; status: string; completedAt: string | null }>(`/api/restaurant/kds/${ticket.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'done' }),
     }, { role: 'kitchen' });
+    return { ticket, updated };
 };
 
 let serverOutput = '';
@@ -210,9 +210,11 @@ try {
 
     const menu = await request<{ categories: { items: { id: string }[] }[] }>('/api/restaurant/menu', undefined, { role: 'waiter' });
     const itemId = menu.categories.flatMap((category) => category.items)[0]?.id;
+    const menuB = await request<{ categories: { items: { id: string }[] }[] }>('/api/restaurant/menu', undefined, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const itemBId = menuB.categories.flatMap((category) => category.items)[0]?.id;
     const tables = await request<{ id: string; label: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
     const table = tables.find((entry) => entry.label === 'T1');
-    if (!itemId || !table) throw new Error('Fixture menu or table missing');
+    if (!itemId || !itemBId || !table) throw new Error('Fixture menu or table missing');
 
     console.log('[verify:restaurant-service-flow] POS role permissions...');
     const ownerCreate = await request<FlowOrder>('/api/restaurant/orders', {
@@ -338,7 +340,11 @@ try {
         }),
     }, { role: 'waiter' });
     const tableAfterCreate = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
-    await markReady(dineIn.id);
+    const dineInReadyTicket = await markReady(dineIn.id);
+    const duplicateReady = await request<{ id: string; status: string; completedAt: string | null }>(`/api/restaurant/kds/${dineInReadyTicket.ticket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'kitchen' });
     const readyDineIn = (await request<FlowOrder[]>('/api/restaurant/orders', undefined, { role: 'waiter' }))
         .find((order) => order.id === dineIn.id);
     if (!readyDineIn) throw new Error('Ready dine-in order was not returned');
@@ -360,6 +366,10 @@ try {
         body: JSON.stringify({ method: 'cash', amount: dineIn.total / 100 }),
     }, { role: 'kitchen' });
     const paidDineIn = await request<FlowOrder>(`/api/restaurant/orders/${dineIn.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: dineIn.total / 100 }),
+    }, { role: 'cashier' });
+    const duplicatePayment = await requestResponse(`/api/restaurant/orders/${dineIn.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'cash', amount: dineIn.total / 100 }),
     }, { role: 'cashier' });
@@ -386,7 +396,7 @@ try {
     const collectedBefore = await request<FlowOrder>(`/api/restaurant/orders/${takeawayBefore.id}/deliver`, {
         method: 'POST',
         body: JSON.stringify({}),
-    }, { role: 'waiter' });
+    }, { role: 'cashier' });
 
     console.log('[verify:restaurant-service-flow] Takeaway pay-after lifecycle...');
     const takeawayAfter = await request<FlowOrder>('/api/restaurant/orders', {
@@ -409,7 +419,7 @@ try {
     const collectedAfter = await request<FlowOrder>(`/api/restaurant/orders/${takeawayAfter.id}/deliver`, {
         method: 'POST',
         body: JSON.stringify({}),
-    }, { role: 'waiter' });
+    }, { role: 'cashier' });
     const paidAfter = await request<FlowOrder>(`/api/restaurant/orders/${takeawayAfter.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'mobile', amount: takeawayAfter.total / 100 }),
@@ -433,6 +443,43 @@ try {
         method: 'POST',
         body: JSON.stringify({}),
     }, { role: 'waiter' });
+    const waiterCollectTakeaway = await requestResponse(`/api/restaurant/orders/${invalidJumpOrder.id}/deliver`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+
+    console.log('[verify:restaurant-service-flow] Visible order numbering...');
+    const tenantBOrder = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-tenant-b-visible-number',
+            items: [{ menu_item_id: itemBId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const concurrentOrders = await Promise.all(Array.from({ length: 5 }, (_, index) =>
+        request<FlowOrder>('/api/restaurant/orders', {
+            method: 'POST',
+            body: JSON.stringify({
+                order_type: 'takeaway',
+                payment_timing: 'pay_after_service',
+                idempotency_key: `flow-concurrent-${index}`,
+                items: [{ menu_item_id: itemId, quantity: 1 }],
+            }),
+        }, { role: 'waiter' }),
+    ));
+    const numberedOrders = await request<FlowOrder[]>('/api/restaurant/orders', undefined, { role: 'waiter' });
+    const tenantBNumbers = await request<FlowOrder[]>('/api/restaurant/orders', undefined, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const tenantNumbers = numberedOrders
+        .map((order) => order.visibleOrderNumber)
+        .filter((number): number is number => typeof number === 'number');
+    const orderNumberDisplays = numberedOrders.map((order) => order.displayOrderNumber);
+    const concurrentNumbers = concurrentOrders.map((order) => order.visibleOrderNumber);
+    const uniqueTenantNumbers = new Set(tenantNumbers);
+    const uniqueConcurrentNumbers = new Set(concurrentNumbers);
+    const kitchenPayload = await request<{ order: Record<string, unknown> | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
+    const kitchenOrder = kitchenPayload.find((ticket) => ticket.order)?.order;
 
     const payments = await db.select().from(restaurantPayments)
         .where(and(eq(restaurantPayments.businessId, businessId), inArray(restaurantPayments.orderId, [dineIn.id, takeawayBefore.id, takeawayAfter.id])));
@@ -441,6 +488,7 @@ try {
             statuses: [dineIn.serviceStatus, readyDineIn.serviceStatus, delivered.serviceStatus, paidDineIn.serviceStatus],
             paymentStatus: paidDineIn.paymentStatus,
             finalStatus: paidDineIn.status,
+            visibleOrderNumber: dineIn.displayOrderNumber,
             tableAfterCreate: tableAfterCreate.find((entry) => entry.id === table.id)?.status,
             tableAfterDelivered: tableAfterDelivered.find((entry) => entry.id === table.id)?.status,
             tableAfterPaid: tableAfterPaid.find((entry) => entry.id === table.id)?.status,
@@ -475,11 +523,32 @@ try {
             createForbiddenMessage: kitchenCreate.body,
             invalidEarlyDineInPaymentStatus: invalidEarlyPayment.status,
             invalidJumpStatus: invalidJump.status,
+            waiterCollectTakeawayStatus: waiterCollectTakeaway.status,
             foreignDeliverStatus: foreignDeliver.status,
             duplicateOrderSameId: duplicateCreate.id === dineIn.id,
+            duplicateReadyStatus: duplicateReady.status,
+            duplicatePaymentStatus: duplicatePayment.status,
             waiterPaymentStatus: waiterPayment.status,
             kitchenPaymentStatus: kitchenPayment.status,
             paymentCount: payments.length,
+        },
+        numbering: {
+            firstOrderNumber: ownerCreate.displayOrderNumber,
+            tenantBOrderNumber: tenantBOrder.displayOrderNumber,
+            tenantBNumbersStartAtOne: tenantBNumbers.some((order) => order.id === tenantBOrder.id && order.visibleOrderNumber === 1),
+            noTenantDuplicates: uniqueTenantNumbers.size === tenantNumbers.length,
+            concurrentNumbers,
+            noConcurrentDuplicates: uniqueConcurrentNumbers.size === concurrentNumbers.length,
+            orderNumberDisplays,
+            noUuidFragments: orderNumberDisplays.every((displayOrderNumber) => (
+                /^#\d+$/.test(displayOrderNumber) ||
+                displayOrderNumber === 'Order pending number'
+            )),
+        },
+        kitchenPayload: {
+            hidesPaymentStatus: kitchenOrder ? !('paymentStatus' in kitchenOrder) : true,
+            hidesPayments: kitchenOrder ? !('payments' in kitchenOrder) : true,
+            hidesTotal: kitchenOrder ? !('total' in kitchenOrder) : true,
         },
     };
 
@@ -513,12 +582,25 @@ try {
         result.guards.cashierCrossTenantCreateStatus !== 404 ||
         result.guards.legacyRoleUserCrossTenantCreateStatus !== 403 ||
         result.guards.invalidEarlyDineInPaymentStatus !== 409 ||
-        result.guards.invalidJumpStatus !== 409 ||
+        result.guards.invalidJumpStatus !== 403 ||
+        result.guards.waiterCollectTakeawayStatus !== 403 ||
         result.guards.foreignDeliverStatus !== 404 ||
         !result.guards.duplicateOrderSameId ||
+        result.guards.duplicateReadyStatus !== 'done' ||
+        result.guards.duplicatePaymentStatus !== 409 ||
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
-        result.guards.paymentCount !== 3
+        result.guards.paymentCount !== 3 ||
+        result.numbering.firstOrderNumber !== '#1' ||
+        result.numbering.tenantBOrderNumber !== '#1' ||
+        !result.numbering.tenantBNumbersStartAtOne ||
+        !result.numbering.noTenantDuplicates ||
+        !result.numbering.noConcurrentDuplicates ||
+        !result.numbering.noUuidFragments ||
+        result.numbering.concurrentNumbers.some((number) => typeof number !== 'number') ||
+        !result.kitchenPayload.hidesPaymentStatus ||
+        !result.kitchenPayload.hidesPayments ||
+        !result.kitchenPayload.hidesTotal
     ) {
         throw new Error(`Service-flow assertion failed: ${JSON.stringify(result)}`);
     }

@@ -22,7 +22,7 @@ const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
 const orderStatuses = ['pending', 'in_kitchen', 'ready', 'delivered', 'served', 'collected', 'closed', 'paid', 'cancelled'] as const;
 const ticketStatuses = ['new', 'cooking', 'done'] as const;
-const paymentMethods = ['cash', 'card', 'mobile'] as const;
+const paymentMethods = ['cash', 'card', 'manual', 'mobile'] as const;
 const orderTypes = ['dine_in', 'takeaway'] as const;
 const paymentTimings = ['pay_before_service', 'pay_after_service'] as const;
 type TableStatus = typeof tableStatuses[number];
@@ -173,6 +173,16 @@ const todayBounds = () => {
     end.setDate(end.getDate() + 1);
     return { start, end };
 };
+
+const orderNumberDateFor = (date: Date) => date.toISOString().slice(0, 10);
+
+const displayOrderNumberFor = (order: typeof restaurantOrders.$inferSelect) =>
+    typeof order.visibleOrderNumber === 'number' && Number.isSafeInteger(order.visibleOrderNumber)
+        ? `#${order.visibleOrderNumber}`
+        : 'Order pending number';
+
+const isUniqueOrderNumberConflict = (error: unknown) =>
+    error instanceof Error && error.message.includes('restaurant_orders_business_daily_visible_number_idx');
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -464,6 +474,7 @@ const orderWithItems = async (businessId: string, orderId: string) => {
     const paymentTiming = paymentTimingFor(order);
     return {
         ...order,
+        displayOrderNumber: displayOrderNumberFor(order),
         orderType,
         serviceStatus,
         paymentStatus,
@@ -820,77 +831,100 @@ restaurant.post('/orders', async (c) => {
     }
     const orderId = randomUUID();
     try {
-        await db.transaction(async (tx) => {
-            if (typeof tableId === 'string') {
-                const table = await first(tx.select().from(restaurantTables)
-                    .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)))
-                );
-                if (!table) throw new Error('TABLE_NOT_FOUND');
-            }
+        let created = false;
+        for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
+            try {
+                await db.transaction(async (tx) => {
+                    if (typeof tableId === 'string') {
+                        const table = await first(tx.select().from(restaurantTables)
+                            .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)))
+                        );
+                        if (!table) throw new Error('TABLE_NOT_FOUND');
+                    }
 
-            const requests = new Map<string, { quantity: number; notes: string | null }>();
-            for (const item of body.items!) {
-                const id = (item.menuItemId ?? item.menu_item_id) as string;
-                const previous = requests.get(id);
-                requests.set(id, {
-                    quantity: (previous?.quantity || 0) + (item.quantity as number),
-                    notes: typeof item.notes === 'string' ? item.notes.trim() || null : previous?.notes || null,
+                    const requests = new Map<string, { quantity: number; notes: string | null }>();
+                    for (const item of body.items!) {
+                        const id = (item.menuItemId ?? item.menu_item_id) as string;
+                        const previous = requests.get(id);
+                        requests.set(id, {
+                            quantity: (previous?.quantity || 0) + (item.quantity as number),
+                            notes: typeof item.notes === 'string' ? item.notes.trim() || null : previous?.notes || null,
+                        });
+                    }
+                    const canonicalItems = [];
+                    for (const [id, request] of requests.entries()) {
+                        const item = await first(tx.select().from(menuItems)
+                            .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId)))
+                        );
+                        if (!item) throw new Error('ITEM_NOT_FOUND');
+                        if (!item.isAvailable) throw new Error('ITEM_UNAVAILABLE');
+                        canonicalItems.push({ item, ...request });
+                    }
+                    const total = canonicalItems.reduce(
+                        (sum, entry) => sum + entry.item.price * entry.quantity,
+                        0,
+                    );
+                    const now = new Date();
+                    const orderNumberDate = orderNumberDateFor(now);
+                    await tx.execute(sql`
+                        SELECT pg_advisory_xact_lock(hashtext(${businessId}), hashtext(${orderNumberDate}))
+                    `);
+                    const sequenceRows = await tx.select({
+                        nextNumber: sql<number>`COALESCE(MAX(${restaurantOrders.visibleOrderNumber}), 0) + 1`,
+                    }).from(restaurantOrders)
+                        .where(and(
+                            eq(restaurantOrders.businessId, businessId),
+                            eq(restaurantOrders.orderNumberDate, orderNumberDate),
+                        ));
+                    const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
+
+                    await tx.insert(restaurantOrders).values({
+                        id: orderId,
+                        businessId,
+                        visibleOrderNumber,
+                        orderNumberDate,
+                        tableId: typeof tableId === 'string' ? tableId : null,
+                        status: 'pending',
+                        orderType,
+                        serviceStatus: 'pending',
+                        paymentStatus: 'unpaid',
+                        paymentTiming,
+                        idempotencyKey,
+                        createdBy: c.get('userId'),
+                        total,
+                        createdAt: now,
+                        updatedAt: now,
+                    });
+                    await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
+                        id: randomUUID(),
+                        orderId,
+                        menuItemId: entry.item.id,
+                        name: entry.item.name,
+                        quantity: entry.quantity,
+                        unitPrice: entry.item.price,
+                        notes: entry.notes,
+                        status: 'pending' as const,
+                    })));
+                    await tx.insert(kdsTickets).values({
+                        id: randomUUID(),
+                        orderId,
+                        businessId,
+                        status: 'new',
+                        createdAt: now,
+                        completedAt: null,
+                    });
+                    if (typeof tableId === 'string') {
+                        await tx.update(restaurantTables)
+                            .set({ status: 'occupied' })
+                            .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)));
+                    }
                 });
+                created = true;
+            } catch (error) {
+                if (isUniqueOrderNumberConflict(error) && attempt < 4) continue;
+                throw error;
             }
-            const canonicalItems = [];
-            for (const [id, request] of requests.entries()) {
-                const item = await first(tx.select().from(menuItems)
-                    .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId)))
-                );
-                if (!item) throw new Error('ITEM_NOT_FOUND');
-                if (!item.isAvailable) throw new Error('ITEM_UNAVAILABLE');
-                canonicalItems.push({ item, ...request });
-            }
-            const total = canonicalItems.reduce(
-                (sum, entry) => sum + entry.item.price * entry.quantity,
-                0,
-            );
-            const now = new Date();
-
-            await tx.insert(restaurantOrders).values({
-                id: orderId,
-                businessId,
-                tableId: typeof tableId === 'string' ? tableId : null,
-                status: 'pending',
-                orderType,
-                serviceStatus: 'pending',
-                paymentStatus: 'unpaid',
-                paymentTiming,
-                idempotencyKey,
-                createdBy: c.get('userId'),
-                total,
-                createdAt: now,
-                updatedAt: now,
-            });
-            await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
-                id: randomUUID(),
-                orderId,
-                menuItemId: entry.item.id,
-                name: entry.item.name,
-                quantity: entry.quantity,
-                unitPrice: entry.item.price,
-                notes: entry.notes,
-                status: 'pending' as const,
-            })));
-            await tx.insert(kdsTickets).values({
-                id: randomUUID(),
-                orderId,
-                businessId,
-                status: 'new',
-                createdAt: now,
-                completedAt: null,
-            });
-            if (typeof tableId === 'string') {
-                await tx.update(restaurantTables)
-                    .set({ status: 'occupied' })
-                    .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)));
-            }
-        });
+        }
         await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
             orderType,
             paymentTiming,
@@ -947,6 +981,7 @@ restaurant.get('/orders', async (c) => {
         const paymentTiming = paymentTimingFor(order);
         return {
             ...order,
+            displayOrderNumber: displayOrderNumberFor(order),
             orderType,
             serviceStatus,
             paymentStatus,
@@ -1007,8 +1042,6 @@ restaurant.patch('/orders/:id/status', async (c) => {
 });
 
 restaurant.post('/orders/:id/deliver', async (c) => {
-    if (!hasRole(c, waiterRoles)) return forbid(c);
-
     const businessId = c.get('businessId');
     const id = c.req.param('id');
     const order = await first(db.select().from(restaurantOrders)
@@ -1016,6 +1049,8 @@ restaurant.post('/orders/:id/deliver', async (c) => {
     );
     if (!order) return c.json({ error: 'Order not found' }, 404);
     const orderType = orderTypeFor(order);
+    if (orderType === 'dine_in' && !hasRole(c, waiterRoles)) return forbid(c);
+    if (orderType === 'takeaway' && !hasRole(c, paymentRoles)) return forbid(c);
     const currentServiceStatus = serviceStatusFor(order);
     const currentPaymentStatus = paymentStatusFor(order);
     const nextServiceStatus: ServiceStatus = orderType === 'takeaway' ? 'collected' : 'delivered';
@@ -1055,7 +1090,7 @@ restaurant.post('/orders/:id/payments', async (c) => {
     const body = await parseJson<{ method?: unknown; amount?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     if (typeof body.method !== 'string' || !paymentMethods.includes(body.method as typeof paymentMethods[number])) {
-        return c.json({ error: 'Payment method must be cash, card, or mobile' }, 400);
+        return c.json({ error: 'Payment method must be cash, card, manual, or mobile' }, 400);
     }
 
     const businessId = c.get('businessId');
@@ -1078,7 +1113,8 @@ restaurant.post('/orders/:id/payments', async (c) => {
     const orderType = orderTypeFor(order);
     const paymentTiming = paymentTimingFor(order);
     const currentServiceStatus = serviceStatusFor(order);
-    if (paymentTiming === 'pay_after_service') {
+    const mustCompleteServiceBeforePayment = orderType === 'dine_in' || paymentTiming === 'pay_after_service';
+    if (mustCompleteServiceBeforePayment) {
         const isPayableAfterService = orderType === 'takeaway'
             ? currentServiceStatus === 'collected'
             : currentServiceStatus === 'delivered';
@@ -1110,7 +1146,8 @@ restaurant.post('/orders/:id/payments', async (c) => {
             const lockedServiceStatus = serviceStatusFor(lockedOrder);
             if (lockedOrder.status === 'paid' || lockedOrder.paymentStatus === 'paid') throw new Error('ORDER_ALREADY_PAID');
             if (lockedOrder.status === 'cancelled' || lockedServiceStatus === 'cancelled') throw new Error('ORDER_CANCELLED');
-            if (lockedPaymentTiming === 'pay_after_service') {
+            const lockedMustCompleteServiceBeforePayment = lockedOrderType === 'dine_in' || lockedPaymentTiming === 'pay_after_service';
+            if (lockedMustCompleteServiceBeforePayment) {
                 const isPayableAfterService = lockedOrderType === 'takeaway'
                     ? lockedServiceStatus === 'collected'
                     : lockedServiceStatus === 'delivered';
@@ -1206,7 +1243,17 @@ restaurant.get('/kds', async (c) => {
             : null;
         payload.push({
             ...ticket,
-            order: order ? { ...order, items } : null,
+            order: order ? {
+                id: order.id,
+                businessId: order.businessId,
+                displayOrderNumber: displayOrderNumberFor(order),
+                tableId: order.tableId,
+                orderType: orderTypeFor(order),
+                serviceStatus: serviceStatusFor(order),
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+                items,
+            } : null,
             tableLabel: table?.label ?? null,
         });
     }

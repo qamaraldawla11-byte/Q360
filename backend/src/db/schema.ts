@@ -123,6 +123,8 @@ export const restaurantTables = pgTable('restaurant_tables', {
 export const restaurantOrders = pgTable('restaurant_orders', {
     id: text('id').primaryKey(),
     businessId: text('business_id').default('biz_main').notNull(),
+    visibleOrderNumber: integer('visible_order_number'),
+    orderNumberDate: text('order_number_date'),
     tableId: text('table_id'),
     status: text('status').$type<'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'collected' | 'closed' | 'paid' | 'cancelled'>().default('pending').notNull(),
     orderType: text('order_type').$type<'dine_in' | 'takeaway'>(),
@@ -160,7 +162,7 @@ export const restaurantPayments = pgTable('restaurant_payments', {
     id: text('id').primaryKey(),
     businessId: text('business_id').default('biz_main').notNull(),
     orderId: text('order_id').notNull(),
-    method: text('method').$type<'cash' | 'card' | 'mobile'>().notNull(),
+    method: text('method').$type<'cash' | 'card' | 'manual' | 'mobile'>().notNull(),
     amount: doublePrecision('amount').notNull(),
     status: text('status').$type<'completed' | 'refunded'>().default('completed').notNull(),
     paidAt: timestamp('paid_at').defaultNow(),
