@@ -179,8 +179,19 @@ export async function mockRestaurantApi(page: Page) {
       order = {
         id: 'order_e2e_0001',
         businessId: 'biz_main',
+        displayOrderNumber: '#e2e_0001',
+        visibleOrderNumber: 1,
+        orderNumberDate: '2026-07-02',
         tableId: table.id,
         status: 'pending',
+        orderType: 'dine_in',
+        serviceStatus: 'pending',
+        paymentStatus: 'unpaid',
+        paymentTiming: 'pay_after_service',
+        idempotencyKey: 'e2e_order_0001',
+        cancellationReason: null,
+        cancelledBy: null,
+        cancelledAt: null,
         createdBy: 'usr_restaurant',
         total: menuItem.price,
         createdAt: new Date().toISOString(),
@@ -204,7 +215,17 @@ export async function mockRestaurantApi(page: Page) {
         createdAt: new Date().toISOString(),
         completedAt: null,
         tableLabel: table.label,
-        order,
+        order: {
+          id: order.id,
+          businessId: order.businessId,
+          displayOrderNumber: order.displayOrderNumber,
+          tableId: order.tableId,
+          orderType: order.orderType,
+          serviceStatus: order.serviceStatus,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          items: order.items,
+        },
       };
       table.status = 'occupied';
       return json(route, order, 201);
@@ -218,10 +239,25 @@ export async function mockRestaurantApi(page: Page) {
         return json(route, { error: 'Unexpected KDS transition' }, 400);
       }
       if (order) order.status = 'ready';
+      if (order) order.serviceStatus = 'ready';
+      if (ticket?.order && typeof ticket.order === 'object') {
+        ticket.order = { ...ticket.order, serviceStatus: 'ready' };
+      }
       if (ticket) ticket.status = 'done';
       return json(route, ticket);
     }
     if (method === 'GET' && path.endsWith('/orders')) return json(route, order ? [order] : []);
+    if (method === 'POST' && path.includes('/orders/') && path.endsWith('/deliver')) {
+      if (!path.endsWith(`/orders/${order?.id}/deliver`)) {
+        return json(route, { error: 'Unexpected delivery order' }, 400);
+      }
+      if (order) {
+        order.status = 'delivered';
+        order.serviceStatus = 'delivered';
+        order.updatedAt = new Date().toISOString();
+      }
+      return json(route, order);
+    }
     if (method === 'POST' && path.includes('/orders/') && path.endsWith('/payments')) {
       const body = request.postDataJSON() as { amount?: number; method?: string };
       if (!path.endsWith(`/orders/${order?.id}/payments`)) {
@@ -239,6 +275,7 @@ export async function mockRestaurantApi(page: Page) {
       });
       if (order) {
         order.status = 'paid';
+        order.paymentStatus = 'paid';
         order.payments = [{
           id: 'payment_e2e_0001',
           businessId: 'biz_main',
