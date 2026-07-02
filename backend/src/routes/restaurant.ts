@@ -135,6 +135,9 @@ const canMarkKitchenReady = async (c: Context<AppEnv>) =>
 const canMarkDineInDelivered = async (c: Context<AppEnv>) =>
     hasRole(c, waiterRoles) || await isLegacyRestaurantOwner(c);
 
+const canCollectTakeaway = async (c: Context<AppEnv>) =>
+    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
+
 const serviceStatusFor = (order: typeof restaurantOrders.$inferSelect): ServiceStatus => {
     if (order.serviceStatus) return order.serviceStatus;
     if (order.status === 'cancelled') return 'cancelled';
@@ -1407,14 +1410,17 @@ restaurant.post('/orders/:id/deliver', async (c) => {
     if (!order) return c.json({ error: 'Order not found' }, 404);
     const orderType = orderTypeFor(order);
     if (orderType === 'dine_in' && !await canMarkDineInDelivered(c)) return forbid(c);
-    if (orderType === 'takeaway' && !hasRole(c, paymentRoles)) return forbid(c);
+    if (orderType === 'takeaway' && !await canCollectTakeaway(c)) return forbid(c);
     const currentServiceStatus = serviceStatusFor(order);
     if (currentServiceStatus === 'cancelled' || order.status === 'cancelled') {
         return c.json({ error: 'Cancelled orders cannot be delivered or collected' }, 409);
     }
     const currentPaymentStatus = paymentStatusFor(order);
     const nextServiceStatus: ServiceStatus = orderType === 'takeaway' ? 'collected' : 'delivered';
-    if (currentServiceStatus === nextServiceStatus) return c.json(await orderWithItems(businessId, id));
+    if (currentServiceStatus === nextServiceStatus) {
+        if (orderType === 'takeaway') return c.json({ error: 'Takeaway order is already collected' }, 409);
+        return c.json(await orderWithItems(businessId, id));
+    }
     if (orderType === 'dine_in' && currentPaymentStatus === 'paid') {
         return c.json({ error: 'Paid dine-in orders cannot be marked delivered before service delivery' }, 409);
     }

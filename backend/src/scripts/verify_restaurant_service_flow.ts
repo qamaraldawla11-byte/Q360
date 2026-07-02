@@ -29,6 +29,7 @@ const businessBId = 'biz_verify_restaurant_service_flow_b';
 const userId = 'usr_verify_restaurant_service_flow';
 const userBId = 'usr_verify_restaurant_service_flow_b';
 const legacyOwnerUserId = 'usr_verify_restaurant_service_flow_legacy_owner';
+const genericUserId = 'usr_verify_restaurant_service_flow_generic';
 const genericUserBId = 'usr_verify_restaurant_service_flow_generic_b';
 
 const getAvailablePort = () => new Promise<number>((resolve, reject) => {
@@ -52,6 +53,7 @@ const secret = process.env.JWT_SECRET || 'restaurant-service-flow-test-secret';
 const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
 const tokenCache = new Map<string, string>();
 const deliveryPermissionHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-delivery' };
+const collectionPermissionHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-collection' };
 
 const createToken = async (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const tokenRole = options?.role ?? 'admin';
@@ -111,7 +113,7 @@ const resetFixture = async () => {
     await db.delete(menuItems).where(inArray(menuItems.businessId, businessesUnderTest));
     await db.delete(menuCategories).where(inArray(menuCategories.businessId, businessesUnderTest));
     await db.delete(restaurantMenus).where(inArray(restaurantMenus.businessId, businessesUnderTest));
-    await db.delete(users).where(inArray(users.id, [userId, userBId, legacyOwnerUserId, genericUserBId]));
+    await db.delete(users).where(inArray(users.id, [userId, userBId, legacyOwnerUserId, genericUserId, genericUserBId]));
     await db.delete(businesses).where(inArray(businesses.id, businessesUnderTest));
 
     await db.insert(businesses).values([
@@ -121,6 +123,7 @@ const resetFixture = async () => {
     await db.insert(users).values([
         { id: userId, email: 'verify-restaurant-service-flow@example.com', role: 'admin', businessId, onboardingCompleted: true },
         { id: userBId, email: 'verify-restaurant-service-flow-b@example.com', role: 'admin', businessId: businessBId, onboardingCompleted: true },
+        { id: genericUserId, email: 'verify-restaurant-service-flow-generic@example.com', role: 'user', businessId, onboardingCompleted: true },
         { id: genericUserBId, email: 'verify-restaurant-service-flow-generic-b@example.com', role: 'user', businessId: businessBId, onboardingCompleted: true },
         {
             id: legacyOwnerUserId,
@@ -209,6 +212,24 @@ const markReady = async (
     }, tokenOptions ?? { role: 'kitchen' });
     return { ticket, updated };
 };
+
+const collectOrder = async (
+    orderId: string,
+    tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string },
+) => request<FlowOrder>(`/api/restaurant/orders/${orderId}/deliver`, {
+    method: 'POST',
+    headers: collectionPermissionHeaders,
+    body: JSON.stringify({}),
+}, tokenOptions);
+
+const collectOrderResponse = async (
+    orderId: string,
+    tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string },
+) => requestResponse(`/api/restaurant/orders/${orderId}/deliver`, {
+    method: 'POST',
+    headers: collectionPermissionHeaders,
+    body: JSON.stringify({}),
+}, tokenOptions);
 
 const createKitchenReadyFixtureOrder = async (itemId: string, idempotencyKey: string) =>
     request<FlowOrder>('/api/restaurant/orders', {
@@ -816,6 +837,74 @@ try {
         body: JSON.stringify({}),
     }, { role: 'waiter' });
 
+    console.log('[verify:restaurant-service-flow] Takeaway collection permissions...');
+    const cashierCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-cashier', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const cashierCollected = await collectOrder(cashierCollectionOrder.id, { role: 'cashier' });
+    const duplicateCollection = await collectOrderResponse(cashierCollectionOrder.id, { role: 'cashier' });
+    const ownerCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-owner', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const ownerCollected = await collectOrder(ownerCollectionOrder.id, { role: 'owner' });
+    const managerCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-manager', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const managerCollected = await collectOrder(managerCollectionOrder.id, { role: 'manager' });
+    const adminCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-admin', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const adminCollected = await collectOrder(adminCollectionOrder.id, { role: 'admin' });
+    const legacyOwnerCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-legacy-owner', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const legacyOwnerCollected = await collectOrder(legacyOwnerCollectionOrder.id, {
+        userId: legacyOwnerUserId,
+        role: 'user',
+        email: 'verify-restaurant-service-flow-owner@example.com',
+    });
+    const rejectedCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-reject-matrix', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const waiterCollectReady = await collectOrderResponse(rejectedCollectionOrder.id, { role: 'waiter' });
+    const kitchenCollectReady = await collectOrderResponse(rejectedCollectionOrder.id, { role: 'kitchen' });
+    const unknownCollectReady = await collectOrderResponse(rejectedCollectionOrder.id, { role: 'chef' });
+    const missingRoleCollectReady = await collectOrderResponse(rejectedCollectionOrder.id, { role: '' });
+    const genericUserCollectReady = await collectOrderResponse(rejectedCollectionOrder.id, { userId: genericUserId, role: 'user', email: 'verify-restaurant-service-flow-generic@example.com' });
+    const genericUserOtherBusinessCollect = await collectOrderResponse(rejectedCollectionOrder.id, { businessId: businessBId, userId: genericUserBId, role: 'user', email: 'verify-restaurant-service-flow-generic-b@example.com' });
+    const crossTenantCollect = await collectOrderResponse(rejectedCollectionOrder.id, { businessId: businessBId, userId: userBId, role: 'manager' });
+    const dineInThroughCollection = await collectOrderResponse(rejectedDeliveryOrder.id, { role: 'cashier' });
+    const cancelledCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-cancelled', {
+        orderType: 'takeaway',
+        status: 'cancelled',
+        serviceStatus: 'cancelled',
+    });
+    const cancelledCollect = await collectOrderResponse(cancelledCollectionOrder.id, { role: 'cashier' });
+    const closedCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-closed', {
+        orderType: 'takeaway',
+        status: 'closed',
+        serviceStatus: 'closed',
+    });
+    const closedCollect = await collectOrderResponse(closedCollectionOrder.id, { role: 'cashier' });
+    const nonReadyCollectionOrder = await createDirectOrderFixture(null, 'flow-collect-non-ready', {
+        orderType: 'takeaway',
+        status: 'pending',
+        serviceStatus: 'pending',
+    });
+    const nonReadyCollect = await collectOrderResponse(nonReadyCollectionOrder.id, { role: 'cashier' });
+
     console.log('[verify:restaurant-service-flow] Takeaway pay-before lifecycle...');
     const takeawayBefore = await request<FlowOrder>('/api/restaurant/orders', {
         method: 'POST',
@@ -998,6 +1087,27 @@ try {
             duplicateDeliveryStatus: duplicateDelivery.serviceStatus,
             duplicateDeliveryOrderId: duplicateDelivery.id,
         },
+        collectionPermissions: {
+            cashierStatus: cashierCollected.serviceStatus,
+            cashierFinalStatus: cashierCollected.status,
+            ownerStatus: ownerCollected.serviceStatus,
+            managerStatus: managerCollected.serviceStatus,
+            adminStatus: adminCollected.serviceStatus,
+            legacyOwnerStatus: legacyOwnerCollected.serviceStatus,
+            legacyOwnerOrderId: legacyOwnerCollected.id,
+            waiterStatus: waiterCollectReady.status,
+            kitchenStatus: kitchenCollectReady.status,
+            unknownStatus: unknownCollectReady.status,
+            missingRoleStatus: missingRoleCollectReady.status,
+            genericUserStatus: genericUserCollectReady.status,
+            genericUserOtherBusinessStatus: genericUserOtherBusinessCollect.status,
+            crossTenantStatus: crossTenantCollect.status,
+            dineInThroughCollectionStatus: dineInThroughCollection.status,
+            cancelledStatus: cancelledCollect.status,
+            closedStatus: closedCollect.status,
+            nonReadyStatus: nonReadyCollect.status,
+            duplicateCollectionStatus: duplicateCollection.status,
+        },
         kitchenReadyPermissions: {
             kitchenStatus: kitchenReady.updated.status,
             ownerStatus: ownerReady.updated.status,
@@ -1145,6 +1255,25 @@ try {
         result.deliveryPermissions.nonReadyStatus !== 409 ||
         result.deliveryPermissions.duplicateDeliveryStatus !== 'delivered' ||
         result.deliveryPermissions.duplicateDeliveryOrderId !== dineIn.id ||
+        result.collectionPermissions.cashierStatus !== 'collected' ||
+        result.collectionPermissions.cashierFinalStatus !== 'collected' ||
+        result.collectionPermissions.ownerStatus !== 'collected' ||
+        result.collectionPermissions.managerStatus !== 'collected' ||
+        result.collectionPermissions.adminStatus !== 'collected' ||
+        result.collectionPermissions.legacyOwnerStatus !== 'collected' ||
+        result.collectionPermissions.legacyOwnerOrderId !== legacyOwnerCollectionOrder.id ||
+        result.collectionPermissions.waiterStatus !== 403 ||
+        result.collectionPermissions.kitchenStatus !== 403 ||
+        result.collectionPermissions.unknownStatus !== 403 ||
+        result.collectionPermissions.missingRoleStatus !== 403 ||
+        result.collectionPermissions.genericUserStatus !== 403 ||
+        result.collectionPermissions.genericUserOtherBusinessStatus !== 404 ||
+        result.collectionPermissions.crossTenantStatus !== 404 ||
+        result.collectionPermissions.dineInThroughCollectionStatus !== 403 ||
+        result.collectionPermissions.cancelledStatus !== 409 ||
+        result.collectionPermissions.closedStatus !== 409 ||
+        result.collectionPermissions.nonReadyStatus !== 409 ||
+        result.collectionPermissions.duplicateCollectionStatus !== 409 ||
         result.kitchenReadyPermissions.kitchenStatus !== 'done' ||
         result.kitchenReadyPermissions.ownerStatus !== 'done' ||
         result.kitchenReadyPermissions.managerStatus !== 'done' ||
