@@ -15,6 +15,22 @@ import {
     users,
 } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
+import {
+    canPerformRestaurantAction,
+    isOrderClosedForCancellation,
+    isOrderPaid,
+    legacyStatusFor,
+    orderTypeFor,
+    paymentStatusFor,
+    paymentTimingFor,
+    serviceStatusFor,
+    validateRestaurantOrderTransition,
+    type RestaurantActor,
+    type RestaurantOrderType as OrderType,
+    type RestaurantPaymentStatus as PaymentStatus,
+    type RestaurantPaymentTiming as PaymentTiming,
+    type RestaurantServiceStatus as ServiceStatus,
+} from '../services/restaurantDomain.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -28,14 +44,6 @@ const paymentTimings = ['pay_before_service', 'pay_after_service'] as const;
 type TableStatus = typeof tableStatuses[number];
 type OrderStatus = typeof orderStatuses[number];
 type TicketStatus = typeof ticketStatuses[number];
-type OrderType = typeof orderTypes[number];
-type PaymentTiming = typeof paymentTimings[number];
-type ServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled';
-type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
-const waiterRoles = ['waiter', 'manager', 'owner', 'admin'] as const;
-const kitchenRoles = ['kitchen', 'manager', 'owner', 'admin'] as const;
-const paymentRoles = ['cashier', 'manager', 'owner', 'admin'] as const;
-const orderCancelRoles = ['waiter', 'cashier', 'manager', 'owner', 'admin'] as const;
 const delayedKdsThresholdMinutes = 15;
 const priorityTypes = ['kds_delay', 'unpaid_orders', 'table_attention', 'sales_summary', 'top_items'] as const;
 const priorityUrgencies = ['info', 'attention', 'urgent'] as const;
@@ -93,17 +101,19 @@ const parseJson = async <T>(c: Context<AppEnv>) => {
     }
 };
 
-const hasRole = (c: Context<AppEnv>, allowedRoles: readonly string[]) => {
-    const role = c.get('userRole');
-    return typeof role === 'string' && allowedRoles.includes(role);
-};
-
 const forbid = (c: Context<AppEnv>, message = 'Forbidden: Insufficient permissions') => c.json({ error: message }, 403);
 
-const isLegacyRestaurantOwner = async (c: Context<AppEnv>) => {
-    if (c.get('userRole') !== 'user') return false;
+const restaurantActorFor = async (c: Context<AppEnv>): Promise<RestaurantActor> => {
+    const role = c.get('userRole');
+    const actor: RestaurantActor = {
+        userId: c.get('userId'),
+        businessId: c.get('businessId'),
+        role,
+        legacyOwnerUser: null,
+    };
+    if (role !== 'user') return actor;
 
-    const user = await first(db.select({
+    actor.legacyOwnerUser = await first(db.select({
         id: users.id,
         role: users.role,
         businessId: users.businessId,
@@ -116,106 +126,7 @@ const isLegacyRestaurantOwner = async (c: Context<AppEnv>) => {
         eq(users.businessId, c.get('businessId')),
     )));
 
-    return Boolean(
-        user?.onboardingCompleted &&
-        user.role === 'user' &&
-        user.userType === 'sme' &&
-        user.segment === 'restaurant' &&
-        user.primaryWorkspace === '/app/restaurant'
-    );
-};
-
-const canCreateOrder = async (c: Context<AppEnv>, orderType: OrderType) =>
-    hasRole(c, waiterRoles) ||
-    (orderType === 'takeaway' && hasRole(c, ['cashier'])) ||
-    await isLegacyRestaurantOwner(c);
-
-const canMarkKitchenReady = async (c: Context<AppEnv>) =>
-    hasRole(c, kitchenRoles) || await isLegacyRestaurantOwner(c);
-
-const canMarkDineInDelivered = async (c: Context<AppEnv>) =>
-    hasRole(c, waiterRoles) || await isLegacyRestaurantOwner(c);
-
-const canCollectTakeaway = async (c: Context<AppEnv>) =>
-    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
-
-const canRecordPayment = async (c: Context<AppEnv>) =>
-    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
-
-const canCreatePayNowTakeawayOrder = async (c: Context<AppEnv>) =>
-    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
-
-const serviceStatusFor = (order: typeof restaurantOrders.$inferSelect): ServiceStatus => {
-    if (order.serviceStatus) return order.serviceStatus;
-    if (order.status === 'cancelled') return 'cancelled';
-    if (order.status === 'paid') return order.tableId ? 'closed' : 'closed';
-    if (order.status === 'served') return 'delivered';
-    if (order.status === 'collected') return 'collected';
-    if (order.status === 'closed') return 'closed';
-    return order.status as ServiceStatus;
-};
-
-const orderTypeFor = (order: typeof restaurantOrders.$inferSelect): OrderType =>
-    order.orderType ?? (order.tableId ? 'dine_in' : 'takeaway');
-
-const paymentTimingFor = (order: typeof restaurantOrders.$inferSelect): PaymentTiming =>
-    order.paymentTiming ?? 'pay_after_service';
-
-const paymentStatusFor = (
-    order: typeof restaurantOrders.$inferSelect,
-    completedPayment?: { id: string } | null,
-): PaymentStatus => {
-    if (order.paymentStatus) return order.paymentStatus;
-    return order.status === 'paid' || completedPayment ? 'paid' : 'unpaid';
-};
-
-const isOrderPaid = (
-    order: typeof restaurantOrders.$inferSelect,
-    completedPayment?: { id: string } | null,
-) => paymentStatusFor(order, completedPayment) === 'paid' || order.status === 'paid';
-
-const isOrderClosedForCancellation = (
-    serviceStatus: ServiceStatus,
-    legacyStatus: string,
-) => serviceStatus === 'closed' || legacyStatus === 'closed' || legacyStatus === 'cancelled';
-
-const canCancelOrder = async (
-    c: Context<AppEnv>,
-    order: typeof restaurantOrders.$inferSelect,
-    serviceStatus: ServiceStatus,
-    paymentStatus: PaymentStatus,
-) => {
-    if (paymentStatus === 'paid') return false;
-    if (isOrderClosedForCancellation(serviceStatus, order.status)) return false;
-    const role = c.get('userRole');
-    const orderType = orderTypeFor(order);
-    if (role === 'kitchen') return false;
-    if (!hasRole(c, orderCancelRoles)) return await isLegacyRestaurantOwner(c);
-    if (role === 'waiter') {
-        return (
-            orderType === 'dine_in' &&
-            serviceStatus === 'pending' &&
-            order.createdBy === c.get('userId')
-        );
-    }
-    if (role === 'cashier') {
-        return orderType === 'takeaway' && serviceStatus === 'pending';
-    }
-    return role === 'manager' || role === 'owner' || role === 'admin';
-};
-
-const legacyStatusFor = (
-    orderType: OrderType,
-    serviceStatus: ServiceStatus,
-    paymentStatus: PaymentStatus,
-): OrderStatus => {
-    if (serviceStatus === 'cancelled') return 'cancelled';
-    if (orderType === 'takeaway' && serviceStatus === 'closed') return 'closed';
-    if (orderType === 'takeaway' && serviceStatus === 'collected' && paymentStatus === 'paid') return 'closed';
-    if (paymentStatus === 'paid' && serviceStatus === 'closed') return 'paid';
-    if (serviceStatus === 'collected') return 'collected';
-    if (orderType === 'dine_in' && serviceStatus === 'delivered' && paymentStatus === 'paid') return 'paid';
-    return serviceStatus as OrderStatus;
+    return actor;
 };
 
 const todayBounds = () => {
@@ -881,7 +792,8 @@ restaurant.patch('/tables/:id/status', async (c) => {
 });
 
 restaurant.post('/orders/pay-now', async (c) => {
-    if (!await canCreatePayNowTakeawayOrder(c)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (!canPerformRestaurantAction(actor, 'create_pay_now_takeaway_order')) return forbid(c);
 
     const body = await parseJson<{
         tableId?: unknown;
@@ -1149,7 +1061,17 @@ restaurant.post('/orders', async (c) => {
     if (orderType === 'dine_in' && tableId !== undefined && tableId !== null && typeof tableId !== 'string') {
         return c.json({ error: 'Dine-in table id is invalid' }, 400);
     }
-    if (!await canCreateOrder(c, orderType)) return forbid(c, 'You do not have permission to create orders');
+    const actor = await restaurantActorFor(c);
+    if (!canPerformRestaurantAction(actor, 'create_order', {
+        businessId: c.get('businessId'),
+        createdBy: c.get('userId'),
+        orderType,
+        tableId: typeof tableId === 'string' ? tableId : null,
+        status: 'pending',
+        serviceStatus: 'pending',
+        paymentStatus: 'unpaid',
+        paymentTiming: 'pay_after_service',
+    })) return forbid(c, 'You do not have permission to create orders');
     const requestedPaymentTiming = body.paymentTiming ?? body.payment_timing;
     if (requestedPaymentTiming !== undefined && typeof requestedPaymentTiming !== 'string') {
         return c.json({ error: 'Invalid payment timing' }, 400);
@@ -1370,8 +1292,9 @@ restaurant.patch('/orders/:id/status', async (c) => {
     if (body.status === 'paid') {
         return c.json({ error: 'Use the payment endpoint to mark restaurant orders as paid' }, 409);
     }
-    if (body.status === 'ready' && !await canMarkKitchenReady(c)) return forbid(c);
-    if (body.status === 'delivered' && !await canMarkDineInDelivered(c)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (body.status === 'ready' && !canPerformRestaurantAction(actor, 'mark_ready')) return forbid(c);
+    if (body.status === 'delivered' && !canPerformRestaurantAction(actor, 'mark_delivered')) return forbid(c);
     if (body.status !== 'ready' && body.status !== 'delivered') {
         return c.json({ error: 'Use the kitchen, delivery, or payment action for restaurant order workflow changes' }, 409);
     }
@@ -1384,10 +1307,10 @@ restaurant.patch('/orders/:id/status', async (c) => {
     if (!order) return c.json({ error: 'Order not found' }, 404);
     const currentServiceStatus = serviceStatusFor(order);
     const currentPaymentStatus = paymentStatusFor(order);
-    if (body.status === 'ready' && currentServiceStatus !== 'pending' && currentServiceStatus !== 'in_kitchen') {
+    if (body.status === 'ready' && !validateRestaurantOrderTransition(order, 'mark_ready').ok) {
         return c.json({ error: 'Only pending kitchen orders can be marked ready' }, 409);
     }
-    if (body.status === 'delivered' && currentServiceStatus !== 'ready') {
+    if (body.status === 'delivered' && !validateRestaurantOrderTransition(order, 'mark_delivered').ok) {
         return c.json({ error: 'Only ready orders can be marked delivered' }, 409);
     }
 
@@ -1417,8 +1340,9 @@ restaurant.post('/orders/:id/deliver', async (c) => {
     );
     if (!order) return c.json({ error: 'Order not found' }, 404);
     const orderType = orderTypeFor(order);
-    if (orderType === 'dine_in' && !await canMarkDineInDelivered(c)) return forbid(c);
-    if (orderType === 'takeaway' && !await canCollectTakeaway(c)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (orderType === 'dine_in' && !canPerformRestaurantAction(actor, 'mark_delivered', order)) return forbid(c);
+    if (orderType === 'takeaway' && !canPerformRestaurantAction(actor, 'mark_collected', order)) return forbid(c);
     const currentServiceStatus = serviceStatusFor(order);
     if (currentServiceStatus === 'cancelled' || order.status === 'cancelled') {
         return c.json({ error: 'Cancelled orders cannot be delivered or collected' }, 409);
@@ -1462,7 +1386,8 @@ restaurant.post('/orders/:id/deliver', async (c) => {
 });
 
 restaurant.post('/orders/:id/payments', async (c) => {
-    if (!await canRecordPayment(c)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (!canPerformRestaurantAction(actor, 'record_payment')) return forbid(c);
 
     const body = await parseJson<{ method?: unknown; amount?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
@@ -1617,7 +1542,8 @@ restaurant.post('/orders/:id/cancel', async (c) => {
     if (isOrderClosedForCancellation(serviceStatus, order.status)) {
         return c.json({ error: 'Closed or cancelled orders cannot be cancelled' }, 409);
     }
-    if (!await canCancelOrder(c, order, serviceStatus, paymentStatus)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (!canPerformRestaurantAction(actor, 'cancel_order', order)) return forbid(c);
 
     const now = new Date();
     await db.transaction(async (tx) => {
@@ -1696,7 +1622,8 @@ restaurant.get('/kds', async (c) => {
 });
 
 restaurant.patch('/kds/:id/status', async (c) => {
-    if (!await canMarkKitchenReady(c)) return forbid(c);
+    const actor = await restaurantActorFor(c);
+    if (!canPerformRestaurantAction(actor, 'mark_ready')) return forbid(c);
 
     const body = await parseJson<{ status?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);

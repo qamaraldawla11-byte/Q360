@@ -23,6 +23,10 @@ requireDatabaseUrl();
 
 const { closeDatabase, db, first } = await import('../db/client.js');
 const { ensureRestaurantServiceFlowSchema } = await import('../db/restaurantServiceFlowMigration.js');
+const {
+    canPerformRestaurantAction,
+    getRestaurantNextAllowedActions,
+} = await import('../services/restaurantDomain.js');
 
 const businessId = 'biz_verify_restaurant_service_flow';
 const businessBId = 'biz_verify_restaurant_service_flow_b';
@@ -172,6 +176,106 @@ type FlowOrder = {
     cancelledAt: string | null;
 };
 
+type MatrixActorKey = 'owner' | 'admin' | 'manager' | 'waiter' | 'cashier' | 'kitchen' | 'missing' | 'unknown' | 'genericUser' | 'legacyOwner' | 'legacyOwnerCrossTenant';
+
+const legacyOwnerUser = {
+    id: legacyOwnerUserId,
+    role: 'user',
+    businessId,
+    userType: 'sme',
+    segment: 'restaurant',
+    onboardingCompleted: true,
+    primaryWorkspace: '/app/restaurant',
+} as const;
+
+const matrixActors = {
+    owner: { userId, businessId, role: 'owner', legacyOwnerUser: null },
+    admin: { userId, businessId, role: 'admin', legacyOwnerUser: null },
+    manager: { userId, businessId, role: 'manager', legacyOwnerUser: null },
+    waiter: { userId, businessId, role: 'waiter', legacyOwnerUser: null },
+    cashier: { userId, businessId, role: 'cashier', legacyOwnerUser: null },
+    kitchen: { userId, businessId, role: 'kitchen', legacyOwnerUser: null },
+    missing: { userId, businessId, role: '', legacyOwnerUser: null },
+    unknown: { userId, businessId, role: 'chef', legacyOwnerUser: null },
+    genericUser: { userId: genericUserId, businessId, role: 'user', legacyOwnerUser: null },
+    legacyOwner: { userId: legacyOwnerUserId, businessId, role: 'user', legacyOwnerUser },
+    legacyOwnerCrossTenant: { userId: legacyOwnerUserId, businessId: businessBId, role: 'user', legacyOwnerUser },
+} as const;
+
+const baseOrder = {
+    businessId,
+    createdBy: userId,
+    tableId: null,
+    status: 'pending',
+    orderType: 'takeaway',
+    serviceStatus: 'pending',
+    paymentStatus: 'unpaid',
+    paymentTiming: 'pay_after_service',
+} as const;
+
+const verifyRestaurantAuthorizationDomain = () => {
+    const actorKeys = Object.keys(matrixActors) as MatrixActorKey[];
+    const expected: Record<string, MatrixActorKey[]> = {
+        create_order_takeaway: ['owner', 'admin', 'manager', 'waiter', 'cashier', 'legacyOwner'],
+        create_order_dine_in: ['owner', 'admin', 'manager', 'waiter', 'legacyOwner'],
+        create_pay_now_takeaway_order: ['owner', 'admin', 'manager', 'cashier', 'legacyOwner'],
+        mark_ready: ['owner', 'admin', 'manager', 'kitchen', 'legacyOwner'],
+        mark_delivered: ['owner', 'admin', 'manager', 'waiter', 'legacyOwner'],
+        mark_collected: ['owner', 'admin', 'manager', 'cashier', 'legacyOwner'],
+        record_payment: ['owner', 'admin', 'manager', 'cashier', 'legacyOwner'],
+        cancel_order_takeaway: ['owner', 'admin', 'manager', 'cashier', 'legacyOwner'],
+        cancel_order_dine_in: ['owner', 'admin', 'manager', 'waiter', 'legacyOwner'],
+    };
+    const checks = [
+        { key: 'create_order_takeaway', action: 'create_order', order: baseOrder },
+        { key: 'create_order_dine_in', action: 'create_order', order: { ...baseOrder, orderType: 'dine_in', tableId: 'table_1' } },
+        { key: 'create_pay_now_takeaway_order', action: 'create_pay_now_takeaway_order', order: undefined },
+        { key: 'mark_ready', action: 'mark_ready', order: baseOrder },
+        { key: 'mark_delivered', action: 'mark_delivered', order: { ...baseOrder, orderType: 'dine_in', tableId: 'table_1', serviceStatus: 'ready' } },
+        { key: 'mark_collected', action: 'mark_collected', order: { ...baseOrder, serviceStatus: 'ready' } },
+        { key: 'record_payment', action: 'record_payment', order: { ...baseOrder, serviceStatus: 'collected' } },
+        { key: 'cancel_order_takeaway', action: 'cancel_order', order: baseOrder },
+        { key: 'cancel_order_dine_in', action: 'cancel_order', order: { ...baseOrder, createdBy: userId, orderType: 'dine_in', tableId: 'table_1' } },
+    ] as const;
+
+    const matrix: Record<string, Record<MatrixActorKey, boolean>> = {};
+    for (const check of checks) {
+        matrix[check.key] = {} as Record<MatrixActorKey, boolean>;
+        for (const actorKey of actorKeys) {
+            const allowed = canPerformRestaurantAction(matrixActors[actorKey], check.action, check.order);
+            matrix[check.key][actorKey] = allowed;
+            if (allowed !== expected[check.key].includes(actorKey)) {
+                throw new Error(`Authorization matrix mismatch for ${check.key}/${actorKey}: ${allowed}`);
+            }
+        }
+    }
+
+    const nextActions = {
+        pendingKitchen: getRestaurantNextAllowedActions(matrixActors.kitchen, baseOrder),
+        pendingWaiter: getRestaurantNextAllowedActions(matrixActors.waiter, baseOrder),
+        readyTakeawayCashier: getRestaurantNextAllowedActions(matrixActors.cashier, { ...baseOrder, serviceStatus: 'ready' }),
+        readyDineInWaiter: getRestaurantNextAllowedActions(matrixActors.waiter, { ...baseOrder, orderType: 'dine_in', tableId: 'table_1', serviceStatus: 'ready' }),
+        collectedTakeawayCashier: getRestaurantNextAllowedActions(matrixActors.cashier, { ...baseOrder, serviceStatus: 'collected' }),
+        deliveredDineInCashier: getRestaurantNextAllowedActions(matrixActors.cashier, { ...baseOrder, orderType: 'dine_in', tableId: 'table_1', serviceStatus: 'delivered' }),
+        paid: getRestaurantNextAllowedActions(matrixActors.cashier, { ...baseOrder, serviceStatus: 'closed', paymentStatus: 'paid', status: 'closed' }),
+        cancelled: getRestaurantNextAllowedActions(matrixActors.manager, { ...baseOrder, serviceStatus: 'cancelled', status: 'cancelled' }),
+    };
+    if (
+        nextActions.pendingKitchen.join(',') !== 'mark_ready' ||
+        nextActions.pendingWaiter.length !== 0 ||
+        nextActions.readyTakeawayCashier.join(',') !== 'mark_collected' ||
+        nextActions.readyDineInWaiter.join(',') !== 'mark_delivered' ||
+        nextActions.collectedTakeawayCashier.join(',') !== 'record_payment' ||
+        nextActions.deliveredDineInCashier.join(',') !== 'record_payment' ||
+        nextActions.paid.length !== 0 ||
+        nextActions.cancelled.length !== 0
+    ) {
+        throw new Error(`Next-action assertion failed: ${JSON.stringify(nextActions)}`);
+    }
+
+    return { matrix, nextActions };
+};
+
 type IntegratedPayNowResult = {
     order: FlowOrder & { payments?: unknown[] };
     payment: {
@@ -277,6 +381,9 @@ let serverOutput = '';
 let server: ReturnType<typeof spawn> | undefined;
 
 try {
+    console.log('[verify:restaurant-service-flow] Restaurant domain authorization matrix...');
+    const domainAuthorization = verifyRestaurantAuthorizationDomain();
+
     console.log('[verify:restaurant-service-flow] Ensuring service-flow columns...');
     await ensureRestaurantServiceFlowSchema();
 
@@ -1100,6 +1207,7 @@ try {
     const payments = await db.select().from(restaurantPayments)
         .where(and(eq(restaurantPayments.businessId, businessId), inArray(restaurantPayments.orderId, [dineIn.id, takeawayBefore.id, takeawayAfter.id])));
     const result = {
+        domainAuthorization,
         dineIn: {
             statuses: [dineIn.serviceStatus, readyDineIn.serviceStatus, delivered.serviceStatus, paidDineIn.serviceStatus],
             paymentStatus: paidDineIn.paymentStatus,
@@ -1454,7 +1562,10 @@ try {
         result.numbering.concurrentNumbers.some((number) => typeof number !== 'number') ||
         !result.kitchenPayload.hidesPaymentStatus ||
         !result.kitchenPayload.hidesPayments ||
-        !result.kitchenPayload.hidesTotal
+        !result.kitchenPayload.hidesTotal ||
+        result.domainAuthorization.nextActions.pendingKitchen.join(',') !== 'mark_ready' ||
+        result.domainAuthorization.matrix.record_payment.genericUser !== false ||
+        result.domainAuthorization.matrix.mark_ready.legacyOwnerCrossTenant !== false
     ) {
         throw new Error(`Service-flow assertion failed: ${JSON.stringify(result)}`);
     }
