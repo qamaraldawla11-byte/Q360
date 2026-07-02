@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import { createServer } from 'net';
 import { and, eq, inArray } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
@@ -28,6 +29,7 @@ const businessBId = 'biz_verify_restaurant_service_flow_b';
 const userId = 'usr_verify_restaurant_service_flow';
 const userBId = 'usr_verify_restaurant_service_flow_b';
 const legacyOwnerUserId = 'usr_verify_restaurant_service_flow_legacy_owner';
+const genericUserBId = 'usr_verify_restaurant_service_flow_generic_b';
 
 const getAvailablePort = () => new Promise<number>((resolve, reject) => {
     const probe = createServer();
@@ -49,6 +51,7 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-service-flow-test-secret';
 const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
 const tokenCache = new Map<string, string>();
+const deliveryPermissionHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-delivery' };
 
 const createToken = async (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const tokenRole = options?.role ?? 'admin';
@@ -108,7 +111,7 @@ const resetFixture = async () => {
     await db.delete(menuItems).where(inArray(menuItems.businessId, businessesUnderTest));
     await db.delete(menuCategories).where(inArray(menuCategories.businessId, businessesUnderTest));
     await db.delete(restaurantMenus).where(inArray(restaurantMenus.businessId, businessesUnderTest));
-    await db.delete(users).where(inArray(users.id, [userId, userBId, legacyOwnerUserId]));
+    await db.delete(users).where(inArray(users.id, [userId, userBId, legacyOwnerUserId, genericUserBId]));
     await db.delete(businesses).where(inArray(businesses.id, businessesUnderTest));
 
     await db.insert(businesses).values([
@@ -118,6 +121,7 @@ const resetFixture = async () => {
     await db.insert(users).values([
         { id: userId, email: 'verify-restaurant-service-flow@example.com', role: 'admin', businessId, onboardingCompleted: true },
         { id: userBId, email: 'verify-restaurant-service-flow-b@example.com', role: 'admin', businessId: businessBId, onboardingCompleted: true },
+        { id: genericUserBId, email: 'verify-restaurant-service-flow-generic-b@example.com', role: 'user', businessId: businessBId, onboardingCompleted: true },
         {
             id: legacyOwnerUserId,
             email: 'verify-restaurant-service-flow-owner@example.com',
@@ -216,6 +220,36 @@ const createKitchenReadyFixtureOrder = async (itemId: string, idempotencyKey: st
             items: [{ menu_item_id: itemId, quantity: 1 }],
         }),
     }, { role: 'waiter' });
+
+const createDirectOrderFixture = async (
+    tableId: string | null,
+    idempotencyKey: string,
+    input: {
+        orderType: 'dine_in' | 'takeaway';
+        status: FlowOrder['status'];
+        serviceStatus: FlowOrder['serviceStatus'];
+        paymentStatus?: FlowOrder['paymentStatus'];
+    },
+) => {
+    const id = randomUUID();
+    const now = new Date();
+    await db.insert(restaurantOrders).values({
+        id,
+        businessId,
+        tableId,
+        status: input.status as 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'collected' | 'closed' | 'paid' | 'cancelled',
+        orderType: input.orderType,
+        serviceStatus: input.serviceStatus as 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled',
+        paymentStatus: (input.paymentStatus ?? 'unpaid') as 'unpaid' | 'paid' | 'refunded',
+        paymentTiming: 'pay_after_service',
+        idempotencyKey,
+        createdBy: userId,
+        total: 1100,
+        createdAt: now,
+        updatedAt: now,
+    });
+    return { id } as FlowOrder;
+};
 
 let serverOutput = '';
 let server: ReturnType<typeof spawn> | undefined;
@@ -654,6 +688,133 @@ try {
         body: JSON.stringify({ method: 'cash', amount: dineIn.total / 100 }),
     }, { role: 'cashier' });
     const tableAfterPaid = await request<{ id: string; status: string }[]>('/api/restaurant/tables', undefined, { role: 'waiter' });
+    const duplicateDelivery = await request<FlowOrder>(`/api/restaurant/orders/${dineIn.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+
+    console.log('[verify:restaurant-service-flow] Dine-in delivery permissions...');
+    const ownerDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-owner', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const ownerDelivered = await request<FlowOrder>(`/api/restaurant/orders/${ownerDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'owner' });
+    const managerDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-manager', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const managerDelivered = await request<FlowOrder>(`/api/restaurant/orders/${managerDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'manager' });
+    const adminDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-admin', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const adminDelivered = await request<FlowOrder>(`/api/restaurant/orders/${adminDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'admin' });
+    const legacyOwnerDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-legacy-owner', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const legacyOwnerDelivered = await request<FlowOrder>(`/api/restaurant/orders/${legacyOwnerDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, {
+        userId: legacyOwnerUserId,
+        role: 'user',
+        email: 'verify-restaurant-service-flow-owner@example.com',
+    });
+    const rejectedDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-reject-matrix', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const cashierDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'cashier' });
+    const kitchenDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'kitchen' });
+    const unknownDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'chef' });
+    const missingRoleDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: '' });
+    const genericUserOtherBusinessDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { businessId: businessBId, userId: genericUserBId, role: 'user', email: 'verify-restaurant-service-flow-generic-b@example.com' });
+    const crossTenantDeliver = await requestResponse(`/api/restaurant/orders/${rejectedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { businessId: businessBId, userId: userBId, role: 'manager' });
+    const nonReadyDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-non-ready', {
+        orderType: 'dine_in',
+        status: 'pending',
+        serviceStatus: 'pending',
+    });
+    const nonReadyDeliver = await requestResponse(`/api/restaurant/orders/${nonReadyDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    const paidInvalidDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-paid-invalid-state', {
+        orderType: 'dine_in',
+        status: 'ready',
+        serviceStatus: 'ready',
+        paymentStatus: 'paid',
+    });
+    const paidInvalidDeliver = await requestResponse(`/api/restaurant/orders/${paidInvalidDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    const closedDeliveryOrder = await createDirectOrderFixture(table.id, 'flow-deliver-closed', {
+        orderType: 'dine_in',
+        status: 'closed',
+        serviceStatus: 'closed',
+    });
+    const closedDeliver = await requestResponse(`/api/restaurant/orders/${closedDeliveryOrder.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
+    const readyTakeawayForWaiter = await createDirectOrderFixture(null, 'flow-deliver-ready-takeaway-waiter', {
+        orderType: 'takeaway',
+        status: 'ready',
+        serviceStatus: 'ready',
+    });
+    const takeawayViaDineInDeliver = await requestResponse(`/api/restaurant/orders/${readyTakeawayForWaiter.id}/deliver`, {
+        method: 'POST',
+        headers: deliveryPermissionHeaders,
+        body: JSON.stringify({}),
+    }, { role: 'waiter' });
 
     console.log('[verify:restaurant-service-flow] Takeaway pay-before lifecycle...');
     const takeawayBefore = await request<FlowOrder>('/api/restaurant/orders', {
@@ -816,6 +977,27 @@ try {
             kitchenPaymentStatus: kitchenPayment.status,
             paymentCount: payments.length,
         },
+        deliveryPermissions: {
+            waiterStatus: delivered.serviceStatus,
+            ownerStatus: ownerDelivered.serviceStatus,
+            managerStatus: managerDelivered.serviceStatus,
+            adminStatus: adminDelivered.serviceStatus,
+            legacyOwnerStatus: legacyOwnerDelivered.serviceStatus,
+            legacyOwnerOrderId: legacyOwnerDelivered.id,
+            cashierStatus: cashierDeliver.status,
+            kitchenStatus: kitchenDeliver.status,
+            unknownStatus: unknownDeliver.status,
+            missingRoleStatus: missingRoleDeliver.status,
+            genericUserOtherBusinessStatus: genericUserOtherBusinessDeliver.status,
+            crossTenantStatus: crossTenantDeliver.status,
+            takeawayViaDineInDeliverStatus: takeawayViaDineInDeliver.status,
+            cancelledStatus: deliverCancelled.status,
+            paidInvalidStateStatus: paidInvalidDeliver.status,
+            closedStatus: closedDeliver.status,
+            nonReadyStatus: nonReadyDeliver.status,
+            duplicateDeliveryStatus: duplicateDelivery.serviceStatus,
+            duplicateDeliveryOrderId: duplicateDelivery.id,
+        },
         kitchenReadyPermissions: {
             kitchenStatus: kitchenReady.updated.status,
             ownerStatus: ownerReady.updated.status,
@@ -944,6 +1126,25 @@ try {
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
         result.guards.paymentCount !== 3 ||
+        result.deliveryPermissions.waiterStatus !== 'delivered' ||
+        result.deliveryPermissions.ownerStatus !== 'delivered' ||
+        result.deliveryPermissions.managerStatus !== 'delivered' ||
+        result.deliveryPermissions.adminStatus !== 'delivered' ||
+        result.deliveryPermissions.legacyOwnerStatus !== 'delivered' ||
+        result.deliveryPermissions.legacyOwnerOrderId !== legacyOwnerDeliveryOrder.id ||
+        result.deliveryPermissions.cashierStatus !== 403 ||
+        result.deliveryPermissions.kitchenStatus !== 403 ||
+        result.deliveryPermissions.unknownStatus !== 403 ||
+        result.deliveryPermissions.missingRoleStatus !== 403 ||
+        result.deliveryPermissions.genericUserOtherBusinessStatus !== 404 ||
+        result.deliveryPermissions.crossTenantStatus !== 404 ||
+        result.deliveryPermissions.takeawayViaDineInDeliverStatus !== 403 ||
+        result.deliveryPermissions.cancelledStatus !== 409 ||
+        result.deliveryPermissions.paidInvalidStateStatus !== 409 ||
+        result.deliveryPermissions.closedStatus !== 409 ||
+        result.deliveryPermissions.nonReadyStatus !== 409 ||
+        result.deliveryPermissions.duplicateDeliveryStatus !== 'delivered' ||
+        result.deliveryPermissions.duplicateDeliveryOrderId !== dineIn.id ||
         result.kitchenReadyPermissions.kitchenStatus !== 'done' ||
         result.kitchenReadyPermissions.ownerStatus !== 'done' ||
         result.kitchenReadyPermissions.managerStatus !== 'done' ||
