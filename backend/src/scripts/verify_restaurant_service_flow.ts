@@ -54,6 +54,7 @@ const testEnv = { ...process.env, JWT_SECRET: secret, PORT: String(port) };
 const tokenCache = new Map<string, string>();
 const deliveryPermissionHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-delivery' };
 const collectionPermissionHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-collection' };
+const numberingHeaders = { 'x-forwarded-for': 'verify-restaurant-service-flow-numbering' };
 
 const createToken = async (options?: { businessId?: string; userId?: string; role?: string; email?: string }) => {
     const tokenRole = options?.role ?? 'admin';
@@ -394,6 +395,15 @@ try {
             items: [{ menu_item_id: itemId, quantity: 1 }],
         }),
     }, { role: 'cashier' });
+    const legacyOwnerPayNow = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-legacy-owner',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
     const payNowDuplicateFirst = await request<IntegratedPayNowResult>('/api/restaurant/orders/pay-now', {
         method: 'POST',
         body: JSON.stringify({
@@ -460,6 +470,24 @@ try {
             items: [{ menu_item_id: itemId, quantity: 1 }],
         }),
     }, { role: 'kitchen' });
+    const genericUserPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-generic-user',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { userId: genericUserId, role: 'user', email: 'verify-restaurant-service-flow-generic@example.com' });
+    const legacyOwnerCrossTenantPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'cash',
+            cash_received: 20,
+            idempotency_key: 'flow-pay-now-legacy-owner-cross-tenant',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { businessId: businessBId, userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
     const crossTenantPayNow = await requestResponse('/api/restaurant/orders/pay-now', {
         method: 'POST',
         body: JSON.stringify({
@@ -468,7 +496,7 @@ try {
             items: [{ menu_item_id: itemId, quantity: 1 }],
         }),
     }, { businessId: businessBId, userId: userBId, role: 'cashier' });
-    const integratedOrderIds = [payNowCash.order.id, payNowCard.order.id, payNowManual.order.id, payNowDuplicateFirst.order.id];
+    const integratedOrderIds = [payNowCash.order.id, payNowCard.order.id, payNowManual.order.id, legacyOwnerPayNow.order.id, payNowDuplicateFirst.order.id];
     const integratedOrders = await db.select().from(restaurantOrders)
         .where(and(eq(restaurantOrders.businessId, businessId), inArray(restaurantOrders.id, integratedOrderIds)));
     const integratedPayments = await db.select().from(restaurantPayments)
@@ -646,6 +674,36 @@ try {
         method: 'POST',
         body: JSON.stringify({ reason: 'Foreign tenant cancel attempt' }),
     }, { businessId: businessBId, userId: userBId, role: 'manager' });
+    const legacyCancelOrder = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-legacy-owner-cancel',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const legacyOwnerCancelled = await request<FlowOrder>(`/api/restaurant/orders/${legacyCancelOrder.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Legacy owner can cancel unpaid order' }),
+    }, { userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
+    const genericCancelOrder = await request<FlowOrder>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_type: 'takeaway',
+            payment_timing: 'pay_after_service',
+            idempotency_key: 'flow-generic-user-cannot-cancel',
+            items: [{ menu_item_id: itemId, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const genericUserCancel = await requestResponse(`/api/restaurant/orders/${genericCancelOrder.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Generic user cannot cancel' }),
+    }, { userId: genericUserId, role: 'user', email: 'verify-restaurant-service-flow-generic@example.com' });
+    const legacyOwnerCrossTenantCancel = await requestResponse(`/api/restaurant/orders/${genericCancelOrder.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Cross tenant legacy owner cannot cancel' }),
+    }, { businessId: businessBId, userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
     const cancellationAudit = await db.select().from(auditLogs)
         .where(and(
             eq(auditLogs.businessId, businessId),
@@ -958,6 +1016,28 @@ try {
         method: 'POST',
         body: JSON.stringify({ method: 'mobile', amount: takeawayAfter.total / 100 }),
     }, { role: 'cashier' });
+    const legacyPaymentOrder = await createDirectOrderFixture(null, 'flow-legacy-owner-record-payment', {
+        orderType: 'takeaway',
+        status: 'collected',
+        serviceStatus: 'collected',
+    });
+    const legacyOwnerPayment = await request<FlowOrder>(`/api/restaurant/orders/${legacyPaymentOrder.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: 11 }),
+    }, { userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
+    const genericPaymentOrder = await createDirectOrderFixture(null, 'flow-generic-user-record-payment', {
+        orderType: 'takeaway',
+        status: 'collected',
+        serviceStatus: 'collected',
+    });
+    const genericUserPayment = await requestResponse(`/api/restaurant/orders/${genericPaymentOrder.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: 11 }),
+    }, { userId: genericUserId, role: 'user', email: 'verify-restaurant-service-flow-generic@example.com' });
+    const legacyOwnerCrossTenantPayment = await requestResponse(`/api/restaurant/orders/${genericPaymentOrder.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'cash', amount: 11 }),
+    }, { businessId: businessBId, userId: legacyOwnerUserId, role: 'user', email: 'verify-restaurant-service-flow-owner@example.com' });
 
     console.log('[verify:restaurant-service-flow] Cross-tenant and invalid transitions...');
     const foreignDeliver = await requestResponse(`/api/restaurant/orders/${dineIn.id}/deliver`, {
@@ -985,6 +1065,7 @@ try {
     console.log('[verify:restaurant-service-flow] Visible order numbering...');
     const tenantBOrder = await request<FlowOrder>('/api/restaurant/orders', {
         method: 'POST',
+        headers: numberingHeaders,
         body: JSON.stringify({
             order_type: 'takeaway',
             payment_timing: 'pay_after_service',
@@ -995,6 +1076,7 @@ try {
     const concurrentOrders = await Promise.all(Array.from({ length: 5 }, (_, index) =>
         request<FlowOrder>('/api/restaurant/orders', {
             method: 'POST',
+            headers: numberingHeaders,
             body: JSON.stringify({
                 order_type: 'takeaway',
                 payment_timing: 'pay_after_service',
@@ -1003,8 +1085,8 @@ try {
             }),
         }, { role: 'waiter' }),
     ));
-    const numberedOrders = await request<FlowOrder[]>('/api/restaurant/orders', undefined, { role: 'waiter' });
-    const tenantBNumbers = await request<FlowOrder[]>('/api/restaurant/orders', undefined, { businessId: businessBId, userId: userBId, role: 'waiter' });
+    const numberedOrders = await request<FlowOrder[]>('/api/restaurant/orders', { headers: numberingHeaders }, { role: 'waiter' });
+    const tenantBNumbers = await request<FlowOrder[]>('/api/restaurant/orders', { headers: numberingHeaders }, { businessId: businessBId, userId: userBId, role: 'waiter' });
     const tenantNumbers = numberedOrders
         .map((order) => order.visibleOrderNumber)
         .filter((number): number is number => typeof number === 'number');
@@ -1012,7 +1094,7 @@ try {
     const concurrentNumbers = concurrentOrders.map((order) => order.visibleOrderNumber);
     const uniqueTenantNumbers = new Set(tenantNumbers);
     const uniqueConcurrentNumbers = new Set(concurrentNumbers);
-    const kitchenPayload = await request<{ order: Record<string, unknown> | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
+    const kitchenPayload = await request<{ order: Record<string, unknown> | null }[]>('/api/restaurant/kds', { headers: numberingHeaders }, { role: 'kitchen' });
     const kitchenOrder = kitchenPayload.find((ticket) => ticket.order)?.order;
 
     const payments = await db.select().from(restaurantPayments)
@@ -1064,6 +1146,10 @@ try {
             duplicatePaymentStatus: duplicatePayment.status,
             waiterPaymentStatus: waiterPayment.status,
             kitchenPaymentStatus: kitchenPayment.status,
+            legacyOwnerPaymentStatus: legacyOwnerPayment.paymentStatus,
+            legacyOwnerPaymentFinalStatus: legacyOwnerPayment.status,
+            genericUserPaymentStatus: genericUserPayment.status,
+            legacyOwnerCrossTenantPaymentStatus: legacyOwnerCrossTenantPayment.status,
             paymentCount: payments.length,
         },
         deliveryPermissions: {
@@ -1147,6 +1233,12 @@ try {
                 method: payNowManual.payment.method,
                 cashReceivedPresent: 'cashReceived' in payNowManual.payment,
             },
+            legacyOwner: {
+                orderType: legacyOwnerPayNow.order.orderType,
+                paymentStatus: legacyOwnerPayNow.order.paymentStatus,
+                method: legacyOwnerPayNow.payment.method,
+                ticketOrderId: legacyOwnerPayNow.kitchen.ticket?.order?.id,
+            },
             duplicateSameOrder: payNowDuplicateFirst.order.id === payNowDuplicateSecond.order.id,
             duplicateSamePayment: payNowDuplicateFirst.payment.id === payNowDuplicateSecond.payment.id,
             shortCashStatus: shortCashPayNow.status,
@@ -1154,6 +1246,8 @@ try {
             craftedDineInPayBeforeStatus: craftedDineInPayBefore.status,
             waiterStatus: waiterPayNow.status,
             kitchenStatus: kitchenPayNow.status,
+            genericUserStatus: genericUserPayNow.status,
+            legacyOwnerCrossTenantStatus: legacyOwnerCrossTenantPayNow.status,
             crossTenantStatus: crossTenantPayNow.status,
             exactOrderCount: integratedOrders.length,
             exactPaymentCount: integratedPayments.length,
@@ -1174,6 +1268,11 @@ try {
             paidOrderCancelStatus: paidOrderCancel.status,
             kitchenCancelStatus: kitchenCancel.status,
             crossTenantCancelStatus: crossTenantCancel.status,
+            legacyOwnerStatus: legacyOwnerCancelled.status,
+            legacyOwnerServiceStatus: legacyOwnerCancelled.serviceStatus,
+            legacyOwnerCancelledBy: legacyOwnerCancelled.cancelledBy,
+            genericUserStatus: genericUserCancel.status,
+            legacyOwnerCrossTenantStatus: legacyOwnerCrossTenantCancel.status,
             auditCount: cancellationAudit.length,
             auditTenantScoped: cancellationAudit.every((entry) => entry.businessId === businessId),
         },
@@ -1235,6 +1334,10 @@ try {
         result.guards.duplicatePaymentStatus !== 409 ||
         result.guards.waiterPaymentStatus !== 403 ||
         result.guards.kitchenPaymentStatus !== 403 ||
+        result.guards.legacyOwnerPaymentStatus !== 'paid' ||
+        result.guards.legacyOwnerPaymentFinalStatus !== 'closed' ||
+        result.guards.genericUserPaymentStatus !== 403 ||
+        result.guards.legacyOwnerCrossTenantPaymentStatus !== 403 ||
         result.guards.paymentCount !== 3 ||
         result.deliveryPermissions.waiterStatus !== 'delivered' ||
         result.deliveryPermissions.ownerStatus !== 'delivered' ||
@@ -1304,6 +1407,10 @@ try {
         result.integratedPayNow.manual.paymentStatus !== 'paid' ||
         result.integratedPayNow.manual.method !== 'manual' ||
         result.integratedPayNow.manual.cashReceivedPresent ||
+        result.integratedPayNow.legacyOwner.orderType !== 'takeaway' ||
+        result.integratedPayNow.legacyOwner.paymentStatus !== 'paid' ||
+        result.integratedPayNow.legacyOwner.method !== 'cash' ||
+        result.integratedPayNow.legacyOwner.ticketOrderId !== legacyOwnerPayNow.order.id ||
         !result.integratedPayNow.duplicateSameOrder ||
         !result.integratedPayNow.duplicateSamePayment ||
         result.integratedPayNow.shortCashStatus !== 400 ||
@@ -1311,10 +1418,12 @@ try {
         result.integratedPayNow.craftedDineInPayBeforeStatus !== 409 ||
         result.integratedPayNow.waiterStatus !== 403 ||
         result.integratedPayNow.kitchenStatus !== 403 ||
+        result.integratedPayNow.genericUserStatus !== 403 ||
+        result.integratedPayNow.legacyOwnerCrossTenantStatus !== 403 ||
         result.integratedPayNow.crossTenantStatus !== 404 ||
-        result.integratedPayNow.exactOrderCount !== 4 ||
-        result.integratedPayNow.exactPaymentCount !== 4 ||
-        result.integratedPayNow.exactTicketCount !== 4 ||
+        result.integratedPayNow.exactOrderCount !== 5 ||
+        result.integratedPayNow.exactPaymentCount !== 5 ||
+        result.integratedPayNow.exactTicketCount !== 5 ||
         result.cancellation.cashierTakeawayStatus !== 'cancelled' ||
         result.cancellation.cashierTakeawayServiceStatus !== 'cancelled' ||
         result.cancellation.cashierTakeawayReason !== 'Customer changed order' ||
@@ -1329,6 +1438,11 @@ try {
         result.cancellation.paidOrderCancelStatus !== 409 ||
         result.cancellation.kitchenCancelStatus !== 403 ||
         result.cancellation.crossTenantCancelStatus !== 404 ||
+        result.cancellation.legacyOwnerStatus !== 'cancelled' ||
+        result.cancellation.legacyOwnerServiceStatus !== 'cancelled' ||
+        result.cancellation.legacyOwnerCancelledBy !== legacyOwnerUserId ||
+        result.cancellation.genericUserStatus !== 403 ||
+        result.cancellation.legacyOwnerCrossTenantStatus !== 404 ||
         result.cancellation.auditCount < 1 ||
         !result.cancellation.auditTenantScoped ||
         !/^#\d+$/.test(result.numbering.firstOrderNumber) ||

@@ -101,11 +101,11 @@ const hasRole = (c: Context<AppEnv>, allowedRoles: readonly string[]) => {
 const forbid = (c: Context<AppEnv>, message = 'Forbidden: Insufficient permissions') => c.json({ error: message }, 403);
 
 const isLegacyRestaurantOwner = async (c: Context<AppEnv>) => {
-    const role = c.get('userRole');
-    if (role !== 'user' && role !== undefined && role !== null && role !== '') return false;
+    if (c.get('userRole') !== 'user') return false;
 
     const user = await first(db.select({
         id: users.id,
+        role: users.role,
         businessId: users.businessId,
         userType: users.userType,
         segment: users.segment,
@@ -118,6 +118,7 @@ const isLegacyRestaurantOwner = async (c: Context<AppEnv>) => {
 
     return Boolean(
         user?.onboardingCompleted &&
+        user.role === 'user' &&
         user.userType === 'sme' &&
         user.segment === 'restaurant' &&
         user.primaryWorkspace === '/app/restaurant'
@@ -136,6 +137,12 @@ const canMarkDineInDelivered = async (c: Context<AppEnv>) =>
     hasRole(c, waiterRoles) || await isLegacyRestaurantOwner(c);
 
 const canCollectTakeaway = async (c: Context<AppEnv>) =>
+    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
+
+const canRecordPayment = async (c: Context<AppEnv>) =>
+    hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
+
+const canCreatePayNowTakeawayOrder = async (c: Context<AppEnv>) =>
     hasRole(c, paymentRoles) || await isLegacyRestaurantOwner(c);
 
 const serviceStatusFor = (order: typeof restaurantOrders.$inferSelect): ServiceStatus => {
@@ -172,7 +179,7 @@ const isOrderClosedForCancellation = (
     legacyStatus: string,
 ) => serviceStatus === 'closed' || legacyStatus === 'closed' || legacyStatus === 'cancelled';
 
-const canCancelOrder = (
+const canCancelOrder = async (
     c: Context<AppEnv>,
     order: typeof restaurantOrders.$inferSelect,
     serviceStatus: ServiceStatus,
@@ -182,7 +189,8 @@ const canCancelOrder = (
     if (isOrderClosedForCancellation(serviceStatus, order.status)) return false;
     const role = c.get('userRole');
     const orderType = orderTypeFor(order);
-    if (role === 'kitchen' || !hasRole(c, orderCancelRoles)) return false;
+    if (role === 'kitchen') return false;
+    if (!hasRole(c, orderCancelRoles)) return await isLegacyRestaurantOwner(c);
     if (role === 'waiter') {
         return (
             orderType === 'dine_in' &&
@@ -873,7 +881,7 @@ restaurant.patch('/tables/:id/status', async (c) => {
 });
 
 restaurant.post('/orders/pay-now', async (c) => {
-    if (!hasRole(c, paymentRoles)) return forbid(c);
+    if (!await canCreatePayNowTakeawayOrder(c)) return forbid(c);
 
     const body = await parseJson<{
         tableId?: unknown;
@@ -1362,8 +1370,8 @@ restaurant.patch('/orders/:id/status', async (c) => {
     if (body.status === 'paid') {
         return c.json({ error: 'Use the payment endpoint to mark restaurant orders as paid' }, 409);
     }
-    if (body.status === 'ready' && !hasRole(c, kitchenRoles)) return forbid(c);
-    if (body.status === 'delivered' && !hasRole(c, waiterRoles)) return forbid(c);
+    if (body.status === 'ready' && !await canMarkKitchenReady(c)) return forbid(c);
+    if (body.status === 'delivered' && !await canMarkDineInDelivered(c)) return forbid(c);
     if (body.status !== 'ready' && body.status !== 'delivered') {
         return c.json({ error: 'Use the kitchen, delivery, or payment action for restaurant order workflow changes' }, 409);
     }
@@ -1454,7 +1462,7 @@ restaurant.post('/orders/:id/deliver', async (c) => {
 });
 
 restaurant.post('/orders/:id/payments', async (c) => {
-    if (!hasRole(c, paymentRoles)) return forbid(c);
+    if (!await canRecordPayment(c)) return forbid(c);
 
     const body = await parseJson<{ method?: unknown; amount?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
@@ -1609,7 +1617,7 @@ restaurant.post('/orders/:id/cancel', async (c) => {
     if (isOrderClosedForCancellation(serviceStatus, order.status)) {
         return c.json({ error: 'Closed or cancelled orders cannot be cancelled' }, 409);
     }
-    if (!canCancelOrder(c, order, serviceStatus, paymentStatus)) return forbid(c);
+    if (!await canCancelOrder(c, order, serviceStatus, paymentStatus)) return forbid(c);
 
     const now = new Date();
     await db.transaction(async (tx) => {
