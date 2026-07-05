@@ -52,6 +52,30 @@ type PriorityType = typeof priorityTypes[number];
 type PriorityUrgency = typeof priorityUrgencies[number];
 type EvidenceType = typeof evidenceTypes[number];
 
+type RestaurantTimingLog = {
+    route: 'POST /restaurant/orders' | 'POST /restaurant/orders/pay-now' | 'GET /restaurant/kds';
+    correlationId: string;
+    requestDurationMs: number;
+    authorizationDurationMs?: number;
+    orderWriteDurationMs?: number;
+    paymentWriteDurationMs?: number;
+    kdsWriteDurationMs?: number;
+    queryDurationMs?: number;
+    responsePreparationDurationMs?: number;
+    orderType?: OrderType;
+    kdsTicketCount?: number;
+};
+
+const timingNow = () => performance.now();
+const durationSince = (startedAt: number) => Math.round((timingNow() - startedAt) * 100) / 100;
+const safeCorrelationId = (value?: string | null) => (
+    value && /^[A-Za-z0-9_.:-]{1,100}$/.test(value) ? value : randomUUID()
+);
+
+const logRestaurantTiming = (timing: RestaurantTimingLog) => {
+    console.info(JSON.stringify(timing));
+};
+
 interface BusinessPulseEvidence {
     type: EvidenceType;
     label: string;
@@ -792,8 +816,16 @@ restaurant.patch('/tables/:id/status', async (c) => {
 });
 
 restaurant.post('/orders/pay-now', async (c) => {
+    const requestStartedAt = timingNow();
+    const correlationId = safeCorrelationId(c.req.header('X-Q360-Correlation-Id'));
+    const authorizationStartedAt = timingNow();
     const actor = await restaurantActorFor(c);
-    if (!canPerformRestaurantAction(actor, 'create_pay_now_takeaway_order')) return forbid(c);
+    const authorized = canPerformRestaurantAction(actor, 'create_pay_now_takeaway_order');
+    const authorizationDurationMs = durationSince(authorizationStartedAt);
+    if (!authorized) return forbid(c);
+    let orderWriteDurationMs = 0;
+    let paymentWriteDurationMs = 0;
+    let kdsWriteDurationMs = 0;
 
     const body = await parseJson<{
         tableId?: unknown;
@@ -930,6 +962,7 @@ restaurant.post('/orders/pay-now', async (c) => {
                         ));
                     const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
 
+                    const orderWriteStartedAt = timingNow();
                     await tx.insert(restaurantOrders).values({
                         id: orderId,
                         businessId,
@@ -957,6 +990,8 @@ restaurant.post('/orders/pay-now', async (c) => {
                         notes: entry.notes,
                         status: 'pending' as const,
                     })));
+                    orderWriteDurationMs += durationSince(orderWriteStartedAt);
+                    const paymentWriteStartedAt = timingNow();
                     await tx.insert(restaurantPayments).values({
                         id: randomUUID(),
                         businessId,
@@ -966,6 +1001,8 @@ restaurant.post('/orders/pay-now', async (c) => {
                         status: 'completed',
                         paidAt: now,
                     });
+                    paymentWriteDurationMs += durationSince(paymentWriteStartedAt);
+                    const kdsWriteStartedAt = timingNow();
                     await tx.insert(kdsTickets).values({
                         id: randomUUID(),
                         orderId,
@@ -974,6 +1011,7 @@ restaurant.post('/orders/pay-now', async (c) => {
                         createdAt: now,
                         completedAt: null,
                     });
+                    kdsWriteDurationMs += durationSince(kdsWriteStartedAt);
                 });
                 created = true;
             } catch (error) {
@@ -1016,11 +1054,29 @@ restaurant.post('/orders/pay-now', async (c) => {
         throw error;
     }
 
+    const responsePreparationStartedAt = timingNow();
     const response = await payNowOrderResponse(businessId, orderId, cashReceived, changeDue);
+    const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
+    logRestaurantTiming({
+        route: 'POST /restaurant/orders/pay-now',
+        correlationId,
+        requestDurationMs: durationSince(requestStartedAt),
+        authorizationDurationMs,
+        orderWriteDurationMs,
+        paymentWriteDurationMs,
+        kdsWriteDurationMs,
+        responsePreparationDurationMs,
+        orderType: 'takeaway',
+    });
     return c.json(response, 201);
 });
 
 restaurant.post('/orders', async (c) => {
+    const requestStartedAt = timingNow();
+    const correlationId = safeCorrelationId(c.req.header('X-Q360-Correlation-Id'));
+    let authorizationDurationMs = 0;
+    let orderWriteDurationMs = 0;
+    let kdsWriteDurationMs = 0;
     const body = await parseJson<{
         tableId?: unknown;
         table_id?: unknown;
@@ -1061,8 +1117,9 @@ restaurant.post('/orders', async (c) => {
     if (orderType === 'dine_in' && tableId !== undefined && tableId !== null && typeof tableId !== 'string') {
         return c.json({ error: 'Dine-in table id is invalid' }, 400);
     }
+    const authorizationStartedAt = timingNow();
     const actor = await restaurantActorFor(c);
-    if (!canPerformRestaurantAction(actor, 'create_order', {
+    const authorized = canPerformRestaurantAction(actor, 'create_order', {
         businessId: c.get('businessId'),
         createdBy: c.get('userId'),
         orderType,
@@ -1071,7 +1128,9 @@ restaurant.post('/orders', async (c) => {
         serviceStatus: 'pending',
         paymentStatus: 'unpaid',
         paymentTiming: 'pay_after_service',
-    })) return forbid(c, 'You do not have permission to create orders');
+    });
+    authorizationDurationMs = durationSince(authorizationStartedAt);
+    if (!authorized) return forbid(c, 'You do not have permission to create orders');
     const requestedPaymentTiming = body.paymentTiming ?? body.payment_timing;
     if (requestedPaymentTiming !== undefined && typeof requestedPaymentTiming !== 'string') {
         return c.json({ error: 'Invalid payment timing' }, 400);
@@ -1168,6 +1227,7 @@ restaurant.post('/orders', async (c) => {
                         ));
                     const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
 
+                    const orderWriteStartedAt = timingNow();
                     await tx.insert(restaurantOrders).values({
                         id: orderId,
                         businessId,
@@ -1195,6 +1255,8 @@ restaurant.post('/orders', async (c) => {
                         notes: entry.notes,
                         status: 'pending' as const,
                     })));
+                    orderWriteDurationMs += durationSince(orderWriteStartedAt);
+                    const kdsWriteStartedAt = timingNow();
                     await tx.insert(kdsTickets).values({
                         id: randomUUID(),
                         orderId,
@@ -1203,6 +1265,7 @@ restaurant.post('/orders', async (c) => {
                         createdAt: now,
                         completedAt: null,
                     });
+                    kdsWriteDurationMs += durationSince(kdsWriteStartedAt);
                     if (typeof tableId === 'string') {
                         await tx.update(restaurantTables)
                             .set({ status: 'occupied' })
@@ -1237,7 +1300,20 @@ restaurant.post('/orders', async (c) => {
         }
         throw error;
     }
-    return c.json(await orderWithItems(businessId, orderId), 201);
+    const responsePreparationStartedAt = timingNow();
+    const response = await orderWithItems(businessId, orderId);
+    const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
+    logRestaurantTiming({
+        route: 'POST /restaurant/orders',
+        correlationId,
+        requestDurationMs: durationSince(requestStartedAt),
+        authorizationDurationMs,
+        orderWriteDurationMs,
+        kdsWriteDurationMs,
+        responsePreparationDurationMs,
+        orderType,
+    });
+    return c.json(response, 201);
 });
 
 restaurant.get('/orders', async (c) => {
@@ -1586,31 +1662,46 @@ restaurant.post('/orders/:id/cancel', async (c) => {
 });
 
 restaurant.get('/kds', async (c) => {
+    const requestStartedAt = timingNow();
+    const correlationId = safeCorrelationId(c.req.header('X-Q360-Correlation-Id'));
     const businessId = c.get('businessId');
+    const queryStartedAt = timingNow();
     const tickets = await db.select().from(kdsTickets)
         .where(and(
             eq(kdsTickets.businessId, businessId),
             or(eq(kdsTickets.status, 'new'), eq(kdsTickets.status, 'cooking')),
         ))
         .orderBy(asc(kdsTickets.createdAt));
+    let queryDurationMs = durationSince(queryStartedAt);
+    const responsePreparationStartedAt = timingNow();
     const payload = [];
     for (const ticket of tickets) {
+        const ticketQueryStartedAt = timingNow();
         const order = await first(db.select().from(restaurantOrders)
             .where(and(
                 eq(restaurantOrders.id, ticket.orderId),
                 eq(restaurantOrders.businessId, businessId),
             ))
         );
+        queryDurationMs += durationSince(ticketQueryStartedAt);
         if (order && serviceStatusFor(order) === 'cancelled') continue;
+        const itemsQueryStartedAt = timingNow();
         const items = await db.select().from(restaurantOrderItems)
             .where(eq(restaurantOrderItems.orderId, ticket.orderId));
-        const table = order?.tableId
-            ? await first(db.select().from(restaurantTables)
-                .where(and(
-                    eq(restaurantTables.id, order.tableId),
-                    eq(restaurantTables.businessId, businessId),
-                ))
-            )
+        queryDurationMs += durationSince(itemsQueryStartedAt);
+        const tableId = order?.tableId ?? null;
+        const table = tableId
+            ? await (async () => {
+                const tableQueryStartedAt = timingNow();
+                const result = await first(db.select().from(restaurantTables)
+                    .where(and(
+                        eq(restaurantTables.id, tableId),
+                        eq(restaurantTables.businessId, businessId),
+                    ))
+                );
+                queryDurationMs += durationSince(tableQueryStartedAt);
+                return result;
+            })()
             : null;
         payload.push({
             ...ticket,
@@ -1618,6 +1709,15 @@ restaurant.get('/kds', async (c) => {
             tableLabel: table?.label ?? null,
         });
     }
+    const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
+    logRestaurantTiming({
+        route: 'GET /restaurant/kds',
+        correlationId,
+        requestDurationMs: durationSince(requestStartedAt),
+        queryDurationMs,
+        responsePreparationDurationMs,
+        kdsTicketCount: tickets.length,
+    });
     return c.json(payload);
 });
 

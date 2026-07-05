@@ -1,21 +1,44 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Clock, CheckCircle2 } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
 import axios from 'axios';
 import { restaurantApi, type KdsTicket } from '@/api/restaurant.api';
+import {
+    createPerformanceCorrelationId,
+    logPerformanceTiming,
+    performanceDuration,
+    performanceMark,
+} from '@/utils/performanceInstrumentation';
 
 export const KitchenView = () => {
     const [tickets, setTickets] = useState<KdsTicket[]>([]);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [error, setError] = useState('');
+    const pendingRenderTiming = useRef<{ correlationId: string; fetchEndedAt: number } | null>(null);
 
     const loadTickets = useCallback(async () => {
+        const correlationId = createPerformanceCorrelationId('kds-fetch');
+        const fetchStartedAt = performanceMark();
+        logPerformanceTiming('restaurant.kitchen.fetch.start', { correlationId });
         try {
-            setTickets(await restaurantApi.getKds());
+            const nextTickets = await restaurantApi.getKds({ correlationId });
+            const fetchDurationMs = performanceDuration(fetchStartedAt);
+            pendingRenderTiming.current = { correlationId, fetchEndedAt: performanceMark() };
+            logPerformanceTiming('restaurant.kitchen.fetch.end', {
+                correlationId,
+                fetchDurationMs,
+                kdsTicketCount: nextTickets.length,
+            });
+            setTickets(nextTickets);
             setError('');
         } catch {
             setError('Unable to refresh kitchen tickets.');
+            logPerformanceTiming('restaurant.kitchen.fetch.end', {
+                correlationId,
+                fetchDurationMs: performanceDuration(fetchStartedAt),
+                failed: true,
+            });
         }
     }, []);
 
@@ -24,6 +47,17 @@ export const KitchenView = () => {
         const interval = window.setInterval(() => void loadTickets(), 5_000);
         return () => window.clearInterval(interval);
     }, [loadTickets]);
+
+    useEffect(() => {
+        if (!pendingRenderTiming.current) return;
+        const timing = pendingRenderTiming.current;
+        pendingRenderTiming.current = null;
+        logPerformanceTiming('restaurant.kitchen.state.render.updated', {
+            correlationId: timing.correlationId,
+            renderUpdateDurationMs: performanceDuration(timing.fetchEndedAt),
+            kdsTicketCount: tickets.length,
+        });
+    }, [tickets]);
 
     const markDone = async (ticketId: string) => {
         setUpdatingId(ticketId);

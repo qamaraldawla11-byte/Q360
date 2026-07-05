@@ -160,14 +160,18 @@ export const restaurantApi = {
         payment_timing?: RestaurantPaymentTiming;
         idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
-    }) => http.post<RestaurantOrder>('/restaurant/orders', payload),
+    }, options?: { correlationId?: string }) => http.post<RestaurantOrder>('/restaurant/orders', payload, {
+        headers: options?.correlationId ? { 'X-Q360-Correlation-Id': options.correlationId } : undefined,
+    }),
 
     createPayNowTakeawayOrder: (payload: {
         payment_method: Exclude<RestaurantPaymentMethod, 'mobile'>;
         cash_received?: number;
         idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
-    }) => http.post<RestaurantPayNowOrderResult>('/restaurant/orders/pay-now', payload),
+    }, options?: { correlationId?: string }) => http.post<RestaurantPayNowOrderResult>('/restaurant/orders/pay-now', payload, {
+        headers: options?.correlationId ? { 'X-Q360-Correlation-Id': options.correlationId } : undefined,
+    }),
 
     getOrders: (active = false) =>
         http.get<RestaurantOrder[]>(`/restaurant/orders${active ? '?status=active' : ''}`),
@@ -184,7 +188,9 @@ export const restaurantApi = {
     cancelOrder: (id: string, payload: { reason: string }) =>
         http.post<RestaurantOrder>(`/restaurant/orders/${id}/cancel`, payload),
 
-    getKds: () => http.get<KdsTicket[]>('/restaurant/kds'),
+    getKds: (options?: { correlationId?: string }) => http.get<KdsTicket[]>('/restaurant/kds', {
+        headers: options?.correlationId ? { 'X-Q360-Correlation-Id': options.correlationId } : undefined,
+    }),
 
     updateKdsStatus: (id: string, status: KdsStatus) =>
         http.patch<KdsTicket>(`/restaurant/kds/${id}/status`, { status }),

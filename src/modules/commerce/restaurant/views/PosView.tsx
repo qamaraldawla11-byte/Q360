@@ -8,6 +8,12 @@ import {
     type RestaurantPaymentTiming,
     type RestaurantTable,
 } from '@/api/restaurant.api';
+import {
+    createPerformanceCorrelationId,
+    logPerformanceTiming,
+    performanceDuration,
+    performanceMark,
+} from '@/utils/performanceInstrumentation';
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
 type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
@@ -83,6 +89,13 @@ export const PosView = () => {
 
     const handleCheckout = async () => {
         if (!cart.length || isSubmitting) return;
+        const correlationId = createPerformanceCorrelationId('pos-order');
+        const submitStartedAt = performanceMark();
+        logPerformanceTiming('restaurant.pos.submit.start', {
+            correlationId,
+            orderType: selectedTable ? 'dine_in' : 'takeaway',
+            payNow: isPayNow,
+        });
         setIsSubmitting(true);
         try {
             const orderItems = cart.map((item) => ({
@@ -90,20 +103,25 @@ export const PosView = () => {
                 quantity: item.quantity,
                 notes: item.notes,
             }));
+            const requestStartedAt = performanceMark();
             const result = isPayNow
                 ? await restaurantApi.createPayNowTakeawayOrder({
                     payment_method: paymentMethod,
                     cash_received: paymentMethod === 'cash' ? cashReceivedAmount : undefined,
                     idempotency_key: submissionKey,
                     items: orderItems,
-                })
+                }, { correlationId })
                 : await restaurantApi.createOrder({
                     table_id: selectedTable || undefined,
                     order_type: selectedTable ? 'dine_in' : 'takeaway',
                     payment_timing: paymentTiming,
                     idempotency_key: submissionKey,
                     items: orderItems,
-                });
+                }, { correlationId });
+            logPerformanceTiming('restaurant.pos.request.end', {
+                correlationId,
+                requestDurationMs: performanceDuration(requestStartedAt),
+            });
             const displayOrderNumber = isPayNow ? result.displayOrderNumber : result.displayOrderNumber;
             setCart([]);
             setSelectedTable('');
@@ -119,12 +137,21 @@ export const PosView = () => {
             setTables(tableData);
             setSelectedCategory((current) => current || menu.categories[0]?.id || '');
             setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen.` });
+            logPerformanceTiming('restaurant.pos.response.handled', {
+                correlationId,
+                submitDurationMs: performanceDuration(submitStartedAt),
+            });
         } catch (error) {
             setMessage({
                 kind: 'error',
                 text: axios.isAxiosError(error) && error.response?.status === 403
                     ? 'You do not have permission to create orders'
                     : 'Order could not be sent. Your cart was kept.',
+            });
+            logPerformanceTiming('restaurant.pos.response.handled', {
+                correlationId,
+                submitDurationMs: performanceDuration(submitStartedAt),
+                failed: true,
             });
         } finally {
             setIsSubmitting(false);
