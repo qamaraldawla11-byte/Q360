@@ -159,10 +159,11 @@ const resetFixture = async () => {
             { id: `${prefix}_item_margherita_pizza`, name: 'Margherita Pizza', price: 1400, categoryId: categoryIds.Mains },
             { id: `${prefix}_item_soft_drink`, name: 'Soft Drink', price: 400, categoryId: categoryIds.Drinks },
             { id: `${prefix}_item_fresh_juice`, name: 'Fresh Juice', price: 600, categoryId: categoryIds.Drinks },
+            { id: `${prefix}_item_unavailable`, name: 'Unavailable Special', price: 2200, categoryId: categoryIds.Mains, isAvailable: false },
         ].map((item) => ({
             ...item,
             businessId: tenantId,
-            isAvailable: true,
+            isAvailable: 'isAvailable' in item ? item.isAvailable : true,
             prepTimeMinutes: 0,
         })));
 
@@ -396,6 +397,110 @@ try {
         result.takeaway.tableId !== null
     ) {
         throw new Error(`Restaurant flow assertion failed: ${JSON.stringify(result)}`);
+    }
+
+    console.log('[verify:restaurant] Verifying batched menu validation regressions...');
+    const oneItemOrder = await request<{ id: string; items: { menuItemId: string; quantity: number }[]; total: number }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [{ menu_item_id: menu[0].id, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const multipleDistinctOrder = await request<{ id: string; items: { menuItemId: string; quantity: number }[]; total: number }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [
+                { menu_item_id: menu[0].id, quantity: 1 },
+                { menu_item_id: menu[1].id, quantity: 2 },
+                { menu_item_id: menu[2].id, quantity: 1 },
+            ],
+        }),
+    }, { role: 'waiter' });
+    const duplicateItemOrder = await request<{ id: string; items: { menuItemId: string; quantity: number; notes: string | null }[]; total: number }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            idempotency_key: 'restaurant-core-batched-duplicate-items',
+            items: [
+                { menu_item_id: menu[0].id, quantity: 1, notes: 'first note' },
+                { menu_item_id: menu[0].id, quantity: 3, notes: 'second note' },
+            ],
+        }),
+    }, { role: 'waiter' });
+    const duplicateItemOrderReplay = await request<{ id: string }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            idempotency_key: 'restaurant-core-batched-duplicate-items',
+            items: [{ menu_item_id: menu[1].id, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const unavailableItem = menu.find((item) => item.id.endsWith('_item_unavailable'));
+    if (!unavailableItem) throw new Error('Unavailable menu fixture was not returned');
+    const unavailableResponse = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [{ menu_item_id: unavailableItem.id, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const crossTenantItemResponse = await requestResponse('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [{ menu_item_id: menuB[0].id, quantity: 1 }],
+        }),
+    }, { role: 'waiter' });
+    const ownerOrder = await request<{ id: string; orderType: string; items: { menuItemId: string }[] }>('/api/restaurant/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+            items: [{ menu_item_id: menu[1].id, quantity: 1 }],
+        }),
+    }, { role: 'owner' });
+    const payNow = await request<{
+        order: { id: string; paymentStatus: string; orderType: string };
+        payment: { status: string; amount: number };
+        kitchen: { ticket: { id: string; orderId: string } | null };
+    }>('/api/restaurant/orders/pay-now', {
+        method: 'POST',
+        body: JSON.stringify({
+            payment_method: 'manual',
+            idempotency_key: 'restaurant-core-batched-pay-now',
+            items: [{ menu_item_id: menu[2].id, quantity: 1 }],
+        }),
+    }, { role: 'cashier' });
+    const duplicateOrderTickets = await db.select({ id: kdsTickets.id }).from(kdsTickets)
+        .where(and(
+            eq(kdsTickets.businessId, businessId),
+            eq(kdsTickets.orderId, duplicateItemOrder.id),
+        ));
+    const focusedRegression = {
+        oneItemCount: oneItemOrder.items.length,
+        multipleDistinctItemCount: multipleDistinctOrder.items.length,
+        duplicateItemCount: duplicateItemOrder.items.length,
+        duplicateItemQuantity: duplicateItemOrder.items[0]?.quantity,
+        duplicateItemNotes: duplicateItemOrder.items[0]?.notes,
+        idempotencyReplaySameOrder: duplicateItemOrderReplay.id === duplicateItemOrder.id,
+        unavailableStatus: unavailableResponse.status,
+        crossTenantItemStatus: crossTenantItemResponse.status,
+        ownerOrderType: ownerOrder.orderType,
+        payNowPaymentStatus: payNow.payment.status,
+        payNowOrderPaymentStatus: payNow.order.paymentStatus,
+        payNowTicketOrderId: payNow.kitchen.ticket?.orderId,
+        duplicateOrderKdsTicketCount: duplicateOrderTickets.length,
+    };
+    if (
+        focusedRegression.oneItemCount !== 1 ||
+        focusedRegression.multipleDistinctItemCount !== 3 ||
+        focusedRegression.duplicateItemCount !== 1 ||
+        focusedRegression.duplicateItemQuantity !== 4 ||
+        focusedRegression.duplicateItemNotes !== 'second note' ||
+        !focusedRegression.idempotencyReplaySameOrder ||
+        focusedRegression.unavailableStatus !== 409 ||
+        focusedRegression.crossTenantItemStatus !== 404 ||
+        focusedRegression.ownerOrderType !== 'takeaway' ||
+        focusedRegression.payNowPaymentStatus !== 'completed' ||
+        focusedRegression.payNowOrderPaymentStatus !== 'paid' ||
+        focusedRegression.payNowTicketOrderId !== payNow.order.id ||
+        focusedRegression.duplicateOrderKdsTicketCount !== 1
+    ) {
+        throw new Error(`Batched menu validation regression failed: ${JSON.stringify(focusedRegression)}`);
     }
 
     console.log(JSON.stringify(result, null, 2));

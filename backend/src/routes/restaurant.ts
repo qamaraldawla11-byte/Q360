@@ -1201,10 +1201,15 @@ restaurant.post('/orders', async (c) => {
                         });
                     }
                     const canonicalItems = [];
+                    const requestedMenuItemIds = Array.from(requests.keys());
+                    const menuItemsForOrder = await tx.select().from(menuItems)
+                        .where(and(
+                            eq(menuItems.businessId, businessId),
+                            inArray(menuItems.id, requestedMenuItemIds),
+                        ));
+                    const menuItemById = new Map(menuItemsForOrder.map((item) => [item.id, item]));
                     for (const [id, request] of requests.entries()) {
-                        const item = await first(tx.select().from(menuItems)
-                            .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId)))
-                        );
+                        const item = menuItemById.get(id);
                         if (!item) throw new Error('ITEM_NOT_FOUND');
                         if (!item.isAvailable) throw new Error('ITEM_UNAVAILABLE');
                         canonicalItems.push({ item, ...request });
