@@ -5,6 +5,7 @@
     "buildCommand": "cd backend && npm ci --include=dev && npm run build"
   },
   "deploy": {
+    "preDeployCommand": "cd backend && npm run db:push",
     "startCommand": "cd backend && npm start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300
