@@ -56,18 +56,46 @@ type RestaurantTimingLog = {
     route: 'POST /restaurant/orders' | 'POST /restaurant/orders/pay-now' | 'GET /restaurant/kds';
     correlationId: string;
     requestDurationMs: number;
+    requestParsingDurationMs?: number;
     authorizationDurationMs?: number;
+    idempotencyLookupDurationMs?: number;
+    transactionStartDelayDurationMs?: number;
+    transactionDurationMs?: number;
+    transactionCallbackDurationMs?: number;
+    transactionCommitFinalizationDurationMs?: number;
+    tableValidationDurationMs?: number;
+    menuValidationQueryDurationMs?: number;
+    orderNumberAllocationDurationMs?: number;
+    orderNumberLockDurationMs?: number;
+    orderNumberQueryDurationMs?: number;
     orderWriteDurationMs?: number;
+    orderInsertDurationMs?: number;
+    orderItemInsertDurationMs?: number;
     paymentWriteDurationMs?: number;
+    paymentInsertDurationMs?: number;
     kdsWriteDurationMs?: number;
+    kdsInsertDurationMs?: number;
+    tableUpdateDurationMs?: number;
+    auditLogInsertDurationMs?: number;
     queryDurationMs?: number;
     responsePreparationDurationMs?: number;
+    responseOrderRefetchDurationMs?: number;
+    responseItemsRefetchDurationMs?: number;
+    responsePaymentsRefetchDurationMs?: number;
     orderType?: OrderType;
     kdsTicketCount?: number;
 };
 
 const timingNow = () => performance.now();
 const durationSince = (startedAt: number) => Math.round((timingNow() - startedAt) * 100) / 100;
+const addTimingDuration = (
+    timings: Partial<Record<string, number>> | undefined,
+    key: string,
+    durationMs: number,
+) => {
+    if (!timings) return;
+    timings[key] = Math.round(((timings[key] ?? 0) + durationMs) * 100) / 100;
+};
 const safeCorrelationId = (value?: string | null) => (
     value && /^[A-Za-z0-9_.:-]{1,100}$/.test(value) ? value : randomUUID()
 );
@@ -482,18 +510,28 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
     });
 };
 
-const orderWithItems = async (businessId: string, orderId: string) => {
+const orderWithItems = async (
+    businessId: string,
+    orderId: string,
+    timings?: Partial<Record<string, number>>,
+) => {
+    const orderRefetchStartedAt = timingNow();
     const order = await first(db.select().from(restaurantOrders)
         .where(and(eq(restaurantOrders.id, orderId), eq(restaurantOrders.businessId, businessId)))
     );
+    addTimingDuration(timings, 'responseOrderRefetchDurationMs', durationSince(orderRefetchStartedAt));
     if (!order) return null;
+    const itemsRefetchStartedAt = timingNow();
     const items = await db.select().from(restaurantOrderItems)
         .where(eq(restaurantOrderItems.orderId, orderId))
+    addTimingDuration(timings, 'responseItemsRefetchDurationMs', durationSince(itemsRefetchStartedAt));
+    const paymentsRefetchStartedAt = timingNow();
     const payments = await db.select().from(restaurantPayments)
         .where(and(
             eq(restaurantPayments.businessId, businessId),
         eq(restaurantPayments.orderId, orderId),
     ));
+    addTimingDuration(timings, 'responsePaymentsRefetchDurationMs', durationSince(paymentsRefetchStartedAt));
     const completedPayment = payments.find((payment) => payment.status === 'completed') ?? null;
     const orderType = orderTypeFor(order);
     const serviceStatus = serviceStatusFor(order);
@@ -1074,9 +1112,27 @@ restaurant.post('/orders/pay-now', async (c) => {
 restaurant.post('/orders', async (c) => {
     const requestStartedAt = timingNow();
     const correlationId = safeCorrelationId(c.req.header('X-Q360-Correlation-Id'));
+    let requestParsingDurationMs = 0;
     let authorizationDurationMs = 0;
+    let idempotencyLookupDurationMs = 0;
+    let transactionStartDelayDurationMs = 0;
+    let transactionDurationMs = 0;
+    let transactionCallbackDurationMs = 0;
+    let transactionCommitFinalizationDurationMs = 0;
+    let tableValidationDurationMs = 0;
+    let menuValidationQueryDurationMs = 0;
+    let orderNumberAllocationDurationMs = 0;
+    let orderNumberLockDurationMs = 0;
+    let orderNumberQueryDurationMs = 0;
     let orderWriteDurationMs = 0;
+    let orderInsertDurationMs = 0;
+    let orderItemInsertDurationMs = 0;
     let kdsWriteDurationMs = 0;
+    let kdsInsertDurationMs = 0;
+    let tableUpdateDurationMs = 0;
+    let auditLogInsertDurationMs = 0;
+    const responseTimings: Partial<Record<string, number>> = {};
+    const requestParsingStartedAt = timingNow();
     const body = await parseJson<{
         tableId?: unknown;
         table_id?: unknown;
@@ -1093,6 +1149,7 @@ restaurant.post('/orders', async (c) => {
             notes?: unknown;
         }[];
     }>(c);
+    requestParsingDurationMs = durationSince(requestParsingStartedAt);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     if (!Array.isArray(body.items) || body.items.length === 0) {
         return c.json({ error: 'At least one item is required' }, 400);
@@ -1170,12 +1227,14 @@ restaurant.post('/orders', async (c) => {
 
     const businessId = c.get('businessId');
     if (idempotencyKey) {
+        const idempotencyLookupStartedAt = timingNow();
         const existingOrder = await first(db.select().from(restaurantOrders)
             .where(and(
                 eq(restaurantOrders.businessId, businessId),
                 eq(restaurantOrders.idempotencyKey, idempotencyKey),
             ))
         );
+        idempotencyLookupDurationMs += durationSince(idempotencyLookupStartedAt);
         if (existingOrder) return c.json(await orderWithItems(businessId, existingOrder.id));
     }
     const orderId = randomUUID();
@@ -1183,11 +1242,19 @@ restaurant.post('/orders', async (c) => {
         let created = false;
         for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
             try {
+                const transactionStartedAt = timingNow();
+                let transactionStartDelayForAttempt = 0;
+                let transactionCallbackDurationForAttempt = 0;
                 await db.transaction(async (tx) => {
+                    transactionStartDelayForAttempt = durationSince(transactionStartedAt);
+                    const transactionCallbackStartedAt = timingNow();
+                    try {
                     if (typeof tableId === 'string') {
+                        const tableValidationStartedAt = timingNow();
                         const table = await first(tx.select().from(restaurantTables)
                             .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)))
                         );
+                        tableValidationDurationMs += durationSince(tableValidationStartedAt);
                         if (!table) throw new Error('TABLE_NOT_FOUND');
                     }
 
@@ -1202,11 +1269,13 @@ restaurant.post('/orders', async (c) => {
                     }
                     const canonicalItems = [];
                     const requestedMenuItemIds = Array.from(requests.keys());
+                    const menuValidationQueryStartedAt = timingNow();
                     const menuItemsForOrder = await tx.select().from(menuItems)
                         .where(and(
                             eq(menuItems.businessId, businessId),
                             inArray(menuItems.id, requestedMenuItemIds),
                         ));
+                    menuValidationQueryDurationMs += durationSince(menuValidationQueryStartedAt);
                     const menuItemById = new Map(menuItemsForOrder.map((item) => [item.id, item]));
                     for (const [id, request] of requests.entries()) {
                         const item = menuItemById.get(id);
@@ -1220,9 +1289,13 @@ restaurant.post('/orders', async (c) => {
                     );
                     const now = new Date();
                     const orderNumberDate = orderNumberDateFor(now);
+                    const orderNumberAllocationStartedAt = timingNow();
+                    const orderNumberLockStartedAt = timingNow();
                     await tx.execute(sql`
                         SELECT pg_advisory_xact_lock(hashtext(${businessId}), hashtext(${orderNumberDate}))
                     `);
+                    orderNumberLockDurationMs += durationSince(orderNumberLockStartedAt);
+                    const orderNumberQueryStartedAt = timingNow();
                     const sequenceRows = await tx.select({
                         nextNumber: sql<number>`COALESCE(MAX(${restaurantOrders.visibleOrderNumber}), 0) + 1`,
                     }).from(restaurantOrders)
@@ -1230,9 +1303,12 @@ restaurant.post('/orders', async (c) => {
                             eq(restaurantOrders.businessId, businessId),
                             eq(restaurantOrders.orderNumberDate, orderNumberDate),
                         ));
+                    orderNumberQueryDurationMs += durationSince(orderNumberQueryStartedAt);
+                    orderNumberAllocationDurationMs += durationSince(orderNumberAllocationStartedAt);
                     const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
 
                     const orderWriteStartedAt = timingNow();
+                    const orderInsertStartedAt = timingNow();
                     await tx.insert(restaurantOrders).values({
                         id: orderId,
                         businessId,
@@ -1250,6 +1326,8 @@ restaurant.post('/orders', async (c) => {
                         createdAt: now,
                         updatedAt: now,
                     });
+                    orderInsertDurationMs += durationSince(orderInsertStartedAt);
+                    const orderItemInsertStartedAt = timingNow();
                     await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
                         id: randomUUID(),
                         orderId,
@@ -1260,6 +1338,7 @@ restaurant.post('/orders', async (c) => {
                         notes: entry.notes,
                         status: 'pending' as const,
                     })));
+                    orderItemInsertDurationMs += durationSince(orderItemInsertStartedAt);
                     orderWriteDurationMs += durationSince(orderWriteStartedAt);
                     const kdsWriteStartedAt = timingNow();
                     await tx.insert(kdsTickets).values({
@@ -1270,25 +1349,46 @@ restaurant.post('/orders', async (c) => {
                         createdAt: now,
                         completedAt: null,
                     });
-                    kdsWriteDurationMs += durationSince(kdsWriteStartedAt);
+                    const kdsInsertDuration = durationSince(kdsWriteStartedAt);
+                    kdsWriteDurationMs += kdsInsertDuration;
+                    kdsInsertDurationMs += kdsInsertDuration;
                     if (typeof tableId === 'string') {
+                        const tableUpdateStartedAt = timingNow();
                         await tx.update(restaurantTables)
                             .set({ status: 'occupied' })
                             .where(and(eq(restaurantTables.id, tableId), eq(restaurantTables.businessId, businessId)));
+                        tableUpdateDurationMs += durationSince(tableUpdateStartedAt);
+                    }
+                    } finally {
+                        transactionCallbackDurationForAttempt = durationSince(transactionCallbackStartedAt);
                     }
                 });
+                const transactionDurationForAttempt = durationSince(transactionStartedAt);
+                transactionStartDelayDurationMs += transactionStartDelayForAttempt;
+                transactionCallbackDurationMs += transactionCallbackDurationForAttempt;
+                transactionDurationMs += transactionDurationForAttempt;
+                transactionCommitFinalizationDurationMs += Math.max(
+                    0,
+                    Math.round((
+                        transactionDurationForAttempt -
+                        transactionStartDelayForAttempt -
+                        transactionCallbackDurationForAttempt
+                    ) * 100) / 100,
+                );
                 created = true;
             } catch (error) {
                 if (isUniqueOrderNumberConflict(error) && attempt < 4) continue;
                 throw error;
             }
         }
+        const auditLogInsertStartedAt = timingNow();
         await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
             orderType,
             paymentTiming,
             tableId: typeof tableId === 'string' ? tableId : null,
             idempotencyKey: Boolean(idempotencyKey),
         });
+        auditLogInsertDurationMs += durationSince(auditLogInsertStartedAt);
     } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message === 'TABLE_NOT_FOUND') return c.json({ error: 'Table not found' }, 404);
@@ -1306,16 +1406,33 @@ restaurant.post('/orders', async (c) => {
         throw error;
     }
     const responsePreparationStartedAt = timingNow();
-    const response = await orderWithItems(businessId, orderId);
+    const response = await orderWithItems(businessId, orderId, responseTimings);
     const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
     logRestaurantTiming({
         route: 'POST /restaurant/orders',
         correlationId,
         requestDurationMs: durationSince(requestStartedAt),
+        requestParsingDurationMs,
         authorizationDurationMs,
+        idempotencyLookupDurationMs,
+        transactionStartDelayDurationMs,
+        transactionDurationMs,
+        transactionCallbackDurationMs,
+        transactionCommitFinalizationDurationMs,
+        tableValidationDurationMs,
+        menuValidationQueryDurationMs,
+        orderNumberAllocationDurationMs,
+        orderNumberLockDurationMs,
+        orderNumberQueryDurationMs,
         orderWriteDurationMs,
+        orderInsertDurationMs,
+        orderItemInsertDurationMs,
         kdsWriteDurationMs,
+        kdsInsertDurationMs,
+        tableUpdateDurationMs,
+        auditLogInsertDurationMs,
         responsePreparationDurationMs,
+        ...responseTimings,
         orderType,
     });
     return c.json(response, 201);
