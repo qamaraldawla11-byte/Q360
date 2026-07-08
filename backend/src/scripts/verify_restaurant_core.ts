@@ -54,6 +54,14 @@ const createToken = (options?: { businessId?: string; userId?: string; role?: st
     return `${header}.${payload}.${signature}`;
 };
 
+const todayDateParam = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const request = async <T>(path: string, init?: RequestInit, tokenOptions?: { businessId?: string; userId?: string; role?: string; email?: string }): Promise<T> => {
     const response = await fetch(`${baseUrl}${path}`, {
         ...init,
@@ -332,6 +340,17 @@ try {
         total_revenue_today: number;
         active_orders_count: number;
     }>('/api/restaurant/dashboard', undefined, { role: 'manager' });
+    const dailyReport = await request<{
+        summary: {
+            totalOrders: number;
+            paidOrders: number;
+            unpaidOpenOrders: number;
+            paidRevenueCents: number;
+            dineInOrders: number;
+            takeawayOrders: number;
+        };
+        recentOrders: { id: string }[];
+    }>(`/api/restaurant/reports/daily?date=${todayDateParam()}`, undefined, { role: 'manager' });
     const duplicatePayment = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
@@ -367,6 +386,7 @@ try {
             tableId: takeaway.tableId,
         },
         dashboard,
+        dailyReport,
         kdsTicket: doneTicket,
         duplicatePayment,
         paymentCountAfterDuplicate: paymentsAfterDuplicate.length,
@@ -387,6 +407,13 @@ try {
         result.tableAfterPayment !== 'available' ||
         result.dashboard.total_revenue_today !== paid.total ||
         result.dashboard.active_orders_count !== 1 ||
+        result.dailyReport.summary.totalOrders !== 2 ||
+        result.dailyReport.summary.paidOrders !== 1 ||
+        result.dailyReport.summary.unpaidOpenOrders !== 1 ||
+        result.dailyReport.summary.paidRevenueCents !== paid.total ||
+        result.dailyReport.summary.dineInOrders !== 1 ||
+        result.dailyReport.summary.takeawayOrders !== 1 ||
+        result.dailyReport.recentOrders.length !== 2 ||
         result.kdsTicket.status !== 'done' ||
         !result.kdsTicket.completedAt ||
         result.duplicatePayment.status !== 409 ||

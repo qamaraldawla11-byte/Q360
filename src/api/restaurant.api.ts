@@ -130,8 +130,39 @@ export interface RestaurantDashboard {
     live_diners_count: number;
 }
 
+export interface RestaurantDailyReportOrder {
+    id: string;
+    displayOrderNumber: string;
+    orderType: RestaurantOrderType;
+    serviceStatus: RestaurantServiceStatus;
+    paymentStatus: RestaurantPaymentStatus;
+    paymentTiming: RestaurantPaymentTiming;
+    status: RestaurantOrderStatus;
+    total: number;
+    createdAt: string;
+    payments: RestaurantPayment[];
+    items: RestaurantOrderItem[];
+}
+
+export interface RestaurantDailyReport {
+    date: string;
+    summary: {
+        totalOrders: number;
+        paidOrders: number;
+        unpaidOpenOrders: number;
+        paidRevenueCents: number;
+        dineInOrders: number;
+        takeawayOrders: number;
+    };
+    statusBreakdown: Record<string, number>;
+    recentOrders: RestaurantDailyReportOrder[];
+}
+
 export const restaurantApi = {
     getDashboard: () => http.get<RestaurantDashboard>('/restaurant/dashboard'),
+
+    getDailyReport: (date: string) =>
+        http.get<RestaurantDailyReport>(`/restaurant/reports/daily?date=${encodeURIComponent(date)}`),
 
     getMenu: () => http.get<{ categories: RestaurantMenuCategory[] }>('/restaurant/menu'),
 

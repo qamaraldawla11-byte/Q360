@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 import { Hono, type Context } from 'hono';
 import { and, asc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { ensureRestaurantServiceFlowSchema } from '../db/restaurantServiceFlowMigration.js';
 import {
     kdsTickets,
     menuCategories,
@@ -140,10 +139,6 @@ interface BusinessPulseSnapshot {
 }
 
 restaurant.use('/*', authMiddleware);
-restaurant.use('/*', async (_c, next) => {
-    await ensureRestaurantServiceFlowSchema();
-    await next();
-});
 
 const parseJson = async <T>(c: Context<AppEnv>) => {
     try {
@@ -187,6 +182,26 @@ const todayBounds = () => {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     return { start, end };
+};
+
+const dateBoundsFor = (dateValue: string | undefined) => {
+    const source = dateValue ?? orderNumberDateFor(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return null;
+
+    const [year, month, day] = source.split('-').map(Number);
+    const start = new Date(year, month - 1, day);
+    if (
+        start.getFullYear() !== year ||
+        start.getMonth() !== month - 1 ||
+        start.getDate() !== day
+    ) {
+        return null;
+    }
+
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { date: source, start, end };
 };
 
 const orderNumberDateFor = (date: Date) => date.toISOString().slice(0, 10);
@@ -1479,6 +1494,94 @@ restaurant.get('/orders', async (c) => {
             payments: orderPayments,
         };
     }));
+});
+
+restaurant.get('/reports/daily', async (c) => {
+    const bounds = dateBoundsFor(c.req.query('date'));
+    if (!bounds) {
+        return c.json({ error: 'date must use YYYY-MM-DD' }, 400);
+    }
+
+    const businessId = c.get('businessId');
+    const orders = await db.select().from(restaurantOrders)
+        .where(and(
+            eq(restaurantOrders.businessId, businessId),
+            gte(restaurantOrders.createdAt, bounds.start),
+            lt(restaurantOrders.createdAt, bounds.end),
+        ))
+        .orderBy(sql`${restaurantOrders.createdAt} DESC`);
+
+    const orderIds = orders.map((order) => order.id);
+    const items = orderIds.length > 0
+        ? await db.select().from(restaurantOrderItems)
+            .where(inArray(restaurantOrderItems.orderId, orderIds))
+        : [];
+    const payments = orderIds.length > 0
+        ? await db.select().from(restaurantPayments)
+            .where(and(
+                eq(restaurantPayments.businessId, businessId),
+                inArray(restaurantPayments.orderId, orderIds),
+            ))
+        : [];
+
+    const completedPaymentsForDay = payments.filter((payment) => (
+        payment.status === 'completed' &&
+        payment.paidAt &&
+        payment.paidAt >= bounds.start &&
+        payment.paidAt < bounds.end
+    ));
+    const paidOrderIds = new Set(completedPaymentsForDay.map((payment) => payment.orderId));
+    const paidRevenueCents = completedPaymentsForDay.reduce(
+        (sum, payment) => sum + Math.round(payment.amount * 100),
+        0,
+    );
+
+    const reportOrders = orders.map((order) => {
+        const orderPayments = payments.filter((payment) => payment.orderId === order.id);
+        const completedPayment = orderPayments.find((payment) => payment.status === 'completed') ?? null;
+        const orderType = orderTypeFor(order);
+        const serviceStatus = serviceStatusFor(order);
+        const paymentStatus = paymentStatusFor(order, completedPayment);
+        const paymentTiming = paymentTimingFor(order);
+        const status = legacyStatusFor(orderType, serviceStatus, paymentStatus);
+
+        return {
+            id: order.id,
+            displayOrderNumber: displayOrderNumberFor(order),
+            orderType,
+            serviceStatus,
+            paymentStatus,
+            paymentTiming,
+            status,
+            total: order.total,
+            createdAt: order.createdAt,
+            payments: orderPayments,
+            items: items.filter((item) => item.orderId === order.id),
+        };
+    });
+
+    const statusBreakdown = reportOrders.reduce<Record<string, number>>((breakdown, order) => {
+        breakdown[order.status] = (breakdown[order.status] ?? 0) + 1;
+        return breakdown;
+    }, {});
+
+    return c.json({
+        date: bounds.date,
+        summary: {
+            totalOrders: reportOrders.length,
+            paidOrders: reportOrders.filter((order) => paidOrderIds.has(order.id) || order.paymentStatus === 'paid').length,
+            unpaidOpenOrders: reportOrders.filter((order) => (
+                order.status !== 'cancelled' &&
+                order.paymentStatus !== 'paid' &&
+                !paidOrderIds.has(order.id)
+            )).length,
+            paidRevenueCents,
+            dineInOrders: reportOrders.filter((order) => order.orderType === 'dine_in').length,
+            takeawayOrders: reportOrders.filter((order) => order.orderType === 'takeaway').length,
+        },
+        statusBreakdown,
+        recentOrders: reportOrders.slice(0, 10),
+    });
 });
 
 restaurant.patch('/orders/:id/status', async (c) => {
