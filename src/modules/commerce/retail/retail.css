@@ -98,6 +98,15 @@
     text-align: left;
 }
 
+.retail-table tbody tr {
+    cursor: pointer;
+}
+
+.retail-table tbody tr:hover,
+.retail-table-row--active {
+    background: var(--surface-200);
+}
+
 .retail-table th {
     color: var(--fg-secondary);
     background: var(--surface-200);
@@ -110,6 +119,79 @@
     padding: 36px 20px;
     color: var(--fg-secondary);
     text-align: center;
+}
+
+.retail-customers-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: 18px;
+    align-items: start;
+}
+
+.retail-customer-cards {
+    display: none;
+}
+
+.retail-customer-card {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--surface-400);
+    border-radius: 8px;
+    background: var(--surface-100);
+    color: var(--fg-primary);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.retail-customer-card span {
+    display: block;
+    margin-top: 4px;
+    color: var(--fg-secondary);
+    font-size: 14px;
+}
+
+.retail-detail-panel {
+    padding: 18px;
+    border: 1px solid var(--surface-400);
+    border-radius: 8px;
+    background: var(--surface-100);
+}
+
+.retail-detail-list {
+    display: grid;
+    gap: 12px;
+    margin: 18px 0 0;
+}
+
+.retail-detail-list div {
+    display: grid;
+    gap: 4px;
+}
+
+.retail-detail-list dt {
+    color: var(--fg-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.retail-detail-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.retail-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--surface-400);
+    border-radius: 8px;
+    background: var(--surface-200);
+    color: var(--fg-primary);
+    cursor: pointer;
 }
 
 .retail-pos {
@@ -173,6 +255,10 @@
     .retail-dashboard-panels {
         grid-template-columns: 1fr;
     }
+
+    .retail-customers-layout {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 560px) {
@@ -182,5 +268,14 @@
 
     .retail-stats {
         grid-template-columns: 1fr;
+    }
+
+    .retail-customers-layout .retail-table-wrap {
+        display: none;
+    }
+
+    .retail-customer-cards {
+        display: grid;
+        gap: 10px;
     }
 }
