@@ -23,6 +23,12 @@ type CustomerInput = {
 const optionalText = (value: unknown) =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
+const optionalUpdateText = (value: unknown) => {
+    if (value === null) return null;
+    if (typeof value === 'string') return value.trim() || null;
+    return undefined;
+};
+
 // GET /api/customers
 customersRouter.get('/', async (c) => {
     const businessId = c.get('businessId');
@@ -86,6 +92,58 @@ customersRouter.post('/', async (c) => {
     await logAudit(c, 'CREATE', 'CUSTOMER', customerId, { name });
 
     return c.json(createdCustomer, 201);
+});
+
+// PATCH /api/customers/:id
+customersRouter.patch('/:id', async (c) => {
+    let body: CustomerInput;
+
+    try {
+        body = await c.req.json<CustomerInput>();
+    } catch {
+        return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const updates: Partial<typeof customers.$inferInsert> = {};
+
+    if ('name' in body) {
+        if (typeof body.name !== 'string' || !body.name.trim()) {
+            return c.json({ error: 'name must be a non-empty string when provided' }, 400);
+        }
+        updates.name = body.name.trim();
+    }
+
+    const phone = optionalUpdateText(body.phone);
+    const email = optionalUpdateText(body.email);
+    const companyName = optionalUpdateText(body.companyName);
+    const address = optionalUpdateText(body.address);
+    const notes = optionalUpdateText(body.notes);
+
+    if ('phone' in body) updates.phone = phone;
+    if ('email' in body) updates.email = email;
+    if ('companyName' in body) updates.companyName = companyName;
+    if ('address' in body) updates.address = address;
+    if ('notes' in body) updates.notes = notes;
+
+    if (Object.keys(updates).length === 0) {
+        return c.json({ error: 'At least one supported customer field is required' }, 400);
+    }
+
+    const id = c.req.param('id');
+    const businessId = c.get('businessId');
+    const updatedCustomer = await first(db.update(customers)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(and(eq(customers.id, id), eq(customers.businessId, businessId)))
+        .returning()
+    );
+
+    if (!updatedCustomer) {
+        return c.json({ error: 'Customer not found' }, 404);
+    }
+
+    await logAudit(c, 'UPDATE', 'CUSTOMER', id, { fields: Object.keys(updates) });
+
+    return c.json(updatedCustomer);
 });
 
 export default customersRouter;

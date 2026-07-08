@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, LoaderCircle, Plus, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, UserRound, X } from 'lucide-react';
 import { customersApi, type CreateCustomerInput, type Customer } from '@/api/customers.api';
 import '@/modules/commerce/retail/retail.css';
 
@@ -29,6 +29,15 @@ const compactInput = (form: CreateCustomerInput): CreateCustomerInput => ({
     notes: form.notes?.trim() || undefined,
 });
 
+const formFromCustomer = (customer: Customer): CreateCustomerInput => ({
+    name: customer.name,
+    phone: customer.phone || '',
+    email: customer.email || '',
+    companyName: customer.companyName || '',
+    address: customer.address || '',
+    notes: customer.notes || '',
+});
+
 const formatDate = (value?: string | null) => {
     if (!value) return '-';
     const date = new Date(value);
@@ -41,6 +50,7 @@ export const CustomersView = () => {
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [form, setForm] = useState<CreateCustomerInput>(emptyForm);
     const [showForm, setShowForm] = useState(false);
+    const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isDetailLoading, setIsDetailLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,6 +96,29 @@ export const CustomersView = () => {
         }
     };
 
+    const openCreateForm = () => {
+        setEditingCustomerId(null);
+        setForm(emptyForm);
+        setFormError(null);
+        setSuccessMessage(null);
+        setShowForm(true);
+    };
+
+    const openEditForm = (customer: Customer) => {
+        setEditingCustomerId(customer.id);
+        setForm(formFromCustomer(customer));
+        setFormError(null);
+        setSuccessMessage(null);
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setShowForm(false);
+        setEditingCustomerId(null);
+        setForm(emptyForm);
+        setFormError(null);
+    };
+
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         setFormError(null);
@@ -99,12 +132,18 @@ export const CustomersView = () => {
 
         setIsSubmitting(true);
         try {
-            const createdCustomer = await customersApi.create(input);
-            setCustomers(current => [createdCustomer, ...current]);
-            setSelectedCustomer(createdCustomer);
-            setSuccessMessage(`${createdCustomer.name} was added.`);
-            setForm(emptyForm);
-            setShowForm(false);
+            if (editingCustomerId) {
+                const updatedCustomer = await customersApi.update(editingCustomerId, input);
+                await loadCustomers();
+                setSelectedCustomer(await customersApi.get(updatedCustomer.id));
+                setSuccessMessage(`${updatedCustomer.name} was updated.`);
+            } else {
+                const createdCustomer = await customersApi.create(input);
+                await loadCustomers();
+                setSelectedCustomer(await customersApi.get(createdCustomer.id));
+                setSuccessMessage(`${createdCustomer.name} was added.`);
+            }
+            closeForm();
         } catch (submitError) {
             setFormError(getErrorMessage(submitError));
         } finally {
@@ -123,7 +162,7 @@ export const CustomersView = () => {
                     <button className="retail-button" onClick={loadCustomers} disabled={isLoading}>
                         <RefreshCw size={16} /> Refresh
                     </button>
-                    <button className="retail-button retail-button--primary" onClick={() => setShowForm(true)}>
+                    <button className="retail-button retail-button--primary" onClick={openCreateForm}>
                         <Plus size={16} /> Add customer
                     </button>
                 </div>
@@ -201,9 +240,14 @@ export const CustomersView = () => {
                                 <UserRound size={20} /> Detail
                             </h2>
                             {selectedCustomer && (
-                                <button className="retail-icon-button" onClick={() => setSelectedCustomer(null)} aria-label="Close customer detail">
-                                    <X size={18} />
-                                </button>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <button className="retail-icon-button" onClick={() => openEditForm(selectedCustomer)} aria-label="Edit customer">
+                                        <Pencil size={18} />
+                                    </button>
+                                    <button className="retail-icon-button" onClick={() => setSelectedCustomer(null)} aria-label="Close customer detail">
+                                        <X size={18} />
+                                    </button>
+                                </div>
                             )}
                         </div>
 
@@ -237,9 +281,9 @@ export const CustomersView = () => {
             )}
 
             {showForm && (
-                <div className="retail-modal" role="dialog" aria-modal="true" aria-labelledby="add-customer-title">
+                <div className="retail-modal" role="dialog" aria-modal="true" aria-labelledby="customer-form-title">
                     <form className="retail-modal__panel" onSubmit={submit}>
-                        <h2 id="add-customer-title" style={{ marginTop: 0 }}>Add customer</h2>
+                        <h2 id="customer-form-title" style={{ marginTop: 0 }}>{editingCustomerId ? 'Edit customer' : 'Add customer'}</h2>
                         {formError && (
                             <div role="alert" style={{ color: 'var(--error)', marginBottom: 16 }}>{formError}</div>
                         )}
@@ -270,8 +314,8 @@ export const CustomersView = () => {
                             </div>
                         </div>
                         <div className="retail-actions" style={{ justifyContent: 'flex-end', marginTop: 22 }}>
-                            <button type="button" className="retail-button" onClick={() => { setShowForm(false); setFormError(null); }} disabled={isSubmitting}>Cancel</button>
-                            <button className="retail-button retail-button--primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save customer'}</button>
+                            <button type="button" className="retail-button" onClick={closeForm} disabled={isSubmitting}>Cancel</button>
+                            <button className="retail-button retail-button--primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : editingCustomerId ? 'Save changes' : 'Save customer'}</button>
                         </div>
                     </form>
                 </div>

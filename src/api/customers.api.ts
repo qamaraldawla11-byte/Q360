@@ -22,8 +22,11 @@ export interface CreateCustomerInput {
     notes?: string;
 }
 
+export type UpdateCustomerInput = Partial<CreateCustomerInput>;
+
 export const customersApi = {
     list: () => http.get<Customer[]>('/customers'),
     create: (input: CreateCustomerInput) => http.post<Customer>('/customers', input),
     get: (id: string) => http.get<Customer>(`/customers/${id}`),
+    update: (id: string, input: UpdateCustomerInput) => http.patch<Customer>(`/customers/${id}`, input),
 };
