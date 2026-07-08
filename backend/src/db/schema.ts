@@ -2,6 +2,7 @@ import {
     boolean,
     doublePrecision,
     integer,
+    index,
     jsonb,
     pgTable,
     text,
@@ -85,6 +86,62 @@ export const orders = pgTable('orders', {
     createdAt: timestamp('created_at').defaultNow(),
     businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
 });
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'converted';
+
+// Shared customers table for Commerce and future Services
+export const customers = pgTable('customers', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').default('biz_main').notNull(),
+    name: text('name').notNull(),
+    phone: text('phone'),
+    email: text('email'),
+    companyName: text('company_name'),
+    address: text('address'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('customers_business_id_idx').on(table.businessId),
+]);
+
+// Shared quotes table for Commerce and future Services
+export const quotes = pgTable('quotes', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').default('biz_main').notNull(),
+    customerId: text('customer_id'),
+    quoteNumber: text('quote_number').notNull(),
+    status: text('status').$type<QuoteStatus>().default('draft').notNull(),
+    subtotal: doublePrecision('subtotal').notNull(),
+    discountTotal: doublePrecision('discount_total').default(0).notNull(),
+    taxTotal: doublePrecision('tax_total').default(0).notNull(),
+    total: doublePrecision('total').notNull(),
+    currency: text('currency').default('USD').notNull(),
+    validUntil: timestamp('valid_until'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('quotes_business_id_idx').on(table.businessId),
+    index('quotes_customer_id_idx').on(table.customerId),
+    index('quotes_status_idx').on(table.status),
+]);
+
+// Shared quote line items table
+export const quoteItems = pgTable('quote_items', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').default('biz_main').notNull(),
+    quoteId: text('quote_id').notNull(),
+    productId: text('product_id'),
+    description: text('description').notNull(),
+    quantity: doublePrecision('quantity').notNull(),
+    unitPrice: doublePrecision('unit_price').notNull(),
+    lineTotal: doublePrecision('line_total').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('quote_items_quote_id_idx').on(table.quoteId),
+]);
 
 export const restaurantMenus = pgTable('restaurant_menus', {
     id: text('id').primaryKey(),
@@ -222,6 +279,12 @@ export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type NewInventoryItem = typeof inventoryItems.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type Order = typeof orders.$inferSelect;
+export type Customer = typeof customers.$inferSelect;
+export type NewCustomer = typeof customers.$inferInsert;
+export type Quote = typeof quotes.$inferSelect;
+export type NewQuote = typeof quotes.$inferInsert;
+export type QuoteItem = typeof quoteItems.$inferSelect;
+export type NewQuoteItem = typeof quoteItems.$inferInsert;
 export type RestaurantMenu = typeof restaurantMenus.$inferSelect;
 export type MenuCategory = typeof menuCategories.$inferSelect;
 export type MenuItem = typeof menuItems.$inferSelect;

@@ -16,6 +16,7 @@
         "verify:restaurant-setup": "tsx src/scripts/verify_restaurant_setup_foundation.ts",
         "verify:business-pulse": "tsx src/scripts/verify_business_pulse_snapshot.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
+        "verify:customers": "tsx src/scripts/verify_customers.ts",
         "verify:jwt-init": "tsx src/scripts/verify_jwt_init.ts",
         "verify:otp": "tsx src/scripts/verify_otp.ts",
         "verify:resend-live": "node dist/scripts/verify_resend_live.js"
