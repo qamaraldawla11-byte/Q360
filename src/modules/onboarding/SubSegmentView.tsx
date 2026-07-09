@@ -25,6 +25,7 @@ interface Segment {
     sub: string;
     keywords: string[];
     path: string;
+    availability: 'active' | 'coming-soon' | 'internal-preview';
 }
 
 const segments: Segment[] = [
@@ -37,6 +38,7 @@ const segments: Segment[] = [
         sub: 'POS, kitchen, tables',
         keywords: ['restaurant', 'cafe', 'food', 'kitchen', 'bar', 'dining', 'bistro', 'takeaway', 'fast food'],
         path: '/app/restaurant',
+        availability: 'active',
     },
     {
         id: 'pharmacy',
@@ -47,6 +49,7 @@ const segments: Segment[] = [
         sub: 'Prescriptions, compliance',
         keywords: ['pharmacy', 'medicine', 'drugs', 'dispensing', 'chemist', 'health', 'pharmacist'],
         path: '/app/pharmacy',
+        availability: 'coming-soon',
     },
     {
         id: 'supermarket',
@@ -57,6 +60,7 @@ const segments: Segment[] = [
         sub: 'Barcode, inventory',
         keywords: ['supermarket', 'grocery', 'food store', 'convenience', 'hypermarket', 'mini market'],
         path: '/app/supermarket',
+        availability: 'internal-preview',
     },
     {
         id: 'retail',
@@ -67,6 +71,7 @@ const segments: Segment[] = [
         sub: 'Products, customers',
         keywords: ['retail', 'shop', 'store', 'fashion', 'clothes', 'electronics', 'products', 'clothing', 'boutique'],
         path: '/app/retail',
+        availability: 'active',
     },
     {
         id: 'autoparts',
@@ -77,6 +82,7 @@ const segments: Segment[] = [
         sub: 'Multi-POS, B2B accounts',
         keywords: ['auto', 'car', 'spare parts', 'vehicle', 'automotive', 'garage', 'mechanic', 'workshop'],
         path: '/app/retail', // TODO: Replace with the dedicated auto parts workspace.
+        availability: 'coming-soon',
     },
     {
         id: 'clinic',
@@ -87,6 +93,7 @@ const segments: Segment[] = [
         sub: 'Patients, appointments',
         keywords: ['clinic', 'doctor', 'medical', 'hospital', 'dentist', 'patient', 'health', 'gp'],
         path: '/app/pharmacy', // TODO: Replace with the dedicated clinic workspace.
+        availability: 'coming-soon',
     },
     {
         id: 'services',
@@ -97,6 +104,7 @@ const segments: Segment[] = [
         sub: 'Quotes, jobs, invoicing',
         keywords: ['service', 'solar', 'contractor', 'consultant', 'trade', 'agency', 'installation', 'engineer'],
         path: '/app/personal', // TODO: Replace with the dedicated services workspace.
+        availability: 'coming-soon',
     },
     {
         id: 'other',
@@ -107,8 +115,15 @@ const segments: Segment[] = [
         sub: 'General business',
         keywords: ['other', 'general', 'business'],
         path: '/app/segments',
+        availability: 'coming-soon',
     },
 ];
+
+const availabilityLabels = {
+    active: '',
+    'coming-soon': 'Coming soon',
+    'internal-preview': 'Internal preview',
+} satisfies Record<Segment['availability'], string>;
 
 export const SubSegmentView = () => {
     const navigate = useNavigate();
@@ -131,20 +146,16 @@ export const SubSegmentView = () => {
         );
     }, [query]);
 
-    const selectedSegment = segments.find((segment) => segment.id === selected);
+    const selectedSegment = segments.find((segment) => segment.id === selected && segment.availability === 'active');
 
     const continueWith = (segment: Segment) => {
+        if (segment.availability !== 'active') return;
         updateUser({ userType: 'sme', segment: segment.id, lastActiveWorkspace: segment.path });
         navigate('/onboarding/workspace');
     };
 
     const handleContinue = () => {
         if (selectedSegment) continueWith(selectedSegment);
-    };
-
-    const handleUseDefaults = () => {
-        const defaultSegment = segments[0];
-        continueWith(defaultSegment);
     };
 
     return (
@@ -156,8 +167,12 @@ export const SubSegmentView = () => {
                     gap: 10px;
                 }
 
-                .segment-picker-card:hover {
+                .segment-picker-card:not(:disabled):hover {
                     border-color: #93c5fd !important;
+                }
+
+                .segment-picker-card:disabled {
+                    opacity: 0.72;
                 }
 
                 .segment-picker-card:focus-visible,
@@ -233,6 +248,7 @@ export const SubSegmentView = () => {
                     {filteredSegments.map((segment) => {
                         const Icon = segment.icon;
                         const isSelected = selected === segment.id;
+                        const isActive = segment.availability === 'active';
                         const cardStyle: CSSProperties = {
                             position: 'relative',
                             minHeight: '116px',
@@ -240,8 +256,8 @@ export const SubSegmentView = () => {
                             textAlign: 'center',
                             border: isSelected ? '2px solid #3b82f6' : '0.5px solid #cbd5e1',
                             borderRadius: '12px',
-                            background: isSelected ? '#eff6ff' : '#ffffff',
-                            cursor: 'pointer',
+                            background: isSelected ? '#eff6ff' : isActive ? '#ffffff' : '#f8fafc',
+                            cursor: isActive ? 'pointer' : 'not-allowed',
                             fontFamily: 'inherit',
                             transition: 'border-color 0.2s, background-color 0.2s, transform 0.2s',
                         };
@@ -251,7 +267,10 @@ export const SubSegmentView = () => {
                                 key={segment.id}
                                 type="button"
                                 className="segment-picker-card"
-                                onClick={() => setSelected(segment.id)}
+                                onClick={() => {
+                                    if (isActive) setSelected(segment.id);
+                                }}
+                                disabled={!isActive}
                                 aria-pressed={isSelected}
                                 style={cardStyle}
                             >
@@ -303,6 +322,22 @@ export const SubSegmentView = () => {
                                 }}>
                                     {segment.sub}
                                 </span>
+                                {!isActive && (
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        marginTop: '8px',
+                                        minHeight: '20px',
+                                        alignItems: 'center',
+                                        borderRadius: '999px',
+                                        background: segment.availability === 'internal-preview' ? '#fef3c7' : '#e2e8f0',
+                                        color: segment.availability === 'internal-preview' ? '#92400e' : '#475569',
+                                        fontSize: '10px',
+                                        fontWeight: 700,
+                                        padding: '3px 8px',
+                                    }}>
+                                        {availabilityLabels[segment.availability]}
+                                    </span>
+                                )}
                             </button>
                         );
                     })}
@@ -347,24 +382,16 @@ export const SubSegmentView = () => {
             <div className="segment-picker-actions" style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                justifyContent: 'center',
                 marginTop: '18px',
             }}>
                 <button
                     type="button"
                     className="segment-picker-action"
-                    onClick={() => navigate('/onboarding/segment')}
+                    onClick={() => navigate('/onboarding/identity')}
                     style={linkButtonStyle}
                 >
                     Back
-                </button>
-                <button
-                    type="button"
-                    className="segment-picker-action"
-                    onClick={handleUseDefaults}
-                    style={{ ...linkButtonStyle, color: '#3b82f6' }}
-                >
-                    Use Defaults
                 </button>
             </div>
         </div>

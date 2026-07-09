@@ -1,10 +1,48 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import axios from 'axios';
 import { Plus, Search } from 'lucide-react';
 import { inventoryService } from '@/core/services/inventory.service';
 import type { InventoryItem } from '@/types/inventory';
 import '../retail.css';
 
-const emptyProduct = { name: '', barcode: '', category: '', current: 0, min: 5, max: 100, unit: 'units', supplier: '', price: 0 };
+type ProductForm = {
+    name: string;
+    barcode: string;
+    category: string;
+    current: string;
+    min: string;
+    max: string;
+    unit: string;
+    supplier: string;
+    price: string;
+};
+
+const emptyProduct: ProductForm = { name: '', barcode: '', category: '', current: '', min: '', max: '', unit: 'units', supplier: '', price: '' };
+
+const numericFields = new Set<keyof ProductForm>(['price', 'current', 'min', 'max']);
+
+const getApiErrorMessage = (error: unknown) => {
+    if (axios.isAxiosError<{ error?: string }>(error)) {
+        return error.response?.data?.error;
+    }
+
+    return undefined;
+};
+
+type ParsedNumber = { ok: true; value: number } | { ok: false; error: string };
+
+const parseRequiredNumber = (value: string, label: string): ParsedNumber => {
+    if (!value.trim()) {
+        return { ok: false, error: `${label} is required.` };
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return { ok: false, error: `${label} must be a non-negative number.` };
+    }
+
+    return { ok: true, value: parsed };
+};
 
 export const CatalogView = () => {
     const [products, setProducts] = useState<InventoryItem[]>([]);
@@ -12,6 +50,7 @@ export const CatalogView = () => {
     const [showForm, setShowForm] = useState(false);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(emptyProduct);
+    const [formError, setFormError] = useState('');
 
     const load = () => inventoryService.getInventory().then(setProducts).catch(() => setProducts([]));
     useEffect(() => {
@@ -22,16 +61,80 @@ export const CatalogView = () => {
         `${product.name} ${product.barcode ?? ''} ${product.category ?? ''}`.toLowerCase().includes(query.toLowerCase()),
     ), [products, query]);
 
-    const submit = async (event: React.FormEvent) => {
+    const openForm = () => {
+        setForm(emptyProduct);
+        setFormError('');
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setShowForm(false);
+        setSaving(false);
+        setFormError('');
+    };
+
+    const submit = async (event: FormEvent) => {
         event.preventDefault();
+        setFormError('');
+
+        const name = form.name.trim();
+        const barcode = form.barcode.trim();
+        const price = parseRequiredNumber(form.price, 'Selling price');
+        const current = parseRequiredNumber(form.current, 'Opening stock');
+        const min = parseRequiredNumber(form.min, 'Low stock level');
+        const max = form.max.trim() ? Number(form.max) : undefined;
+
+        if (!name) {
+            setFormError('Product name is required.');
+            return;
+        }
+        if (!price.ok) {
+            setFormError(price.error);
+            return;
+        }
+        if (!current.ok) {
+            setFormError(current.error);
+            return;
+        }
+        if (!min.ok) {
+            setFormError(min.error);
+            return;
+        }
+        if (max !== undefined && (!Number.isFinite(max) || max < current.value)) {
+            setFormError('Maximum stock must be greater than or equal to opening stock.');
+            return;
+        }
+        if (barcode && products.some((product) => product.barcode?.trim().toLowerCase() === barcode.toLowerCase())) {
+            setFormError('That barcode already exists in this workspace. Use a different barcode or leave it blank.');
+            return;
+        }
+
+        const payload: Omit<InventoryItem, 'id' | 'status'> = {
+            name,
+            current: current.value,
+            min: min.value,
+            unit: form.unit.trim() || 'units',
+            price: price.value,
+        };
+
+        if (max !== undefined) payload.max = max;
+        if (barcode) payload.barcode = barcode;
+        if (form.category.trim()) payload.category = form.category.trim();
+        if (form.supplier.trim()) payload.supplier = form.supplier.trim();
+
         setSaving(true);
         try {
-            await inventoryService.createItem(form);
+            await inventoryService.createItem(payload);
             setForm(emptyProduct);
             setShowForm(false);
             await load();
-        } catch {
-            window.alert('Product could not be created. Check that its barcode is unique.');
+        } catch (error) {
+            const apiMessage = getApiErrorMessage(error);
+            setFormError(
+                barcode
+                    ? apiMessage || 'Product could not be created. Check that its barcode is unique.'
+                    : apiMessage || 'Product could not be created. Check the product details and try again.',
+            );
         } finally {
             setSaving(false);
         }
@@ -41,7 +144,7 @@ export const CatalogView = () => {
         <section className="retail-page">
             <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
                 <div><h1 style={{ margin: '0 0 6px' }}>Product Catalog</h1><p style={{ margin: 0, color: 'var(--fg-secondary)' }}>Products are stored in the shared business inventory.</p></div>
-                <button className="retail-button retail-button--primary" onClick={() => setShowForm(true)}><Plus size={16} /> Add product</button>
+                <button className="retail-button retail-button--primary" onClick={openForm}><Plus size={16} /> Add product</button>
             </header>
 
             <div className="retail-card" style={{ marginBottom: 18 }}>
@@ -73,9 +176,9 @@ export const CatalogView = () => {
             </div>
 
             {showForm && (
-                <div className="retail-modal" role="dialog" aria-modal="true" aria-labelledby="add-retail-product-title">
+                <div className="retail-modal" role="dialog" aria-modal="true" aria-labelledby="add-product-title">
                     <form className="retail-modal__panel" onSubmit={submit}>
-                        <h2 id="add-retail-product-title">Add retail product</h2>
+                        <h2 id="add-product-title">Add product</h2>
                         <div className="retail-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                             {[
                                 ['name', 'Product name', 'text'],
@@ -92,17 +195,28 @@ export const CatalogView = () => {
                                     <input
                                         id={`retail-product-${key}`}
                                         type={type}
-                                        required={['name', 'barcode', 'price', 'current', 'min'].includes(key)}
+                                        required={['name', 'price', 'current', 'min'].includes(key)}
                                         min={type === 'number' ? 0 : undefined}
                                         step={key === 'price' ? '0.01' : undefined}
                                         value={form[key as keyof typeof form]}
-                                        onChange={event => setForm({ ...form, [key]: type === 'number' ? Number(event.target.value) : event.target.value })}
+                                        onChange={event => {
+                                            const field = key as keyof ProductForm;
+                                            const value = event.target.value;
+                                            setFormError('');
+                                            if (numericFields.has(field) && value && Number(value) < 0) return;
+                                            setForm({ ...form, [field]: value });
+                                        }}
                                     />
                                 </div>
                             ))}
                         </div>
+                        {formError && (
+                            <div role="alert" style={{ marginTop: 16, padding: '12px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', fontSize: 14 }}>
+                                {formError}
+                            </div>
+                        )}
                         <div className="retail-actions" style={{ justifyContent: 'flex-end', marginTop: 22 }}>
-                            <button type="button" className="retail-button" onClick={() => setShowForm(false)}>Cancel</button>
+                            <button type="button" className="retail-button" onClick={closeForm}>Cancel</button>
                             <button className="retail-button retail-button--primary" disabled={saving}>{saving ? 'Saving...' : 'Save product'}</button>
                         </div>
                     </form>

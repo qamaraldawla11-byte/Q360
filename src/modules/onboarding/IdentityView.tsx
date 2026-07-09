@@ -11,8 +11,8 @@ export const IdentityView = () => {
         e.preventDefault();
         if (!name.trim()) return;
 
-        updateUser({ name: name.trim() });
-        navigate('/onboarding/segment');
+        updateUser({ name: name.trim(), userType: 'sme' });
+        navigate('/onboarding/type');
     };
 
     return (

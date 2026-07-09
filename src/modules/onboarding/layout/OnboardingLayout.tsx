@@ -1,40 +1,21 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
-import { ArrowRight, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { LogoApp } from '@/components/ui/Logo';
 
 // Onboarding Steps Definition
 const STEPS = [
     { path: '/onboarding/identity', label: 'Profile', index: 1 },
-    { path: '/onboarding/segment', label: 'Category', index: 2 },
-    { path: '/onboarding/type', label: 'Business Type', index: 3 },
-    { path: '/onboarding/workspace', label: 'Workspace', index: 4 },
+    { path: '/onboarding/type', label: 'Business Type', index: 2 },
+    { path: '/onboarding/workspace', label: 'Workspace', index: 3 },
 ];
 
 export const OnboardingLayout = () => {
-    const { logout, updateUser, user } = useAuthStore();
-    const navigate = useNavigate();
+    const { logout } = useAuthStore();
     const location = useLocation();
 
     // Current Step
     const currentStep = STEPS.find(s => location.pathname.startsWith(s.path)) || STEPS[0];
-
-    // Skip Logic (Use Defaults)
-    const handleUseDefaults = () => {
-        if (currentStep.path.includes('identity')) {
-            // Fill profile with email-derived name
-            const name = user?.email?.split('@')[0] || 'User';
-            updateUser({ name });
-            navigate('/onboarding/segment');
-        } else if (currentStep.path.includes('segment')) {
-            // Category is MANDATORY - no skip
-            return;
-        } else if (currentStep.path.includes('type')) {
-            const segment = user?.userType === 'personal' ? 'personal_freelancer' : 'restaurant';
-            updateUser({ segment, lastActiveWorkspace: `/app/${segment}` });
-            navigate('/onboarding/workspace');
-        }
-    };
 
     return (
         <div className="onboarding-canvas" style={{
@@ -85,7 +66,6 @@ export const OnboardingLayout = () => {
 
                     <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px' }}>
                         {currentStep.label === 'Profile' && 'Set Up Your Profile'}
-                        {currentStep.label === 'Category' && 'What kind of system do you need?'}
                         {currentStep.label === 'Business Type' && 'What type of business do you run?'}
                         {currentStep.label === 'Workspace' && 'Configure Your Workspace'}
                     </h1>
@@ -101,7 +81,7 @@ export const OnboardingLayout = () => {
                 {!currentStep.path.includes('type') && <div style={{
                     marginTop: '32px',
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    justifyContent: 'center',
                     alignItems: 'center'
                 }}>
                     <button
@@ -114,22 +94,6 @@ export const OnboardingLayout = () => {
                     >
                         Sign Out
                     </button>
-
-                    {/* Use Defaults (Skip equivalent) - Not shown for Segment */}
-                    {!currentStep.path.includes('segment') && !currentStep.path.includes('workspace') && (
-                        <button
-                            onClick={handleUseDefaults}
-                            style={{
-                                background: 'none', border: 'none',
-                                color: 'var(--fg-secondary)', fontSize: '13px',
-                                cursor: 'pointer', display: 'flex',
-                                alignItems: 'center', gap: '4px',
-                                fontWeight: 500
-                            }}
-                        >
-                            Use Defaults <ArrowRight size={14} />
-                        </button>
-                    )}
                 </div>}
             </div>
         </div>

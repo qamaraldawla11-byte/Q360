@@ -4,6 +4,20 @@ import { Building2, DollarSign, Globe } from 'lucide-react';
 import { userApi } from '@/api/user.api';
 import { useAuthStore } from '@/store/auth.store';
 
+const countries = [
+    { value: 'US', label: 'United States', hint: 'US' },
+    { value: 'GB', label: 'United Kingdom', hint: 'GB' },
+    { value: 'FR', label: 'France', hint: 'FR' },
+    { value: 'AE', label: 'UAE', hint: 'AE' },
+];
+
+const currencies = [
+    { value: 'USD', label: 'US Dollar', hint: 'USD' },
+    { value: 'GBP', label: 'British Pound', hint: 'GBP' },
+    { value: 'EUR', label: 'Euro', hint: 'EUR' },
+    { value: 'AED', label: 'UAE Dirham', hint: 'AED' },
+];
+
 export const BusinessTypeView = () => {
     const navigate = useNavigate();
     const { user, updateUser } = useAuthStore();
@@ -43,7 +57,7 @@ export const BusinessTypeView = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div>
                 <label htmlFor="onboarding-business-name" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 600, color: 'var(--fg-primary)' }}>
-                    {user?.userType === 'personal' ? 'Workspace Name' : 'Business Name'}
+                    Business Name
                 </label>
                 <div style={{ position: 'relative' }}>
                     <Building2
@@ -55,7 +69,7 @@ export const BusinessTypeView = () => {
                         type="text"
                         value={businessName}
                         onChange={(event) => setBusinessName(event.target.value)}
-                        placeholder={user?.userType === 'personal' ? 'My Workspace' : 'My Business'}
+                        placeholder="My Business"
                         autoFocus
                         style={{
                             width: '100%',
@@ -69,29 +83,73 @@ export const BusinessTypeView = () => {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
                 <label style={{ fontSize: '14px', fontWeight: 600 }}>
                     Country
                     <div style={{ position: 'relative', marginTop: '8px' }}>
-                        <Globe size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
-                        <select value={country} onChange={(event) => setCountry(event.target.value)} className="input-base" style={{ width: '100%', paddingLeft: '38px' }}>
-                            <option value="US">United States</option>
-                            <option value="GB">United Kingdom</option>
-                            <option value="FR">France</option>
-                            <option value="AE">UAE</option>
+                        <Globe size={19} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--accent-primary)', pointerEvents: 'none' }} />
+                        <select
+                            value={country}
+                            onChange={(event) => setCountry(event.target.value)}
+                            aria-label="Country"
+                            style={{
+                                width: '100%',
+                                minHeight: '52px',
+                                appearance: 'none',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: '14px',
+                                background: '#ffffff',
+                                color: 'var(--fg-primary)',
+                                fontFamily: 'inherit',
+                                fontSize: '15px',
+                                fontWeight: 700,
+                                lineHeight: 1.2,
+                                outline: 'none',
+                                padding: '14px 42px 14px 44px',
+                                boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
+                            }}
+                        >
+                            {countries.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
                         </select>
+                        <span aria-hidden="true" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)', fontSize: '12px' }}>
+                            {countries.find((option) => option.value === country)?.hint}
+                        </span>
                     </div>
                 </label>
                 <label style={{ fontSize: '14px', fontWeight: 600 }}>
                     Currency
                     <div style={{ position: 'relative', marginTop: '8px' }}>
-                        <DollarSign size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
-                        <select value={currency} onChange={(event) => setCurrency(event.target.value)} className="input-base" style={{ width: '100%', paddingLeft: '38px' }}>
-                            <option value="USD">USD</option>
-                            <option value="GBP">GBP</option>
-                            <option value="EUR">EUR</option>
-                            <option value="AED">AED</option>
+                        <DollarSign size={19} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--accent-primary)', pointerEvents: 'none' }} />
+                        <select
+                            value={currency}
+                            onChange={(event) => setCurrency(event.target.value)}
+                            aria-label="Currency"
+                            style={{
+                                width: '100%',
+                                minHeight: '52px',
+                                appearance: 'none',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: '14px',
+                                background: '#ffffff',
+                                color: 'var(--fg-primary)',
+                                fontFamily: 'inherit',
+                                fontSize: '15px',
+                                fontWeight: 700,
+                                lineHeight: 1.2,
+                                outline: 'none',
+                                padding: '14px 42px 14px 44px',
+                                boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
+                            }}
+                        >
+                            {currencies.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
                         </select>
+                        <span aria-hidden="true" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)', fontSize: '12px' }}>
+                            {currencies.find((option) => option.value === currency)?.hint}
+                        </span>
                     </div>
                 </label>
             </div>
