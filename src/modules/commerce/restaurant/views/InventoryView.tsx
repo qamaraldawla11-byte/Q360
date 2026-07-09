@@ -13,18 +13,22 @@ export const InventoryView = () => {
     return (
         <ModuleShell>
             <PageHeader
-                title="Inventory Management"
-                subtitle="Track stock levels and prevent shortages"
+                title="Inventory preview"
+                subtitle="Preview-only sample data. Restaurant inventory persistence is not production-ready yet."
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '32px' }}>
+            <div style={{ marginBottom: 20, padding: 16, border: '1px solid #fed7aa', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontWeight: 700 }}>
+                Coming soon: these numbers are static examples and are not connected to saved Restaurant stock.
+            </div>
+
+            <div className="restaurant-inventory-preview-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '20px', marginBottom: '32px' }}>
                 {[
                     { label: 'Total Items', value: '247', icon: Package, color: '#3b82f6' },
                     { label: 'Low Stock', value: '12', icon: AlertTriangle, color: '#f59e0b' },
                     { label: 'Out of Stock', value: '4', icon: TrendingDown, color: '#ef4444' },
                 ].map((stat, i) => (
                     <div key={i} style={{
-                        background: 'white', padding: '24px', borderRadius: '16px',
+                        background: 'white', padding: '24px', borderRadius: '8px',
                         border: '1px solid var(--border-subtle)'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
@@ -44,7 +48,7 @@ export const InventoryView = () => {
                 ))}
             </div>
 
-            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ background: 'white', borderRadius: '8px', border: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
                 <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Low Stock Alerts</h3>
                 </div>
@@ -77,6 +81,13 @@ export const InventoryView = () => {
                     </tbody>
                 </table>
             </div>
+            <style>{`
+                @media (max-width: 760px) {
+                    .restaurant-inventory-preview-stats {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            `}</style>
         </ModuleShell>
     );
 };

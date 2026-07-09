@@ -8,8 +8,14 @@ export const StaffView = () => {
     ];
 
     return (
-        <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Staff Schedule</h1>
+        <div style={{ padding: 24 }}>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 8px' }}>Staff preview</h1>
+            <p style={{ margin: '0 0 16px', color: 'var(--fg-secondary)' }}>
+                Preview-only sample data. Staff records, shifts, and payroll are not production-ready yet.
+            </p>
+            <div style={{ marginBottom: 20, padding: 16, border: '1px solid #fed7aa', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontWeight: 700 }}>
+                Coming soon: these cards are static examples and are not connected to saved Restaurant staff.
+            </div>
 
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 {staff.map(person => (

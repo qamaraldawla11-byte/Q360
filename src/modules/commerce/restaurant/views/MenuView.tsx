@@ -110,11 +110,11 @@ export const MenuView = () => {
     };
 
     return (
-        <div style={{ minHeight: 'calc(100vh - 100px)', display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 24, padding: 24 }}>
+        <div className="restaurant-menu" style={{ minHeight: 'calc(100vh - 100px)', display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 24, padding: 24 }}>
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
-                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Categories</h2>
-                    <p style={{ fontSize: 13, color: 'var(--fg-secondary)', margin: '4px 0 0' }}>Create setup groups for POS items.</p>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Menu</h2>
+                    <p style={{ fontSize: 13, color: 'var(--fg-secondary)', margin: '4px 0 0' }}>Create categories and priced items used by POS.</p>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -228,7 +228,7 @@ export const MenuView = () => {
                     <div style={{ padding: 40, color: 'var(--fg-secondary)' }}>Loading menu...</div>
                 ) : menu.length === 0 ? (
                     <div style={{ ...surface, padding: 40, textAlign: 'center', color: '#475569' }}>
-                        Create a category, then add the first menu item for POS.
+                        Create Food, Drinks, or Snacks categories, then add priced items for POS.
                     </div>
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
@@ -254,6 +254,24 @@ export const MenuView = () => {
                     </div>
                 )}
             </main>
+            <style>{`
+                @media (max-width: 860px) {
+                    .restaurant-menu {
+                        grid-template-columns: 1fr !important;
+                        padding: 16px !important;
+                    }
+
+                    .restaurant-menu main > div:first-child {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+
+                @media (max-width: 520px) {
+                    .restaurant-menu form div {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 };

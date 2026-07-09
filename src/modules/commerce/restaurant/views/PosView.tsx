@@ -17,11 +17,21 @@ import {
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
 type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
+type PosCategoryFilter = 'All' | 'Food' | 'Drinks' | 'Snacks';
+
+const POS_CATEGORY_FILTERS: PosCategoryFilter[] = ['All', 'Food', 'Drinks', 'Snacks'];
+
+const itemBucketFor = (categoryName: string): Exclude<PosCategoryFilter, 'All'> => {
+    const normalized = categoryName.toLowerCase();
+    if (/(drink|drinks|beverage|beverages|juice|coffee|tea|soda|water)/.test(normalized)) return 'Drinks';
+    if (/(snack|snacks|side|sides|dessert|desserts|sweet|sweets)/.test(normalized)) return 'Snacks';
+    return 'Food';
+};
 
 export const PosView = () => {
     const [categories, setCategories] = useState<{ id: string; name: string; items: RestaurantMenuItem[] }[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
-    const [selectedCategory, setSelectedCategory] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<PosCategoryFilter>('All');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [selectedTable, setSelectedTable] = useState('');
     const [paymentTiming, setPaymentTiming] = useState<RestaurantPaymentTiming>('pay_after_service');
@@ -41,7 +51,7 @@ export const PosView = () => {
                 ]);
                 setCategories(menu.categories);
                 setTables(tableData);
-                setSelectedCategory((current) => current || menu.categories[0]?.id || '');
+                setSelectedCategory((current) => current || 'All');
             } catch {
                 setMessage({ kind: 'error', text: 'Unable to load the menu and tables.' });
             } finally {
@@ -63,10 +73,20 @@ export const PosView = () => {
         }
     }, [paymentTiming, selectedTable]);
 
-    const menuItems = useMemo(
-        () => categories.find((category) => category.id === selectedCategory)?.items || [],
-        [categories, selectedCategory],
-    );
+    const menuItems = useMemo(() => (
+        categories.flatMap((category) => category.items.map((item) => ({
+            ...item,
+            categoryName: category.name,
+            filterBucket: itemBucketFor(category.name),
+        })))
+    ), [categories]);
+
+    const visibleMenuItems = useMemo(() => (
+        menuItems.filter((item) => (
+            item.isAvailable &&
+            (selectedCategory === 'All' || item.filterBucket === selectedCategory)
+        ))
+    ), [menuItems, selectedCategory]);
 
     const addToCart = (item: RestaurantMenuItem) => {
         setCart((current) => {
@@ -135,8 +155,8 @@ export const PosView = () => {
             ]);
             setCategories(menu.categories);
             setTables(tableData);
-            setSelectedCategory((current) => current || menu.categories[0]?.id || '');
-            setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen.` });
+            setSelectedCategory((current) => current || 'All');
+            setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen. ${isPayNow ? 'Payment recorded.' : 'Payment remains open.'}` });
             logPerformanceTiming('restaurant.pos.response.handled', {
                 correlationId,
                 submitDurationMs: performanceDuration(submitStartedAt),
@@ -175,28 +195,28 @@ export const PosView = () => {
                 {isLoading && <div style={{ color: 'var(--fg-secondary)' }}>Loading menu...</div>}
                 {!isLoading && !categories.length && (
                     <div style={{ background: '#ffffff', color: '#475569', border: '1px solid #d8dee8', borderRadius: 'var(--radius-md)', padding: 20, marginBottom: 20 }}>
-                        Create menu categories and items in Menu Architect before starting POS orders.
+                        Create menu categories and items in Menu before starting POS orders.
                     </div>
                 )}
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-                    {categories.map((category) => (
+                    {POS_CATEGORY_FILTERS.map((category) => (
                         <button
-                            key={category.id}
-                            onClick={() => setSelectedCategory(category.id)}
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
                             style={{
                                 padding: '10px 20px', borderRadius: '100px', border: 'none',
-                                background: selectedCategory === category.id ? 'var(--accent-primary)' : 'white',
-                                color: selectedCategory === category.id ? 'white' : '#334155',
+                                background: selectedCategory === category ? 'var(--accent-primary)' : 'white',
+                                color: selectedCategory === category ? 'white' : '#334155',
                                 fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                             }}
                         >
-                            {category.name}
+                            {category}
                         </button>
                     ))}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
-                    {menuItems.filter((item) => item.isAvailable).map((item) => (
+                    {visibleMenuItems.map((item) => (
                         <button
                             type="button"
                             key={item.id}
@@ -208,12 +228,13 @@ export const PosView = () => {
                             }}
                         >
                             <div style={{ fontWeight: 600, fontSize: '15px' }}>{item.name}</div>
+                            <div style={{ color: '#64748b', fontSize: 12 }}>{item.categoryName}</div>
                             <div style={{ color: '#475569' }}>${(item.price / 100).toFixed(2)}</div>
                         </button>
                     ))}
-                    {!isLoading && categories.length > 0 && !menuItems.filter((item) => item.isAvailable).length && (
+                    {!isLoading && categories.length > 0 && !visibleMenuItems.length && (
                         <div style={{ gridColumn: '1/-1', background: '#ffffff', color: '#475569', border: '1px solid #d8dee8', borderRadius: 'var(--radius-md)', padding: 20 }}>
-                            No available items in this category.
+                            No available {selectedCategory.toLowerCase()} items.
                         </div>
                     )}
                 </div>
@@ -264,6 +285,9 @@ export const PosView = () => {
                         {!tables.some((table) => table.status === 'available') && (
                             <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>No available tables. Create or free a table in Floor / Tables.</div>
                         )}
+                        <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                            {selectedTable ? 'Dine-in order: sent to kitchen, paid later in Orders & Payments.' : 'Takeaway order: choose pay now or leave payment open.'}
+                        </div>
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
@@ -343,6 +367,25 @@ export const PosView = () => {
                     </button>
                 </div>
             </div>
+            <style>{`
+                @media (max-width: 860px) {
+                    .restaurant-pos {
+                        height: auto !important;
+                        min-height: calc(100vh - 80px);
+                        flex-direction: column;
+                    }
+
+                    .restaurant-pos__catalog {
+                        overflow: visible !important;
+                        padding-right: 0 !important;
+                    }
+
+                    .restaurant-pos__cart {
+                        width: 100% !important;
+                        min-height: 420px;
+                    }
+                }
+            `}</style>
         </div>
     );
 };

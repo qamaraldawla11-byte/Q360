@@ -56,8 +56,8 @@ const ReportCard = ({ title, value, helper, icon: Icon }: {
             <Icon size={20} />
         </div>
         <div>
-            <p>{title}</p>
-            <strong>{value}</strong>
+            <p className="restaurant-report-card__title">{title}</p>
+            <strong className="restaurant-report-card__value">{value}</strong>
             {helper && <span>{helper}</span>}
         </div>
     </article>
@@ -218,6 +218,8 @@ export const ReportsView = () => {
                     display: flex;
                     gap: 12px;
                     padding: 18px;
+                    min-height: 110px;
+                    align-items: flex-start;
                 }
 
                 .restaurant-report-card__icon {
@@ -232,7 +234,7 @@ export const ReportsView = () => {
                     flex: 0 0 auto;
                 }
 
-                .restaurant-report-card p,
+                .restaurant-report-card__title,
                 .restaurant-report-card span,
                 .restaurant-report-muted {
                     margin: 0;
@@ -240,10 +242,15 @@ export const ReportsView = () => {
                     font-size: 13px;
                 }
 
-                .restaurant-report-card strong {
+                .restaurant-report-card__value {
                     display: block;
                     margin-top: 4px;
-                    font-size: 24px;
+                    color: #0f172a;
+                    font-size: 30px;
+                    line-height: 1.05;
+                    font-weight: 850;
+                    font-variant-numeric: tabular-nums;
+                    overflow-wrap: anywhere;
                 }
 
                 .restaurant-report-card span {
@@ -335,6 +342,10 @@ export const ReportsView = () => {
                 @media (max-width: 560px) {
                     .restaurant-report-grid {
                         grid-template-columns: 1fr;
+                    }
+
+                    .restaurant-report-card {
+                        min-height: 96px;
                     }
 
                     .restaurant-report-date {

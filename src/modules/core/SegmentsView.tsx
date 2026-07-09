@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBag, Truck, UtensilsCrossed, Settings, Pill, ArrowRight, Store, Users } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Truck, UtensilsCrossed, Pill, ArrowRight, Store, Users } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { useAuthStore } from '@/store/auth.store';
 
@@ -15,17 +15,17 @@ export const SegmentsView = () => {
         {
             id: 'restaurant', label: 'Restaurant OS',
             icon: UtensilsCrossed, color: '#f59e0b',
-            desc: 'Table management, KDS, Menus', path: '/app/restaurant'
+            desc: 'Active beta workspace for tables, POS, KDS, menu, orders, and reports.', path: '/app/restaurant'
         },
         {
             id: 'pharmacy', label: 'Pharmacy OS',
             icon: Pill, color: '#06b6d4',
-            desc: 'Prescriptions, Inventory, Compliance', path: '/app/pharmacy'
+            desc: 'Internal preview. Not ready for live customer testing.', disabled: true, badge: 'Internal preview'
         },
         {
             id: 'retail', label: 'Retail Point',
             icon: ShoppingBag, color: '#ec4899',
-            desc: 'POS, Inventory, Customers', path: '/app/retail'
+            desc: 'Internal preview. Retail fixes are postponed.', disabled: true, badge: 'Internal preview'
         },
         {
             id: 'logistics', label: 'Logistics',
@@ -45,12 +45,7 @@ export const SegmentsView = () => {
         {
             id: 'admin', label: 'Admin Console',
             icon: LayoutDashboard, color: '#3b82f6',
-            desc: 'System Configuration & Users', path: '/app/admin'
-        },
-        {
-            id: 'settings', label: 'Settings',
-            icon: Settings, color: '#64748b',
-            desc: 'Preferences & Security', path: '/app/settings'
+            desc: 'Internal operations preview.', disabled: true, badge: 'Internal preview'
         },
     ];
 
@@ -64,7 +59,7 @@ export const SegmentsView = () => {
                         Welcome back, {displayName}
                     </h1>
                     <p style={{ fontSize: '18px', color: 'var(--fg-secondary)' }}>
-                        Select a workspace to begin operations.
+                        Restaurant is the active live-test workspace. Other workspaces are marked until ready.
                     </p>
                 </div>
 
