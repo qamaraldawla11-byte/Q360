@@ -13,6 +13,7 @@ import inventoryRoutes from './routes/inventory.js';
 import ordersRoutes from './routes/orders.js';
 import suppliersRoutes from './routes/suppliers.js';
 import customersRoutes from './routes/customers.js';
+import quotesRoutes from './routes/quotes.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
@@ -60,6 +61,7 @@ app.route('/api/inventory', inventoryRoutes);
 app.route('/api', ordersRoutes); // /api/orders and /api/products/search
 app.route('/api/suppliers', suppliersRoutes);
 app.route('/api/customers', customersRoutes);
+app.route('/api/quotes', quotesRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/user', userRoutes);
 app.route('/api/restaurant', restaurantRoutes);
