@@ -2,6 +2,7 @@ import type { VerticalManifest } from '@/types/vertical';
 import {
     Boxes,
     Contact,
+    FileText,
     FileBarChart,
     LayoutDashboard,
     Package,
@@ -25,6 +26,7 @@ export const retailManifest: VerticalManifest = {
         { id: 'catalog', label: 'Product Catalog', path: '/catalog', icon: Package },
         { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Boxes },
         { id: 'customers', label: 'Customers', path: '/customers', icon: Contact },
+        { id: 'quotes', label: 'Quotes', path: '/quotes', icon: FileText },
         { id: 'procurement', label: 'Procurement', path: '/procurement', icon: ShoppingCart },
         { id: 'reports', label: 'Reports', path: '/reports', icon: FileBarChart },
         { id: 'settings', label: 'Settings', path: '/settings', icon: Settings },
