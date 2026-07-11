@@ -53,6 +53,7 @@ const RestaurantBilling = lazy(() => import('@/modules/commerce/restaurant/views
 const RestaurantStaff = lazy(() => import('@/modules/commerce/restaurant/views/StaffView').then(m => ({ default: m.StaffView })));
 const RestaurantInventory = lazy(() => import('@/modules/commerce/restaurant/views/InventoryView').then(m => ({ default: m.InventoryView })));
 const RestaurantReports = lazy(() => import('@/modules/commerce/restaurant/views/ReportsView').then(m => ({ default: m.ReportsView })));
+const RestaurantModules = lazy(() => import('@/modules/commerce/restaurant/views/ModulesOverviewView').then(m => ({ default: m.ModulesOverviewView })));
 const RestaurantSettings = lazy(() => import('@/modules/commerce/restaurant/views/SettingsView').then(m => ({ default: m.SettingsView })));
 
 // Pharmacy Vertical
@@ -200,6 +201,7 @@ export const appRoutes: RouteObject[] = [
                     { path: 'staff', element: <RestaurantStaff /> },
                     { path: 'inventory', element: <RestaurantInventory /> },
                     { path: 'reports', element: <RestaurantReports /> },
+                    { path: 'modules', element: <RestaurantModules /> },
                     { path: 'settings', element: <RestaurantSettings /> },
                 ]
             },

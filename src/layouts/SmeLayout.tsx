@@ -19,7 +19,7 @@ const SME_MANIFESTS: VerticalManifest[] = [
     schoolManifest,
 ];
 
-const MANAGEMENT_MODULES = new Set(['staff', 'reports', 'settings']);
+const MANAGEMENT_MODULES = new Set(['staff', 'reports', 'modules', 'settings']);
 
 function getSections(modules: VerticalModule[]) {
     return [
