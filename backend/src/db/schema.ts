@@ -3,6 +3,7 @@ import {
     doublePrecision,
     integer,
     index,
+    uniqueIndex,
     jsonb,
     pgTable,
     text,
@@ -261,6 +262,19 @@ export const businesses = pgTable('businesses', {
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+export const businessModules = pgTable('business_modules', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    workspaceKey: text('workspace_key').notNull(),
+    moduleKey: text('module_key').notNull(),
+    enabled: boolean('enabled').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    uniqueIndex('business_modules_scope_unique').on(table.businessId, table.workspaceKey, table.moduleKey),
+    index('business_modules_business_idx').on(table.businessId),
+]);
 
 // System Settings table
 export const systemSettings = pgTable('system_settings', {

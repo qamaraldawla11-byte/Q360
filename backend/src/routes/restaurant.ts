@@ -32,6 +32,7 @@ import {
 } from '../services/restaurantDomain.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
+import { isBusinessModuleEnabled } from '../services/businessModules.js';
 
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
@@ -815,6 +816,9 @@ restaurant.get('/tables', async (c) => {
 });
 
 restaurant.post('/tables', async (c) => {
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
     const body = await parseJson<{ label?: unknown; capacity?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
 
@@ -850,6 +854,9 @@ restaurant.post('/tables', async (c) => {
 });
 
 restaurant.patch('/tables/:id/status', async (c) => {
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
     const body = await parseJson<{ status?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     if (typeof body.status !== 'string' || !tableStatuses.includes(body.status as TableStatus)) {
@@ -1183,6 +1190,9 @@ restaurant.post('/orders', async (c) => {
     const orderType: OrderType = typeof requestedOrderType === 'string'
         ? requestedOrderType as OrderType
         : typeof tableId === 'string' ? 'dine_in' : 'takeaway';
+    if (orderType === 'dine_in' && !await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Dine-in orders are unavailable while Tables is disabled' }, 409);
+    }
     if (orderType === 'takeaway' && typeof tableId === 'string') {
         return c.json({ error: 'Takeaway orders cannot have a table' }, 400);
     }

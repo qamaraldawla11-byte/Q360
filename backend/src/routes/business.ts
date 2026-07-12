@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
 import { db, first, supabase } from '../db/client.js';
-import { businesses, users } from '../db/schema.js';
+import { businessModules, businesses, users } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
+import { getModulePolicy, isBusinessModuleEnabled, restaurantModulePolicies } from '../services/businessModules.js';
 
 const businessRoutes = new Hono<AppEnv>();
 const EDIT_ROLES = new Set(['user', 'owner', 'admin', 'manager']);
@@ -146,6 +148,43 @@ businessRoutes.post('/logo', async (c) => {
     if (!updated.length) return c.json({ error: 'Business not found' }, 404);
     await logAudit(c, 'BUSINESS_LOGO_UPDATED', 'BUSINESS', businessId, { contentType: file.type, size: file.size });
     return c.json(serializeBusiness(updated[0]));
+});
+
+businessRoutes.get('/modules', async (c) => {
+    const workspaceKey = c.req.query('workspace') || 'restaurant';
+    if (workspaceKey !== 'restaurant') return c.json({ error: 'Unsupported workspace' }, 400);
+    const businessId = c.get('businessId');
+    const modules = await Promise.all(restaurantModulePolicies.map(async policy => ({
+        ...policy,
+        workspaceKey,
+        enabled: await isBusinessModuleEnabled(businessId, workspaceKey, policy.moduleKey),
+    })));
+    return c.json({ workspaceKey, modules });
+});
+
+businessRoutes.patch('/modules/:moduleKey', async (c) => {
+    if (!canEdit(c.get('userRole'))) return c.json({ error: 'Forbidden: Insufficient permissions' }, 403);
+    let body: { workspaceKey?: unknown; enabled?: unknown };
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+    const workspaceKey = typeof body.workspaceKey === 'string' ? body.workspaceKey : 'restaurant';
+    const moduleKey = c.req.param('moduleKey');
+    const policy = getModulePolicy(workspaceKey, moduleKey);
+    if (!policy) return c.json({ error: 'Unknown module' }, 404);
+    if (!policy.configurable) return c.json({ error: policy.availability === 'preview' ? 'Module is not available yet' : 'Protected modules cannot be disabled' }, 409);
+    if (typeof body.enabled !== 'boolean') return c.json({ error: 'Enabled must be a boolean' }, 400);
+
+    const businessId = c.get('businessId');
+    const now = new Date();
+    const existing = await first(db.select().from(businessModules).where(and(
+        eq(businessModules.businessId, businessId), eq(businessModules.workspaceKey, workspaceKey), eq(businessModules.moduleKey, moduleKey),
+    )));
+    if (existing) {
+        await db.update(businessModules).set({ enabled: body.enabled, updatedAt: now }).where(eq(businessModules.id, existing.id));
+    } else {
+        await db.insert(businessModules).values({ id: randomUUID(), businessId, workspaceKey, moduleKey, enabled: body.enabled, updatedAt: now });
+    }
+    await logAudit(c, body.enabled ? 'BUSINESS_MODULE_ENABLED' : 'BUSINESS_MODULE_DISABLED', 'BUSINESS_MODULE', moduleKey, { workspaceKey });
+    return c.json({ ...policy, workspaceKey, enabled: body.enabled });
 });
 
 export default businessRoutes;

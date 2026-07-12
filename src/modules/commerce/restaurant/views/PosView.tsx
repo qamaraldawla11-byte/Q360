@@ -14,6 +14,7 @@ import {
     performanceDuration,
     performanceMark,
 } from '@/utils/performanceInstrumentation';
+import { useBusinessModulesStore } from '@/store/businessModules.store';
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
 type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
@@ -29,6 +30,8 @@ const itemBucketFor = (categoryName: string): Exclude<PosCategoryFilter, 'All'> 
 };
 
 export const PosView = () => {
+    const tablesEnabled = useBusinessModulesStore(state => state.isEnabled('tables'));
+    const loadBusinessModules = useBusinessModulesStore(state => state.load);
     const [categories, setCategories] = useState<{ id: string; name: string; items: RestaurantMenuItem[] }[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<PosCategoryFilter>('All');
@@ -45,10 +48,9 @@ export const PosView = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const [menu, tableData] = await Promise.all([
-                    restaurantApi.getMenu(),
-                    restaurantApi.getTables(),
-                ]);
+                await loadBusinessModules();
+                const menu = await restaurantApi.getMenu();
+                const tableData = useBusinessModulesStore.getState().isEnabled('tables') ? await restaurantApi.getTables() : [];
                 setCategories(menu.categories);
                 setTables(tableData);
                 setSelectedCategory((current) => current || 'All');
@@ -59,7 +61,14 @@ export const PosView = () => {
             }
         };
         void load();
-    }, []);
+    }, [loadBusinessModules]);
+
+    useEffect(() => {
+        if (!tablesEnabled) {
+            setSelectedTable('');
+            setTables([]);
+        }
+    }, [tablesEnabled]);
 
     useEffect(() => {
         if (!message) return;
@@ -266,7 +275,7 @@ export const PosView = () => {
                 </div>
 
                 <div style={{ padding: '20px', background: '#f8fafc', borderTop: '1px solid var(--border-subtle)' }}>
-                    <div style={{ marginBottom: '16px' }}>
+                    {tablesEnabled && <div style={{ marginBottom: '16px' }}>
                         <label htmlFor="restaurant-table" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>TABLE ASSIGNMENT</label>
                         <select
                             id="restaurant-table"
@@ -288,7 +297,8 @@ export const PosView = () => {
                         <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
                             {selectedTable ? 'Dine-in order: sent to kitchen, paid later in Orders & Payments.' : 'Takeaway order: choose pay now or leave payment open.'}
                         </div>
-                    </div>
+                    </div>}
+                    {!tablesEnabled && <div style={{ marginBottom: 16, padding: 11, borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 12 }}>Takeaway mode is active. Enable Floor / Tables from Modules to accept dine-in orders.</div>}
 
                     <div style={{ marginBottom: '16px' }}>
                         <label htmlFor="restaurant-payment-timing" style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>PAYMENT TIMING</label>

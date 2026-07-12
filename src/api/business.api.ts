@@ -23,6 +23,17 @@ export interface BusinessProfile {
 export type UpdateBusinessProfile = Pick<BusinessProfile,
     'name' | 'country' | 'city' | 'address' | 'phone' | 'email' | 'currency' | 'timezone' | 'taxIdentifier' | 'restaurantType'>;
 
+export interface BusinessModule {
+    moduleKey: string;
+    workspaceKey: string;
+    label: string;
+    description: string;
+    category: 'Core' | 'Operations' | 'Management';
+    enabled: boolean;
+    configurable: boolean;
+    availability: 'ready' | 'preview';
+}
+
 const friendlyError = (error: unknown, fallback: string) => {
     if (axios.isAxiosError<{ error?: string }>(error)) return error.response?.data?.error || fallback;
     return error instanceof Error ? error.message : fallback;
@@ -43,4 +54,8 @@ export const businessApi = {
             });
         } catch (error) { throw new Error(friendlyError(error, 'Unable to upload logo')); }
     },
+    getModules: () => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=restaurant'),
+    setModuleEnabled: (moduleKey: string, enabled: boolean) => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
+        workspaceKey: 'restaurant', enabled,
+    }),
 };

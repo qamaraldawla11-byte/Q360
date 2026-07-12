@@ -11,6 +11,7 @@ import { useConfigStore } from '@/store/config.store';
 import type { VerticalManifest, VerticalModule } from '@/types/vertical';
 import { LogoFull } from '@/components/ui/Logo';
 import { businessApi, type BusinessProfile } from '@/api/business.api';
+import { useBusinessModulesStore } from '@/store/businessModules.store';
 
 const SME_MANIFESTS: VerticalManifest[] = [
     restaurantManifest,
@@ -48,13 +49,25 @@ export const SmeLayout = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+    const businessModules = useBusinessModulesStore(state => state.modules);
+    const loadBusinessModules = useBusinessModulesStore(state => state.load);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const manifest = SME_MANIFESTS.find(candidate =>
         location.pathname === candidate.basePath
         || location.pathname.startsWith(`${candidate.basePath}/`),
     );
-    const sections = useMemo(() => getSections(manifest?.modules ?? []), [manifest]);
+    const visibleManifestModules = useMemo(() => {
+        const modules = manifest?.modules ?? [];
+        if (manifest?.id !== 'restaurant') return modules;
+        const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
+        return modules.filter(module => {
+            if (module.id === 'floor') return enabled.get('tables') ?? true;
+            if (module.id === 'inventory' || module.id === 'staff') return false;
+            return true;
+        });
+    }, [businessModules, manifest]);
+    const sections = useMemo(() => getSections(visibleManifestModules), [visibleManifestModules]);
 
     const currentModule = manifest?.modules
         .filter(module => {
@@ -73,10 +86,11 @@ export const SmeLayout = () => {
     useEffect(() => {
         if (!location.pathname.startsWith('/app/restaurant')) return;
         businessApi.getProfile().then(setBusinessProfile).catch(() => undefined);
+        void loadBusinessModules();
         const updateProfile = (event: Event) => setBusinessProfile((event as CustomEvent<BusinessProfile>).detail);
         window.addEventListener('q360:business-profile', updateProfile);
         return () => window.removeEventListener('q360:business-profile', updateProfile);
-    }, [location.pathname]);
+    }, [loadBusinessModules, location.pathname]);
 
     useEffect(() => {
         const closeMenu = (event: MouseEvent) => {
