@@ -29,7 +29,7 @@ export const InventoryView = () => {
                 ].map((stat, i) => (
                     <div key={i} style={{
                         background: 'white', padding: '24px', borderRadius: '8px',
-                        border: '1px solid var(--border-subtle)'
+                        border: '1px solid var(--border-subtle)', color: '#0f172a'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                             <div style={{
@@ -41,16 +41,16 @@ export const InventoryView = () => {
                             </div>
                             <div>
                                 <div style={{ fontSize: '28px', fontWeight: 700 }}>{stat.value}</div>
-                                <div style={{ fontSize: '13px', color: 'var(--fg-secondary)' }}>{stat.label}</div>
+                                <div style={{ fontSize: '13px', color: '#64748b' }}>{stat.label}</div>
                             </div>
                         </div>
                     </div>
                 ))}
             </div>
 
-            <div style={{ background: 'white', borderRadius: '8px', border: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
+            <div style={{ background: 'white', color: '#0f172a', borderRadius: '8px', border: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
                 <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Low Stock Alerts</h3>
+                    <h3 style={{ margin: 0, color: '#0f172a', fontSize: '16px', fontWeight: 700 }}>Low Stock Alerts</h3>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -66,7 +66,7 @@ export const InventoryView = () => {
                             <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                 <td style={{ padding: '16px 20px', fontWeight: 500 }}>{item.name}</td>
                                 <td style={{ padding: '16px 20px' }}>{item.current} {item.unit}</td>
-                                <td style={{ padding: '16px 20px', color: 'var(--fg-secondary)' }}>{item.min} {item.unit}</td>
+                                <td style={{ padding: '16px 20px', color: '#64748b' }}>{item.min} {item.unit}</td>
                                 <td style={{ padding: '16px 20px' }}>
                                     <span style={{
                                         padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 600,

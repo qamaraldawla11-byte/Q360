@@ -13,8 +13,8 @@ export const PageHeader = ({ title, subtitle, backUrl, actions }: PageHeaderProp
     const navigate = useNavigate();
 
     return (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="q360-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: '32px' }}>
+            <div className="q360-page-header__title" style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
                 {backUrl && (
                     <button
                         onClick={() => navigate(backUrl)}
@@ -36,7 +36,15 @@ export const PageHeader = ({ title, subtitle, backUrl, actions }: PageHeaderProp
                     {subtitle && <p style={{ margin: 0, color: 'var(--fg-secondary)', fontSize: '15px' }}>{subtitle}</p>}
                 </div>
             </div>
-            {actions && <div style={{ display: 'flex', gap: '12px' }}>{actions}</div>}
+            {actions && <div className="q360-page-header__actions" style={{ display: 'flex', gap: '12px' }}>{actions}</div>}
+            <style>{`
+                @media (max-width: 620px) {
+                    .q360-page-header { flex-direction: column; margin-bottom: 24px !important; }
+                    .q360-page-header__title h1 { font-size: 24px !important; }
+                    .q360-page-header__actions { width: 100%; }
+                    .q360-page-header__actions > * { max-width: 100%; }
+                }
+            `}</style>
         </div>
     );
 };

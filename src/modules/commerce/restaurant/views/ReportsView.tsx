@@ -195,7 +195,8 @@ export const ReportsView = () => {
 
                 .restaurant-report-date input {
                     border: 0;
-                    color: var(--fg-primary);
+                    color: #0f172a;
+                    background: #ffffff;
                     font: inherit;
                     outline: 0;
                 }
@@ -211,7 +212,7 @@ export const ReportsView = () => {
                     border: 1px solid var(--border-subtle);
                     border-radius: 8px;
                     background: #ffffff;
-                    color: var(--fg-primary);
+                    color: #0f172a;
                 }
 
                 .restaurant-report-card {
@@ -238,7 +239,7 @@ export const ReportsView = () => {
                 .restaurant-report-card span,
                 .restaurant-report-muted {
                     margin: 0;
-                    color: var(--fg-secondary);
+                    color: #64748b;
                     font-size: 13px;
                 }
 
@@ -271,6 +272,7 @@ export const ReportsView = () => {
 
                 .restaurant-report-panel h2 {
                     margin: 0 0 16px;
+                    color: #0f172a;
                     font-size: 18px;
                 }
 
@@ -289,12 +291,13 @@ export const ReportsView = () => {
                     border: 1px solid #e2e8f0;
                     border-radius: 8px;
                     background: #f8fafc;
+                    color: #0f172a;
                 }
 
                 .restaurant-report-order span {
                     display: block;
                     margin-top: 3px;
-                    color: var(--fg-secondary);
+                    color: #64748b;
                     font-size: 13px;
                 }
 
@@ -313,7 +316,7 @@ export const ReportsView = () => {
                     border: 1px solid var(--border-subtle);
                     border-radius: 8px;
                     background: #ffffff;
-                    color: var(--fg-secondary);
+                    color: #64748b;
                     text-align: center;
                 }
 

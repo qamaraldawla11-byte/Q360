@@ -19,10 +19,10 @@ export const SettingsView = () => {
                 subtitle="Configure your restaurant system"
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
+            <div className="restaurant-settings-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '20px' }}>
                 {sections.map((section, i) => (
                     <div key={i} style={{
-                        background: 'white', padding: '24px', borderRadius: '16px',
+                        background: 'white', color: '#0f172a', padding: '24px', borderRadius: '16px',
                         border: '1px solid var(--border-subtle)', cursor: 'pointer'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -31,16 +31,21 @@ export const SettingsView = () => {
                                 background: '#f8fafc', display: 'flex',
                                 alignItems: 'center', justifyContent: 'center'
                             }}>
-                                <section.icon size={20} color="var(--fg-secondary)" />
+                                <section.icon size={20} color="#64748b" />
                             </div>
                             <div>
-                                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px' }}>{section.title}</h3>
-                                <p style={{ fontSize: '13px', color: 'var(--fg-secondary)' }}>{section.desc}</p>
+                                <h3 style={{ color: '#0f172a', fontSize: '16px', fontWeight: 600, margin: '0 0 4px' }}>{section.title}</h3>
+                                <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{section.desc}</p>
                             </div>
                         </div>
                     </div>
                 ))}
             </div>
+            <style>{`
+                @media (max-width: 720px) {
+                    .restaurant-settings-grid { grid-template-columns: 1fr !important; }
+                }
+            `}</style>
         </ModuleShell>
     );
 };

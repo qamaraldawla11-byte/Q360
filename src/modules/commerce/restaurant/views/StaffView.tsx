@@ -17,10 +17,10 @@ export const StaffView = () => {
                 Coming soon: these cards are static examples and are not connected to saved Restaurant staff.
             </div>
 
-            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            <div className="restaurant-staff-grid" style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                 {staff.map(person => (
-                    <div key={person.id} style={{
-                        width: '280px', background: 'white', padding: '24px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)',
+                    <div className="restaurant-staff-card" key={person.id} style={{
+                        width: '280px', background: 'white', color: '#0f172a', padding: '24px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)',
                         display: 'flex', flexDirection: 'column', gap: '16px'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
@@ -38,16 +38,22 @@ export const StaffView = () => {
 
                         <div>
                             <div style={{ fontWeight: 700, fontSize: '18px' }}>{person.name}</div>
-                            <div style={{ color: 'var(--fg-secondary)', fontSize: '14px' }}>{person.role}</div>
+                            <div style={{ color: '#64748b', fontSize: '14px' }}>{person.role}</div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--fg-secondary)', marginTop: 'auto' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#64748b', marginTop: 'auto' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} />
                             Shift: {person.shift}
                         </div>
                     </div>
                 ))}
             </div>
+            <style>{`
+                @media (max-width: 680px) {
+                    .restaurant-staff-grid { display: grid !important; grid-template-columns: 1fr; }
+                    .restaurant-staff-card { width: 100% !important; }
+                }
+            `}</style>
         </div>
     );
 };

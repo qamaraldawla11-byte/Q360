@@ -141,14 +141,14 @@ export const ModulesOverviewView = () => {
                 .modules-overview-section__heading p { font-size: 13px; }
                 .modules-overview-section__heading > span { min-width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-100); color: var(--fg-secondary); font-size: 12px; font-weight: 700; }
                 .modules-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-                .modules-overview-card { min-width: 0; padding: 18px; border: 1px solid var(--border-subtle); border-radius: 14px; background: white; }
+                .modules-overview-card { min-width: 0; padding: 18px; border: 1px solid var(--border-subtle); border-radius: 14px; background: white; color: #0f172a; }
                 .modules-overview-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-                .modules-overview-card__workspace { color: var(--fg-secondary); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+                .modules-overview-card__workspace { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
                 .modules-overview-card h3 { margin: 4px 0 0; font-size: 16px; }
-                .modules-overview-card p { min-height: 42px; font-size: 13px; }
+                .modules-overview-card p { min-height: 42px; color: #64748b; font-size: 13px; }
                 .modules-overview-badge { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; }
                 .modules-overview-card__meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
-                .modules-overview-card__meta span { padding: 5px 8px; border-radius: 7px; color: var(--fg-secondary); background: var(--surface-200); font-size: 10px; text-transform: capitalize; }
+                .modules-overview-card__meta span { padding: 5px 8px; border-radius: 7px; color: #475569; background: #f1f5f9; font-size: 10px; text-transform: capitalize; }
                 .modules-overview-footer { padding: 20px; border: 1px dashed var(--border-subtle); border-radius: 14px; background: var(--surface-100); }
                 .modules-overview-footer p { max-width: 760px; font-size: 13px; }
                 @media (max-width: 720px) {
