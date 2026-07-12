@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import type { VerticalManifest, VerticalModule } from '@/types/vertical';
 import { LogoFull } from '@/components/ui/Logo';
+import { businessApi, type BusinessProfile } from '@/api/business.api';
 
 const SME_MANIFESTS: VerticalManifest[] = [
     restaurantManifest,
@@ -46,6 +47,7 @@ export const SmeLayout = () => {
     const [now, setNow] = useState(() => new Date());
     const [menuOpen, setMenuOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const manifest = SME_MANIFESTS.find(candidate =>
@@ -69,6 +71,14 @@ export const SmeLayout = () => {
     }, []);
 
     useEffect(() => {
+        if (!location.pathname.startsWith('/app/restaurant')) return;
+        businessApi.getProfile().then(setBusinessProfile).catch(() => undefined);
+        const updateProfile = (event: Event) => setBusinessProfile((event as CustomEvent<BusinessProfile>).detail);
+        window.addEventListener('q360:business-profile', updateProfile);
+        return () => window.removeEventListener('q360:business-profile', updateProfile);
+    }, [location.pathname]);
+
+    useEffect(() => {
         const closeMenu = (event: MouseEvent) => {
             if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
         };
@@ -89,7 +99,7 @@ export const SmeLayout = () => {
         ? user.name.trim().split(' ')[0]
         : user?.email?.split('@')[0] ?? 'there';
     const initials = getInitials(displayName) || 'OS';
-    const workspaceName = user.businessName?.trim() || manifest.name;
+    const workspaceName = businessProfile?.name?.trim() || user.businessName?.trim() || manifest.name;
 
     const signOut = () => {
         logout();
@@ -109,7 +119,9 @@ export const SmeLayout = () => {
             <aside className={`sme-sidebar${sidebarOpen ? ' sme-sidebar--open' : ''}`} style={{ ...styles.sidebar, background: isDark ? '#0d1016' : '#fff', borderColor: isDark ? '#202631' : '#e5e7eb' }}>
                 <div style={{ ...styles.workspaceHeader, borderColor: isDark ? '#202631' : '#e5e7eb' }}>
                     <div style={styles.mobileSidebarHeader}>
-                        <span style={styles.brandPlate}><LogoFull height={24} /></span>
+                        <span style={styles.brandPlate}>{businessProfile?.logoUrl
+                            ? <img src={`${businessProfile.logoUrl}?v=${encodeURIComponent(businessProfile.updatedAt || '')}`} alt={`${workspaceName} logo`} style={styles.businessLogo} />
+                            : <LogoFull height={24} />}</span>
                         <button type="button" className="sme-sidebar-close" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}>
                             <X size={20} />
                         </button>
@@ -219,6 +231,7 @@ const styles: Record<string, React.CSSProperties> = {
     workspaceHeader: { minHeight: 90, padding: '14px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, borderBottom: '1px solid' },
     mobileSidebarHeader: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
     brandPlate: { display: 'inline-flex', padding: '5px 8px', borderRadius: 8, background: '#fff' },
+    businessLogo: { width: 104, height: 32, objectFit: 'contain' },
     workspaceCopy: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 },
     workspaceName: { fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     workspaceType: { color: '#7f8998', fontSize: 11 },

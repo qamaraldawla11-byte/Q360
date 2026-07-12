@@ -17,6 +17,7 @@ import quotesRoutes from './routes/quotes.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
+import businessRoutes from './routes/business.js';
 
 const app = new Hono();
 
@@ -65,6 +66,7 @@ app.route('/api/quotes', quotesRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/user', userRoutes);
 app.route('/api/restaurant', restaurantRoutes);
+app.route('/api/business', businessRoutes);
 
 // 404 handler
 app.notFound((c) => {

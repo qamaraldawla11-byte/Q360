@@ -246,9 +246,20 @@ export const businesses = pgTable('businesses', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     type: text('type').default('retail'),
+    country: text('country'),
+    city: text('city'),
+    address: text('address'),
+    phone: text('phone'),
+    email: text('email'),
+    currency: text('currency').default('USD'),
+    timezone: text('timezone').default('UTC'),
+    taxIdentifier: text('tax_identifier'),
+    restaurantType: text('restaurant_type').$type<'dine_in' | 'takeaway' | 'both'>().default('both'),
+    logoPath: text('logo_path'),
     status: text('status').default('active'), // active | suspended
     suspensionReason: text('suspension_reason'),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // System Settings table
