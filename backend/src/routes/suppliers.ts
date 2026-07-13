@@ -30,6 +30,31 @@ suppliersRouter.post('/', requireRole(['user', 'owner', 'admin', 'manager']), as
     return c.json(created, 201);
 });
 
+suppliersRouter.patch('/:id', requireRole(['user', 'owner', 'admin', 'manager']), async c => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Supplier ID is required' }, 400);
+    let body: { name?: unknown; contact?: unknown; phone?: unknown; email?: unknown; address?: unknown; status?: unknown };
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+    const businessId = c.get('businessId');
+    const existing = await first(db.select().from(suppliers).where(and(eq(suppliers.id, id), eq(suppliers.businessId, businessId))));
+    if (!existing) return c.json({ error: 'Supplier not found' }, 404);
+    const name = body.name === undefined ? existing.name : typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) return c.json({ error: 'Supplier name is required' }, 400);
+    if (body.email !== undefined && typeof body.email !== 'string') return c.json({ error: 'Invalid supplier email' }, 400);
+    if (body.status !== undefined && !['active', 'inactive'].includes(String(body.status))) return c.json({ error: 'Invalid supplier status' }, 400);
+    const optionalText = (value: unknown, current: string | null) => value === undefined ? current : typeof value === 'string' ? value.trim() || null : current;
+    const [updated] = await db.update(suppliers).set({
+        name,
+        contact: optionalText(body.contact, existing.contact),
+        phone: optionalText(body.phone, existing.phone),
+        email: optionalText(body.email, existing.email),
+        address: optionalText(body.address, existing.address),
+        status: typeof body.status === 'string' ? body.status : existing.status,
+    }).where(and(eq(suppliers.id, id), eq(suppliers.businessId, businessId))).returning();
+    await logAudit(c, 'UPDATE', 'SUPPLIER', id, { fields: Object.keys(body) });
+    return c.json(updated);
+});
+
 suppliersRouter.get('/procurement/orders', async c => c.json(await db.select().from(purchaseOrders)
     .where(eq(purchaseOrders.businessId, c.get('businessId'))).orderBy(desc(purchaseOrders.orderedAt))));
 

@@ -10,6 +10,7 @@ export const inventoryApi = {
     adjust: (id:string,delta:number,reason:string) => http.patch<InventoryItem>(`/inventory/${id}/stock`,{delta,reason}),
     suppliers: () => http.get<Supplier[]>('/suppliers'),
     createSupplier: (data:{name:string;contact?:string;phone?:string;email?:string;address?:string}) => http.post<Supplier>('/suppliers',data),
+    updateSupplier: (id:string,data:{name?:string;contact?:string;phone?:string;email?:string;address?:string;status?:'active'|'inactive'}) => http.patch<Supplier>(`/suppliers/${id}`,data),
     purchaseOrders: () => http.get<PurchaseOrder[]>('/suppliers/procurement/orders'),
     createPurchaseOrder: (data:{itemId:string;supplierId?:string;quantity:number;unitCost:number}) => http.post<PurchaseOrder>('/suppliers/procurement/orders',data),
     receivePurchaseOrder: (id:string) => http.patch<PurchaseOrder & {newStock:number}>(`/suppliers/procurement/orders/${id}/receive`,{}),
