@@ -1965,8 +1965,8 @@ restaurant.patch('/kds/:id/status', async (c) => {
     if (typeof body.status !== 'string' || !ticketStatuses.includes(body.status as TicketStatus)) {
         return c.json({ error: 'Invalid KDS status' }, 400);
     }
-    if (body.status !== 'done') {
-        return c.json({ error: 'Kitchen may only mark orders ready' }, 409);
+    if (body.status !== 'cooking' && body.status !== 'done') {
+        return c.json({ error: 'Kitchen status must be cooking or done' }, 409);
     }
 
     const businessId = c.get('businessId');
@@ -1986,6 +1986,12 @@ restaurant.patch('/kds/:id/status', async (c) => {
         return c.json(await kdsTicketWithOrder(businessId, id));
     }
     const currentServiceStatus = serviceStatusFor(order);
+    if (body.status === 'cooking' && ticket.status === 'cooking' && currentServiceStatus === 'in_kitchen') {
+        return c.json(await kdsTicketWithOrder(businessId, id));
+    }
+    if (body.status === 'cooking' && (ticket.status === 'done' || currentServiceStatus !== 'pending')) {
+        return c.json({ error: 'Only new kitchen orders can start preparation' }, 409);
+    }
     if (currentServiceStatus !== 'pending' && currentServiceStatus !== 'in_kitchen') {
         return c.json({ error: 'Only pending kitchen orders can be marked ready' }, 409);
     }
@@ -2016,10 +2022,11 @@ restaurant.patch('/kds/:id/status', async (c) => {
                 .where(eq(restaurantOrderItems.orderId, ticket.orderId));
         }
     });
-    await logAudit(c, 'RESTAURANT_KDS_TICKET_READY', 'RESTAURANT_KDS_TICKET', id, {
+    const nextServiceStatus = body.status === 'done' ? 'ready' : 'in_kitchen';
+    await logAudit(c, body.status === 'done' ? 'RESTAURANT_KDS_TICKET_READY' : 'RESTAURANT_KDS_TICKET_PREPARING', 'RESTAURANT_KDS_TICKET', id, {
         orderId: ticket.orderId,
         previousServiceStatus: currentServiceStatus,
-        nextServiceStatus: 'ready',
+        nextServiceStatus,
     });
     return c.json(await kdsTicketWithOrder(businessId, id));
 });

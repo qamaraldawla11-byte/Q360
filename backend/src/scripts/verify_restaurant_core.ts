@@ -291,6 +291,13 @@ try {
     const tickets = await request<{ id: string; order: { id: string } | null }[]>('/api/restaurant/kds', undefined, { role: 'kitchen' });
     const ticketId = tickets.find((ticket) => ticket.order?.id === created.id)?.id;
     if (!ticketId) throw new Error('Created order did not produce a KDS ticket');
+    const cookingTicket = await request<{ status: string; completedAt: string | null; order: { serviceStatus: string } | null }>(`/api/restaurant/kds/${ticketId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'cooking' }),
+    }, { role: 'kitchen' });
+    if (cookingTicket.status !== 'cooking' || cookingTicket.completedAt !== null || cookingTicket.order?.serviceStatus !== 'in_kitchen') {
+        throw new Error(`Preparing transition failed: ${JSON.stringify(cookingTicket)}`);
+    }
     const doneTicket = await request<{ status: string; completedAt: string | null }>(`/api/restaurant/kds/${ticketId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'done' }),
@@ -528,6 +535,16 @@ try {
         focusedRegression.duplicateOrderKdsTicketCount !== 1
     ) {
         throw new Error(`Batched menu validation regression failed: ${JSON.stringify(focusedRegression)}`);
+    }
+
+    console.log('[verify:restaurant] Verifying direct-ready kitchen path...');
+    if (!payNow.kitchen.ticket) throw new Error('Pay-now order did not create a kitchen ticket');
+    const directReadyTicket = await request<{ status: string; completedAt: string | null; order: { serviceStatus: string } | null }>(`/api/restaurant/kds/${payNow.kitchen.ticket.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'done' }),
+    }, { role: 'kitchen' });
+    if (directReadyTicket.status !== 'done' || !directReadyTicket.completedAt || directReadyTicket.order?.serviceStatus !== 'ready') {
+        throw new Error(`Direct-ready transition failed: ${JSON.stringify(directReadyTicket)}`);
     }
 
     console.log(JSON.stringify(result, null, 2));

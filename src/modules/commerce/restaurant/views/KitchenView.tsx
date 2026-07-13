@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Clock, CheckCircle2 } from 'lucide-react';
+import { Clock, CheckCircle2, ChefHat } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
 import axios from 'axios';
@@ -59,11 +59,13 @@ export const KitchenView = () => {
         });
     }, [tickets]);
 
-    const markDone = async (ticketId: string) => {
+    const updateStatus = async (ticketId: string, status: 'cooking' | 'done') => {
         setUpdatingId(ticketId);
         try {
-            const updated = await restaurantApi.updateKdsStatus(ticketId, 'done');
-            setTickets((current) => current.filter((ticket) => ticket.id !== updated.id));
+            const updated = await restaurantApi.updateKdsStatus(ticketId, status);
+            setTickets((current) => status === 'done'
+                ? current.filter((ticket) => ticket.id !== updated.id)
+                : current.map((ticket) => ticket.id === updated.id ? updated : ticket));
             setError('');
         } catch (caught) {
             const message = axios.isAxiosError(caught) && typeof caught.response?.data?.error === 'string'
@@ -122,13 +124,25 @@ export const KitchenView = () => {
                             </div>
 
                             <div style={{ padding: '16px', background: '#f8fafc', borderTop: '1px solid var(--border-subtle)' }}>
-                                <button
-                                    onClick={() => markDone(ticket.id)}
-                                    disabled={updatingId === ticket.id}
-                                    style={{ width: '100%', padding: '12px', borderRadius: 'var(--radius-md)', background: 'var(--accent-primary)', color: 'white', border: 'none', fontWeight: 700, cursor: updatingId === ticket.id ? 'wait' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-                                >
-                                    <CheckCircle2 size={18} /> Mark Ready
-                                </button>
+                                <div style={{ display: 'grid', gridTemplateColumns: ticket.status === 'cooking' ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                                    {ticket.status !== 'cooking' && <button
+                                        onClick={() => updateStatus(ticket.id, 'cooking')}
+                                        disabled={updatingId === ticket.id}
+                                        style={{ padding: '12px', borderRadius: 'var(--radius-md)', background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', fontWeight: 700, cursor: updatingId === ticket.id ? 'wait' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        <ChefHat size={18} /> Start Preparing
+                                    </button>}
+                                    <button
+                                        onClick={() => updateStatus(ticket.id, 'done')}
+                                        disabled={updatingId === ticket.id}
+                                        style={{ padding: '12px', borderRadius: 'var(--radius-md)', background: 'var(--accent-primary)', color: 'white', border: 'none', fontWeight: 700, cursor: updatingId === ticket.id ? 'wait' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        <CheckCircle2 size={18} /> Mark Ready
+                                    </button>
+                                </div>
+                                <div style={{ marginTop: 8, color: '#64748b', fontSize: 11, textAlign: 'center' }}>
+                                    {ticket.status === 'cooking' ? 'Preparation in progress' : 'Already prepared? Mark it ready directly.'}
+                                </div>
                             </div>
                         </div>
                     );
