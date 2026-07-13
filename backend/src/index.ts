@@ -59,6 +59,7 @@ app.get('/', (c) => c.json(healthResponse()));
 app.get('/health', (c) => c.json(healthResponse()));
 
 // Mount routes
+app.route('/api/public', publicRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/inventory', inventoryRoutes);
 app.route('/api', ordersRoutes); // /api/orders and /api/products/search
@@ -70,7 +71,6 @@ app.route('/api/user', userRoutes);
 app.route('/api/restaurant', restaurantRoutes);
 app.route('/api/business', businessRoutes);
 app.route('/api/staff', staffRoutes);
-app.route('/api/public', publicRoutes);
 
 // 404 handler
 app.notFound((c) => {
