@@ -6,6 +6,7 @@ import {
     customers,
     kdsTickets,
     menuCategories,
+    menuItemAssets,
     menuItems,
     qAssistantDrafts,
     restaurantMenus,
@@ -51,6 +52,8 @@ const delayedKdsThresholdMinutes = 15;
 const priorityTypes = ['kds_delay', 'unpaid_orders', 'table_attention', 'sales_summary', 'top_items'] as const;
 const priorityUrgencies = ['info', 'attention', 'urgent'] as const;
 const evidenceTypes = ['kds', 'orders', 'tables', 'payments', 'menu_items', 'sales'] as const;
+const maxMenuImageBytes = 2 * 1024 * 1024;
+const menuImageTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 type PriorityType = typeof priorityTypes[number];
 type PriorityUrgency = typeof priorityUrgencies[number];
 type EvidenceType = typeof evidenceTypes[number];
@@ -1002,6 +1005,13 @@ const ensureCategory = async (executor: typeof db | Parameters<Parameters<typeof
     return category;
 };
 
+const menuItemResponse = (item: typeof menuItems.$inferSelect, origin: string) => ({
+    ...item,
+    imageUrl: item.imageUrl === 'database'
+        ? `${origin}/api/public/menu-items/${encodeURIComponent(item.id)}/image`
+        : item.imageUrl,
+});
+
 restaurant.get('/menu', async (c) => {
     const businessId = c.get('businessId');
     const categories = await db.select().from(menuCategories)
@@ -1010,11 +1020,12 @@ restaurant.get('/menu', async (c) => {
     const items = await db.select().from(menuItems)
         .where(eq(menuItems.businessId, businessId))
         .orderBy(asc(menuItems.name));
+    const origin = new URL(c.req.url).origin;
     return c.json({
         categories: categories.map((category) => ({
             id: category.id,
             name: category.name,
-            items: items.filter((item) => item.categoryId === category.id),
+            items: items.filter((item) => item.categoryId === category.id).map((item) => menuItemResponse(item, origin)),
         })),
     });
 });
@@ -1161,6 +1172,22 @@ restaurant.patch('/menu/categories/:id', async (c) => {
     return c.json({ id: rows[0].id, name: rows[0].name, items: [] });
 });
 
+restaurant.delete('/menu/categories/:id', async (c) => {
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const current = await first(db.select().from(menuCategories).where(and(
+        eq(menuCategories.id, id), eq(menuCategories.businessId, businessId),
+    )));
+    if (!current) return c.json({ error: 'Category not found' }, 404);
+    const item = await first(db.select({ id: menuItems.id }).from(menuItems).where(and(
+        eq(menuItems.categoryId, id), eq(menuItems.businessId, businessId),
+    )));
+    if (item) return c.json({ error: 'Move or remove this category’s menu items first' }, 409);
+    await db.delete(menuCategories).where(and(eq(menuCategories.id, id), eq(menuCategories.businessId, businessId)));
+    await logAudit(c, 'RESTAURANT_MENU_CATEGORY_DELETED', 'MENU_CATEGORY', id, { name: current.name });
+    return c.json({ deleted: true });
+});
+
 restaurant.patch('/menu/items/:id', async (c) => {
     const body = await parseJson<{ name?: unknown; description?: unknown; price?: unknown; categoryId?: unknown; isAvailable?: unknown; prepTimeMinutes?: unknown; imageUrl?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
@@ -1185,7 +1212,39 @@ restaurant.patch('/menu/items/:id', async (c) => {
     const rows = await db.update(menuItems).set({ name, description, imageUrl, price, categoryId, isAvailable, prepTimeMinutes })
         .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId))).returning();
     await logAudit(c, 'RESTAURANT_MENU_ITEM_UPDATED', 'MENU_ITEM', id, { isAvailable, categoryId });
-    return c.json(rows[0]);
+    return c.json(menuItemResponse(rows[0], new URL(c.req.url).origin));
+});
+
+restaurant.post('/menu/items/:id/image', async (c) => {
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const item = await first(db.select().from(menuItems).where(and(
+        eq(menuItems.id, id), eq(menuItems.businessId, businessId),
+    )));
+    if (!item) return c.json({ error: 'Menu item not found' }, 404);
+
+    let form: FormData;
+    try { form = await c.req.formData(); }
+    catch { return c.json({ error: 'Invalid image upload' }, 400); }
+    const image = form.get('image');
+    if (!(image instanceof File)) return c.json({ error: 'Image file is required' }, 400);
+    if (!menuImageTypes.has(image.type)) return c.json({ error: 'Use a PNG, JPEG, or WebP image' }, 400);
+    if (image.size < 1 || image.size > maxMenuImageBytes) return c.json({ error: 'Image must be no larger than 2 MB' }, 400);
+
+    const dataBase64 = Buffer.from(await image.arrayBuffer()).toString('base64');
+    const existing = await first(db.select().from(menuItemAssets).where(and(
+        eq(menuItemAssets.itemId, id), eq(menuItemAssets.businessId, businessId),
+    )));
+    if (existing) {
+        await db.update(menuItemAssets).set({ mimeType: image.type, dataBase64, updatedAt: new Date() })
+            .where(and(eq(menuItemAssets.itemId, id), eq(menuItemAssets.businessId, businessId)));
+    } else {
+        await db.insert(menuItemAssets).values({ itemId: id, businessId, mimeType: image.type, dataBase64 });
+    }
+    const rows = await db.update(menuItems).set({ imageUrl: 'database' })
+        .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId))).returning();
+    await logAudit(c, 'RESTAURANT_MENU_ITEM_IMAGE_UPDATED', 'MENU_ITEM', id, { mimeType: image.type, size: image.size });
+    return c.json(menuItemResponse(rows[0], new URL(c.req.url).origin));
 });
 
 restaurant.get('/tables', async (c) => {

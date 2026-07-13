@@ -22,7 +22,7 @@ function AppContent() {
     const labels: Record<string, string> = {
       ai: 'AI',
       'audit-logs': 'Audit Logs',
-      billing: 'Order History',
+      billing: 'Orders',
       businesses: 'Businesses',
       catalog: 'Catalog',
       clients: 'Clients',

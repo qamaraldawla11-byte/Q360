@@ -172,6 +172,16 @@ export const menuItems = pgTable('menu_items', {
     prepTimeMinutes: integer('prep_time_minutes').default(0).notNull(),
 });
 
+export const menuItemAssets = pgTable('menu_item_assets', {
+    itemId: text('item_id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    mimeType: text('mime_type').notNull(),
+    dataBase64: text('data_base64').notNull(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('menu_item_assets_business_idx').on(table.businessId),
+]);
+
 export const restaurantTables = pgTable('restaurant_tables', {
     id: text('id').primaryKey(),
     businessId: text('business_id').default('biz_main').notNull(),

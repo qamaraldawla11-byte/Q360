@@ -14,14 +14,16 @@ export type BusinessModulePolicy = {
 
 export const restaurantModulePolicies: readonly BusinessModulePolicy[] = [
     { moduleKey: 'dashboard', label: 'Dashboard', description: 'Your Restaurant operating overview.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
-    { moduleKey: 'pos', label: 'POS / Cashier', description: 'Create takeaway and dine-in orders.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
+    { moduleKey: 'pos', label: 'Sales', description: 'Create takeaway, dine-in, and delivery orders.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'kds', label: 'Kitchen', description: 'Protected kitchen ticket lifecycle.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'menu', label: 'Menu', description: 'Products and prices used by POS.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
-    { moduleKey: 'tables', label: 'Floor / Tables', description: 'Dine-in table assignment and floor status.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
-    { moduleKey: 'payments', label: 'Orders & Payments', description: 'Protected service and payment completion.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
+    { moduleKey: 'tables', label: 'Tables', description: 'Dine-in table assignment and status.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'payments', label: 'Orders', description: 'Order history, service, and payment completion.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'daily-report', label: 'Reports', description: 'Restaurant daily performance records.', category: 'Management', defaultEnabled: true, configurable: false, availability: 'ready' },
-    { moduleKey: 'inventory', label: 'Inventory & Purchasing', description: 'Saved stock, suppliers, purchase orders, and receiving.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
-    { moduleKey: 'staff', label: 'Staff / HR', description: 'Staff records, shifts, roles, module access, and invitations.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'inventory', label: 'Stock', description: 'Stock, suppliers, purchase orders, and receiving.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'staff', label: 'Team', description: 'Team records, shifts, roles, access, and invitations.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'finance', label: 'Finance', description: 'Revenue, expenses, bills, salaries, profit and loss.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'customers', label: 'Customers', description: 'Customer contacts, delivery addresses, and order history.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
 ];
 
 export const getModulePolicy = (workspaceKey: string, moduleKey: string) =>

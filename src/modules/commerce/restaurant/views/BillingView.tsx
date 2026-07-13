@@ -182,7 +182,7 @@ export const BillingView = ({ embedded = false }: { embedded?: boolean }) => {
         <div className={embedded ? 'cashier-queue cashier-queue--embedded' : 'cashier-queue'}>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: embedded ? 16 : 24 }}>
                 <div>
-                    <h1 style={{ fontSize: embedded ? '22px' : '28px', fontWeight: 700, margin: '0 0 4px' }}>{embedded ? 'Cashier Queue' : 'Orders & Payments'}</h1>
+                    <h1 style={{ fontSize: embedded ? '22px' : '28px', fontWeight: 700, margin: '0 0 4px' }}>{embedded ? 'Payment queue' : 'Orders'}</h1>
                     {embedded && <p style={{ margin: 0, color: 'var(--fg-secondary)', fontSize: 13 }}>Complete collection, delivery, and payment without leaving POS.</p>}
                 </div>
                 {embedded && <button type="button" onClick={() => void load()} style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', cursor: 'pointer', fontWeight: 700 }}>Refresh</button>}

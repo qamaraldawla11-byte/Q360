@@ -67,7 +67,7 @@ export const InventoryView = () => {
         finally { setBusy(''); }
     };
 
-    return <ModuleShell><PageHeader title="Inventory & Purchasing" subtitle="Saved stock, suppliers, purchase orders, and receiving for this business." />
+    return <ModuleShell><PageHeader title="Stock" subtitle="Saved stock, suppliers, purchase orders, and receiving for this business." />
         {error && <div className="inv-alert error">{error}</div>}{message && <div className="inv-alert success"><Check size={16} />{message}</div>}
         <div className="inv-stats"><article><Package /><b>{items.length}</b><span>Stock items</span></article><article><AlertTriangle /><b>{low.length}</b><span>Low stock</span></article><article><ShoppingCart /><b>{orders.filter(order => order.status === 'ordered').length}</b><span>Open purchases</span></article></div>
         <div className="inv-tabs">{(['Stock', 'Suppliers', 'Purchasing'] as Tab[]).map(value => <button type="button" className={tab === value ? 'active' : ''} onClick={() => setTab(value)} key={value}>{value}</button>)}</div>

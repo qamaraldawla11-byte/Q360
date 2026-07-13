@@ -64,12 +64,15 @@ export const SmeLayout = () => {
         if (manifest?.id !== 'restaurant') return modules;
         const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
         return modules.filter(module => {
-            if (['staff', 'finance', 'customers', 'modules', 'settings'].includes(module.id)) return canManageRestaurant;
+            if (['modules', 'settings'].includes(module.id)) return canManageRestaurant;
+            if (['staff', 'finance', 'customers'].includes(module.id) && !canManageRestaurant) return false;
             const accessKey = RESTAURANT_MODULE_ACCESS[module.id];
             if (accessKey && !hasRestaurantModuleAccess(user, accessKey)) return false;
             if (module.id === 'floor') return enabled.get('tables') ?? true;
             if (module.id === 'inventory') return enabled.get('inventory') ?? true;
             if (module.id === 'staff') return enabled.get('staff') ?? true;
+            if (module.id === 'finance') return enabled.get('finance') ?? true;
+            if (module.id === 'customers') return enabled.get('customers') ?? true;
             return true;
         });
     }, [businessModules, canManageRestaurant, manifest, user]);

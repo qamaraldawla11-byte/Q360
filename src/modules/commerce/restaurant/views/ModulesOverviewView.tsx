@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChefHat, LayoutDashboard, LayoutGrid, Loader2, LockKeyhole, Package, Receipt, Search, ShieldCheck, ShoppingCart, Users, UtensilsCrossed } from 'lucide-react';
+import { BarChart3, ChefHat, ContactRound, LayoutDashboard, LayoutGrid, Loader2, LockKeyhole, Package, Receipt, Search, ShieldCheck, ShoppingCart, Users, UtensilsCrossed, WalletCards } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
 import type { BusinessModule } from '@/api/business.api';
@@ -8,6 +8,7 @@ import { useBusinessModulesStore } from '@/store/businessModules.store';
 const ICONS: Record<string, typeof LayoutGrid> = {
     dashboard: LayoutDashboard, pos: ShoppingCart, kds: ChefHat, menu: UtensilsCrossed,
     tables: LayoutGrid, payments: Receipt, 'daily-report': BarChart3, inventory: Package, staff: Users,
+    finance: WalletCards, customers: ContactRound,
 };
 const CATEGORIES = ['All', 'Core', 'Operations', 'Management'] as const;
 

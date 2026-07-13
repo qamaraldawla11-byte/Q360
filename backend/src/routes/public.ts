@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, asc, eq } from 'drizzle-orm';
-import { businessAssets, businesses, menuCategories, menuItems } from '../db/schema.js';
+import { businessAssets, businesses, menuCategories, menuItemAssets, menuItems } from '../db/schema.js';
 import { db, first, supabase } from '../db/client.js';
 
 const publicRoutes = new Hono();
@@ -34,6 +34,25 @@ publicRoutes.get('/businesses/:publicCode/logo', async (c) => {
     c.header('Cache-Control', 'public, max-age=3600');
     c.header('X-Content-Type-Options', 'nosniff');
     return c.body(bytes);
+});
+
+publicRoutes.get('/menu-items/:itemId/image', async (c) => {
+    const item = await first(db.select().from(menuItems).where(eq(menuItems.id, c.req.param('itemId'))));
+    if (!item || item.imageUrl !== 'database') return c.body(null, 404);
+    const business = await first(db.select().from(businesses).where(and(
+        eq(businesses.id, item.businessId),
+        eq(businesses.status, 'active'),
+    )));
+    if (!business) return c.body(null, 404);
+    const asset = await first(db.select().from(menuItemAssets).where(and(
+        eq(menuItemAssets.itemId, item.id),
+        eq(menuItemAssets.businessId, item.businessId),
+    )));
+    if (!asset) return c.body(null, 404);
+    c.header('Content-Type', asset.mimeType);
+    c.header('Cache-Control', 'public, max-age=3600');
+    c.header('X-Content-Type-Options', 'nosniff');
+    return c.body(Buffer.from(asset.dataBase64, 'base64'));
 });
 
 publicRoutes.get('/businesses/:publicCode/menu', async (c) => {
@@ -71,7 +90,9 @@ publicRoutes.get('/businesses/:publicCode/menu', async (c) => {
                 id: item.id,
                 name: item.name,
                 description: item.description,
-                imageUrl: item.imageUrl,
+                imageUrl: item.imageUrl === 'database'
+                    ? `${origin}/api/public/menu-items/${encodeURIComponent(item.id)}/image`
+                    : item.imageUrl,
                 price: item.price,
                 prepTimeMinutes: item.prepTimeMinutes,
             })),

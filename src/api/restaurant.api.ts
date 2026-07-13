@@ -240,10 +240,21 @@ export const restaurantApi = {
     updateMenuCategory: (id: string, payload: { name: string }) =>
         http.patch<RestaurantMenuCategory>(`/restaurant/menu/categories/${id}`, payload),
 
+    deleteMenuCategory: (id: string) =>
+        http.delete<{ deleted: true }>(`/restaurant/menu/categories/${id}`),
+
     updateMenuItem: (id: string, payload: {
         name?: string; description?: string; price?: number; categoryId?: string;
         isAvailable?: boolean; prepTimeMinutes?: number; imageUrl?: string;
     }) => http.patch<RestaurantMenuItem>(`/restaurant/menu/items/${id}`, payload),
+
+    uploadMenuItemImage: (id: string, image: File) => {
+        const form = new FormData();
+        form.append('image', image);
+        return http.post<RestaurantMenuItem>(`/restaurant/menu/items/${id}/image`, form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
 
     getTables: () => http.get<RestaurantTable[]>('/restaurant/tables'),
 

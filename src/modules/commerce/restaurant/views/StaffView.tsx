@@ -4,7 +4,7 @@ import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { staffApi, type StaffMember } from '@/api/staff.api';
 
-const MODULES = [['dashboard', 'Dashboard'], ['pos', 'POS / Cashier'], ['kds', 'Kitchen'], ['menu', 'Menu'], ['tables', 'Tables'], ['inventory', 'Inventory'], ['daily-report', 'Reports']] as const;
+const MODULES = [['dashboard', 'Dashboard'], ['pos', 'Sales'], ['kds', 'Kitchen'], ['menu', 'Menu'], ['tables', 'Tables'], ['inventory', 'Stock'], ['daily-report', 'Reports']] as const;
 const emptyForm = { name: '', email: '', role: 'staff', moduleAccess: ['dashboard'], shiftName: '', shiftStart: '', shiftEnd: '' };
 type StaffForm = typeof emptyForm;
 const normalizeAccess = (access: string[]) => {
@@ -14,7 +14,7 @@ const normalizeAccess = (access: string[]) => {
 };
 const roleLabel = (role: string) => role === 'waiter' ? 'Waiter / Server' : role.charAt(0).toUpperCase() + role.slice(1);
 
-const AccessChoices = ({ value, onToggle }: { value: string[]; onToggle: (key: string) => void }) => <div className="staff-modules"><b>Workspace access</b><p>Payments are included inside POS / Cashier.</p><div>{MODULES.map(([key, label]) => <label key={key}><input type="checkbox" checked={value.includes(key)} onChange={() => onToggle(key)} />{label}</label>)}</div></div>;
+const AccessChoices = ({ value, onToggle }: { value: string[]; onToggle: (key: string) => void }) => <div className="staff-modules"><b>Workspace access</b><p>Payments are included inside Sales.</p><div>{MODULES.map(([key, label]) => <label key={key}><input type="checkbox" checked={value.includes(key)} onChange={() => onToggle(key)} />{label}</label>)}</div></div>;
 
 export const StaffView = () => {
     const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -60,7 +60,7 @@ export const StaffView = () => {
         catch { setError('Unable to change staff access.'); } finally { setBusy(''); }
     };
 
-    return <ModuleShell><PageHeader title="Staff / HR" subtitle="Invite staff and manage each person’s role, shift, and workspace access." />
+    return <ModuleShell><PageHeader title="Team" subtitle="Invite team members and manage each person’s role, shift, and workspace access." />
         {error && <div className="staff-alert error">{error}</div>}{message && <div className="staff-alert success">{message}</div>}
         <div className="staff-summary"><article><Users /><b>{staff.length}</b><span>Total staff</span></article><article><ShieldCheck /><b>{staff.filter(person => person.status === 'active').length}</b><span>Active</span></article><article><Mail /><b>{staff.filter(person => person.status === 'invited').length}</b><span>Invited</span></article></div>
 
