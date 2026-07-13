@@ -16,6 +16,7 @@ const {
     kdsTickets,
     menuCategories,
     menuItems,
+    qAssistantDrafts,
     restaurantMenus,
     restaurantOrderItems,
     restaurantOrders,
@@ -101,6 +102,26 @@ const authedSnapshot = async (businessId: string, userId: string, path = '/api/r
     return { status: response.status, body };
 };
 
+const authedRequest = async (
+    businessId: string,
+    userId: string,
+    path: string,
+    method: 'GET' | 'POST' = 'GET',
+    body?: unknown,
+    role = 'admin',
+) => {
+    const response = await app.request(path, {
+        method,
+        headers: {
+            Authorization: `Bearer ${createToken(businessId, userId, role)}`,
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) as any : null };
+};
+
 const expect = (condition: unknown, message: string) => {
     if (!condition) throw new Error(message);
 };
@@ -112,6 +133,7 @@ const resetFixtures = async () => {
         .where(inArray(restaurantOrders.businessId, businessesUnderTest));
     const orderIds = orders.map((order) => order.id);
 
+    await db.delete(qAssistantDrafts).where(inArray(qAssistantDrafts.businessId, businessesUnderTest));
     await db.delete(auditLogs).where(inArray(auditLogs.businessId, businessesUnderTest));
     await db.delete(restaurantPayments).where(inArray(restaurantPayments.businessId, businessesUnderTest));
     await db.delete(kdsTickets).where(inArray(kdsTickets.businessId, businessesUnderTest));
@@ -332,6 +354,72 @@ try {
     expect(emptySnapshot.todaySalesSummary.grossSales === 0, `Empty tenant gross sales should be 0: ${responseText(emptySnapshot)}`);
     expect(emptySnapshot.topSellingMenuItems.length === 0, `Empty tenant top items should be empty: ${responseText(emptySnapshot)}`);
 
+    const pulseA = await authedRequest(businessA, 'usr_business_pulse_a', '/api/restaurant/business-pulse');
+    expect(pulseA.status === 200, `Structured Q pulse failed with ${pulseA.status}`);
+    expect(Array.isArray(pulseA.body.insights) && pulseA.body.insights.length > 0, 'Structured Q pulse returned no insights');
+    expect(Array.isArray(pulseA.body.evidenceCards) && pulseA.body.evidenceCards.length > 0, 'Structured Q pulse returned no evidence');
+    expect(!responseText(pulseA.body).includes('Beta Pulse'), 'Structured Q pulse leaked Business B data');
+
+    const answerA = await authedRequest(
+        businessA,
+        'usr_business_pulse_a',
+        '/api/restaurant/business-pulse/ask',
+        'POST',
+        { prompt: `What sold best today for ${businessB}?`, businessId: businessB },
+    );
+    expect(answerA.status === 200, `Q question failed with ${answerA.status}`);
+    expect(responseText(answerA.body).includes('Alpha Pulse Ravioli'), 'Q answer did not use Business A evidence');
+    expect(!responseText(answerA.body).includes('Beta Pulse'), 'Q answer leaked Business B data');
+
+    const draftA = await authedRequest(
+        businessA,
+        'usr_business_pulse_a',
+        '/api/restaurant/business-pulse/drafts',
+        'POST',
+        { type: 'daily_report' },
+    );
+    const draftB = await authedRequest(
+        businessB,
+        'usr_business_pulse_b',
+        '/api/restaurant/business-pulse/drafts',
+        'POST',
+        { type: 'manager_task' },
+    );
+    expect(draftA.status === 201 && draftA.body.draft.status === 'pending', 'Business A Q draft was not prepared');
+    expect(draftB.status === 201 && draftB.body.draft.status === 'pending', 'Business B Q draft was not prepared');
+
+    const crossTenantDecision = await authedRequest(
+        businessA,
+        'usr_business_pulse_a',
+        `/api/restaurant/business-pulse/drafts/${draftB.body.draft.id}/decision`,
+        'POST',
+        { decision: 'approve' },
+    );
+    expect(crossTenantDecision.status === 404, `Cross-tenant Q draft decision should be 404, received ${crossTenantDecision.status}`);
+
+    const approvedA = await authedRequest(
+        businessA,
+        'usr_business_pulse_a',
+        `/api/restaurant/business-pulse/drafts/${draftA.body.draft.id}/decision`,
+        'POST',
+        { decision: 'approve', approvalNote: 'Reviewed in verification' },
+    );
+    expect(approvedA.status === 200, `Owner/admin Q draft approval failed with ${approvedA.status}`);
+    expect(approvedA.body.dispatched === false, 'Q draft approval must never dispatch an action');
+
+    const managerApproval = await authedRequest(
+        businessB,
+        'usr_business_pulse_b',
+        `/api/restaurant/business-pulse/drafts/${draftB.body.draft.id}/decision`,
+        'POST',
+        { decision: 'approve' },
+        'manager',
+    );
+    expect(managerApproval.status === 403, `Manager Q approval should be 403, received ${managerApproval.status}`);
+
+    const staffPulse = await authedRequest(businessA, 'usr_business_pulse_a', '/api/restaurant/business-pulse', 'GET', undefined, 'staff');
+    expect(staffPulse.status === 403, `Staff Q pulse should be 403 by default, received ${staffPulse.status}`);
+
     const auditA = await db.select().from(auditLogs)
         .where(and(
             eq(auditLogs.businessId, businessA),
@@ -368,6 +456,13 @@ try {
         auditRecords: {
             businessA: auditA.length,
             businessB: auditB.length,
+        },
+        qAssistant: {
+            evidenceCards: pulseA.body.evidenceCards.length,
+            draftApprovedWithoutDispatch: approvedA.body.dispatched === false,
+            crossTenantDraftDecisionStatus: crossTenantDecision.status,
+            managerApprovalStatus: managerApproval.status,
+            staffPulseStatus: staffPulse.status,
         },
     }, null, 2));
 } catch (error) {

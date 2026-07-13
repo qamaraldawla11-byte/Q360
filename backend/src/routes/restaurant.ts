@@ -7,6 +7,7 @@ import {
     kdsTickets,
     menuCategories,
     menuItems,
+    qAssistantDrafts,
     restaurantMenus,
     restaurantOrderItems,
     restaurantOrders,
@@ -17,6 +18,7 @@ import {
 import { authMiddleware } from '../middleware/auth.js';
 import {
     canPerformRestaurantAction,
+    isLegacyRestaurantOwnerCompatible,
     isOrderClosedForCancellation,
     isOrderPaid,
     legacyStatusFor,
@@ -139,6 +141,32 @@ interface BusinessPulseSnapshot {
     }[];
     priorities: BusinessPulsePriority[];
 }
+
+const qDraftTypes = ['daily_report', 'manager_task'] as const;
+type QDraftType = typeof qDraftTypes[number];
+type QEvidenceCard = {
+    id: string;
+    type: 'kds_ticket' | 'order' | 'table' | 'payment' | 'menu_item' | 'daily_summary';
+    label: string;
+    facts: string[];
+    sourceIds: string[];
+    freshness: { generatedAt: string; dataWindowStart: string | null; dataWindowEnd: string | null };
+};
+type QPulseResponse = {
+    requestId: string;
+    summary: string;
+    insights: Array<{
+        id: string;
+        severity: PriorityUrgency;
+        title: string;
+        recommendation: string;
+        evidenceIds: string[];
+        allowedActions: ['prepare_draft'] | [];
+    }>;
+    evidenceCards: QEvidenceCard[];
+    drafts: [];
+    generatedAt: string;
+};
 
 restaurant.use('/*', authMiddleware);
 
@@ -573,6 +601,128 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
     });
 };
 
+const qEvidenceTypeFor = (type: EvidenceType): QEvidenceCard['type'] => ({
+    kds: 'kds_ticket',
+    orders: 'order',
+    tables: 'table',
+    payments: 'payment',
+    menu_items: 'menu_item',
+    sales: 'daily_summary',
+}[type] as QEvidenceCard['type']);
+
+const qRecommendationFor = (type: PriorityType) => ({
+    kds_delay: 'Open Kitchen and review the delayed tickets.',
+    unpaid_orders: 'Open Order History and review the unpaid orders.',
+    table_attention: 'Check the listed tables before closing their orders.',
+    sales_summary: 'Use this verified summary for the daily manager review.',
+    top_items: 'Use the top items when planning menu availability and preparation.',
+}[type]);
+
+const buildQPulseResponse = (snapshot: BusinessPulseSnapshot, prompt?: string): QPulseResponse => {
+    const evidenceCards = snapshot.priorities.map((priority, index): QEvidenceCard => ({
+        id: `evidence-${priority.type}-${index + 1}`,
+        type: qEvidenceTypeFor(priority.evidence.type),
+        label: priority.evidence.label,
+        facts: Object.entries(priority.evidence.facts).map(([key, value]) => `${key}: ${value ?? 'none'}`),
+        sourceIds: [],
+        freshness: {
+            generatedAt: priority.dataFreshnessTimestamp,
+            dataWindowStart: null,
+            dataWindowEnd: snapshot.generatedAt,
+        },
+    }));
+    const insights = snapshot.priorities.map((priority, index) => ({
+        id: `insight-${priority.type}-${index + 1}`,
+        severity: priority.urgency,
+        title: priority.title,
+        recommendation: qRecommendationFor(priority.type),
+        evidenceIds: [evidenceCards[index].id],
+        allowedActions: (priority.type === 'sales_summary' || priority.type === 'kds_delay' || priority.type === 'unpaid_orders')
+            ? ['prepare_draft'] as ['prepare_draft']
+            : [] as [],
+    }));
+
+    const normalizedPrompt = prompt?.trim().toLowerCase() ?? '';
+    let summary = snapshot.priorities.some((priority) => priority.urgency === 'urgent')
+        ? 'Your restaurant has urgent items that need review.'
+        : snapshot.unpaidOrderCount || snapshot.delayedKdsTicketCount
+            ? 'Your restaurant has a few operational items that need attention.'
+            : 'No urgent restaurant issues are visible in the current snapshot.';
+    if (normalizedPrompt.includes('sold') || normalizedPrompt.includes('top')) {
+        const top = snapshot.topSellingMenuItems[0];
+        summary = top
+            ? `${top.name} is the top-selling item today with ${top.quantitySold} sold.`
+            : 'There are no completed item sales in today\'s snapshot yet.';
+    } else if (normalizedPrompt.includes('delay') || normalizedPrompt.includes('kitchen')) {
+        summary = snapshot.delayedKdsTicketCount
+            ? `${snapshot.delayedKdsTicketCount} kitchen ticket${snapshot.delayedKdsTicketCount === 1 ? ' is' : 's are'} delayed.`
+            : 'No kitchen tickets are beyond the delay threshold.';
+    } else if (normalizedPrompt.includes('payment') || normalizedPrompt.includes('unpaid') || normalizedPrompt.includes('open')) {
+        summary = snapshot.unpaidOrderCount
+            ? `${snapshot.unpaidOrderCount} order${snapshot.unpaidOrderCount === 1 ? ' remains' : 's remain'} unpaid.`
+            : 'No unpaid orders are visible in today\'s snapshot.';
+    } else if (normalizedPrompt.includes('sales') || normalizedPrompt.includes('revenue') || normalizedPrompt.includes('today')) {
+        summary = `Today has ${snapshot.todaySalesSummary.paidOrderCount} paid orders and ${(snapshot.todaySalesSummary.grossSales / 100).toFixed(2)} in paid revenue.`;
+    }
+
+    return {
+        requestId: randomUUID(),
+        summary,
+        insights,
+        evidenceCards,
+        drafts: [],
+        generatedAt: snapshot.generatedAt,
+    };
+};
+
+const canUseQ = (actor: RestaurantActor) => (
+    actor.role === 'owner' || actor.role === 'admin' || actor.role === 'manager' || isLegacyRestaurantOwnerCompatible(actor)
+);
+
+const canReviewQDraft = (actor: RestaurantActor) => (
+    actor.role === 'owner' || actor.role === 'admin' || isLegacyRestaurantOwnerCompatible(actor)
+);
+
+const qDraftContent = (type: QDraftType, snapshot: BusinessPulseSnapshot) => {
+    if (type === 'manager_task') {
+        const attention = [
+            snapshot.delayedKdsTicketCount ? `Review ${snapshot.delayedKdsTicketCount} delayed kitchen ticket(s).` : null,
+            snapshot.unpaidOrderCount ? `Review ${snapshot.unpaidOrderCount} unpaid order(s).` : null,
+            snapshot.tablePaymentAttentionCount ? `Check ${snapshot.tablePaymentAttentionCount} table(s) awaiting payment attention.` : null,
+        ].filter(Boolean);
+        return {
+            title: 'Restaurant attention task',
+            body: attention.length ? attention.join('\n') : 'No urgent operational follow-up is visible in the current snapshot.',
+        };
+    }
+    const top = snapshot.topSellingMenuItems[0];
+    return {
+        title: 'Daily restaurant report',
+        body: [
+            `Paid revenue: ${(snapshot.todaySalesSummary.grossSales / 100).toFixed(2)}`,
+            `Paid orders: ${snapshot.todaySalesSummary.paidOrderCount}`,
+            `Open orders: ${snapshot.openOrderCount}`,
+            `Unpaid orders: ${snapshot.unpaidOrderCount}`,
+            `Delayed kitchen tickets: ${snapshot.delayedKdsTicketCount}`,
+            `Top item: ${top ? `${top.name} (${top.quantitySold})` : 'No completed sales yet'}`,
+        ].join('\n'),
+    };
+};
+
+const publicQDraft = (draft: typeof qAssistantDrafts.$inferSelect | (typeof qAssistantDrafts.$inferInsert & { createdAt?: Date })) => ({
+    id: draft.id,
+    type: draft.type,
+    title: draft.title,
+    body: draft.body,
+    evidenceIds: draft.evidenceIds,
+    status: draft.status,
+    ownerEditedBody: draft.ownerEditedBody ?? null,
+    approvalNote: draft.approvalNote ?? null,
+    createdAt: draft.createdAt ?? null,
+    reviewedAt: draft.reviewedAt ?? null,
+    requiresApproval: draft.status === 'pending',
+});
+
 const orderWithItems = async (
     businessId: string,
     orderId: string,
@@ -674,6 +824,142 @@ restaurant.get('/business-pulse/snapshot', async (c) => {
     } catch {
         return c.json({ error: 'Unable to generate Restaurant Business Pulse snapshot' }, 500);
     }
+});
+
+restaurant.get('/business-pulse', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    try {
+        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
+        const response = buildQPulseResponse(snapshot);
+        await logAudit(c, 'Q_PULSE_REQUESTED', 'Q_BUSINESS_PULSE', response.requestId, {
+            userRole: actor.role,
+            provider: 'q360-rules-v1',
+            model: 'structured-pulse-v1',
+            evidenceIds: response.evidenceCards.map((card) => card.id),
+            validationStatus: 'passed',
+        });
+        await logAudit(c, 'Q_INSIGHT_GENERATED', 'Q_BUSINESS_PULSE', response.requestId, {
+            insightCount: response.insights.length,
+            evidenceIds: response.evidenceCards.map((card) => card.id),
+            validationStatus: 'passed',
+        });
+        return c.json(response);
+    } catch {
+        await logAudit(c, 'Q_PROVIDER_ERROR', 'Q_BUSINESS_PULSE', null, { safeReason: 'pulse_generation_failed' });
+        return c.json({ error: 'Q could not generate the Restaurant Pulse' }, 500);
+    }
+});
+
+restaurant.post('/business-pulse/ask', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const body = await parseJson<{ prompt?: unknown }>(c);
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt) return c.json({ error: 'A question is required' }, 400);
+    if (prompt.length > 300) return c.json({ error: 'Question must be 300 characters or fewer' }, 400);
+    try {
+        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
+        const response = buildQPulseResponse(snapshot, prompt);
+        await logAudit(c, 'Q_PULSE_REQUESTED', 'Q_BUSINESS_PULSE', response.requestId, {
+            userRole: actor.role,
+            provider: 'q360-rules-v1',
+            model: 'structured-pulse-v1',
+            promptCategory: prompt.toLowerCase().includes('kitchen') ? 'kitchen' : 'restaurant_operations',
+            evidenceIds: response.evidenceCards.map((card) => card.id),
+            validationStatus: 'passed',
+        });
+        await logAudit(c, 'Q_INSIGHT_GENERATED', 'Q_BUSINESS_PULSE', response.requestId, {
+            insightCount: response.insights.length,
+            evidenceIds: response.evidenceCards.map((card) => card.id),
+            validationStatus: 'passed',
+        });
+        return c.json(response);
+    } catch {
+        await logAudit(c, 'Q_PROVIDER_ERROR', 'Q_BUSINESS_PULSE', null, { safeReason: 'question_generation_failed' });
+        return c.json({ error: 'Q could not answer from the current Restaurant records' }, 500);
+    }
+});
+
+restaurant.get('/business-pulse/drafts', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const drafts = await db.select().from(qAssistantDrafts)
+        .where(eq(qAssistantDrafts.businessId, actor.businessId))
+        .orderBy(desc(qAssistantDrafts.createdAt));
+    return c.json({ drafts: drafts.map(publicQDraft) });
+});
+
+restaurant.post('/business-pulse/drafts', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const body = await parseJson<{ type?: unknown }>(c);
+    const type = typeof body?.type === 'string' && qDraftTypes.includes(body.type as QDraftType)
+        ? body.type as QDraftType
+        : null;
+    if (!type) return c.json({ error: 'Draft type must be daily_report or manager_task' }, 400);
+    const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
+    const response = buildQPulseResponse(snapshot);
+    const content = qDraftContent(type, snapshot);
+    const draft = {
+        id: randomUUID(),
+        businessId: actor.businessId,
+        createdBy: actor.userId,
+        type,
+        title: content.title,
+        body: content.body,
+        evidenceIds: response.evidenceCards.map((card) => card.id),
+        status: 'pending',
+    };
+    await db.insert(qAssistantDrafts).values(draft);
+    await logAudit(c, 'Q_DRAFT_PREPARED', 'Q_BUSINESS_PULSE', draft.id, {
+        draftType: type,
+        userRole: actor.role,
+        evidenceIds: draft.evidenceIds,
+        requiresApproval: true,
+        validationStatus: 'passed',
+    });
+    return c.json({ draft: publicQDraft(draft) }, 201);
+});
+
+restaurant.post('/business-pulse/drafts/:id/decision', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can approve Q drafts');
+    const body = await parseJson<{ decision?: unknown; ownerEditedBody?: unknown; approvalNote?: unknown }>(c);
+    const decision = body?.decision === 'approve' || body?.decision === 'reject' ? body.decision : null;
+    if (!decision) return c.json({ error: 'Decision must be approve or reject' }, 400);
+    const ownerEditedBody = typeof body?.ownerEditedBody === 'string' ? body.ownerEditedBody.trim() : null;
+    const approvalNote = typeof body?.approvalNote === 'string' ? body.approvalNote.trim() : null;
+    if (ownerEditedBody && ownerEditedBody.length > 5000) return c.json({ error: 'Edited draft is too long' }, 400);
+    if (approvalNote && approvalNote.length > 500) return c.json({ error: 'Approval note is too long' }, 400);
+    const id = c.req.param('id');
+    const draft = await first(db.select().from(qAssistantDrafts).where(and(
+        eq(qAssistantDrafts.id, id),
+        eq(qAssistantDrafts.businessId, actor.businessId),
+    )));
+    if (!draft) return c.json({ error: 'Draft not found' }, 404);
+    if (draft.status !== 'pending') return c.json({ error: 'Draft has already been reviewed' }, 409);
+    const status = decision === 'approve' ? 'approved' : 'rejected';
+    const reviewedAt = new Date();
+    await db.update(qAssistantDrafts).set({
+        status,
+        reviewedBy: actor.userId,
+        ownerEditedBody: ownerEditedBody || null,
+        approvalNote: approvalNote || null,
+        reviewedAt,
+    }).where(and(eq(qAssistantDrafts.id, id), eq(qAssistantDrafts.businessId, actor.businessId)));
+    await logAudit(c, decision === 'approve' ? 'Q_DRAFT_APPROVED' : 'Q_DRAFT_REJECTED', 'Q_BUSINESS_PULSE', id, {
+        userRole: actor.role,
+        evidenceIds: draft.evidenceIds,
+        decision,
+        dispatchStatus: 'not_dispatched',
+        validationStatus: 'passed',
+    });
+    return c.json({
+        draft: publicQDraft({ ...draft, status, reviewedBy: actor.userId, reviewedAt, ownerEditedBody, approvalNote }),
+        dispatched: false,
+        message: 'Decision recorded. Q did not send or change anything.',
+    });
 });
 
 const ensureCategory = async (executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0], businessId: string, categoryId?: string, categoryName?: string) => {

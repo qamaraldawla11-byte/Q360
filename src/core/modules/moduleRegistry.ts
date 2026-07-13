@@ -223,6 +223,17 @@ export const q360ModuleRegistry: readonly Q360ModuleDefinition[] = [
         routePath: '/app/restaurant/customers',
     },
     {
+        moduleKey: 'business-pulse',
+        workspaceKey: 'restaurant',
+        label: 'Q Business Pulse',
+        description: 'Evidence-backed Restaurant insights and owner-reviewed drafts with no autonomous actions.',
+        status: 'preview',
+        category: 'reports',
+        isShared: false,
+        riskLevel: 'medium',
+        routePath: '/app/restaurant/assistant',
+    },
+    {
         moduleKey: 'settings',
         workspaceKey: 'restaurant',
         label: 'Settings',

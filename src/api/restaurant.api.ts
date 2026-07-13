@@ -142,6 +142,45 @@ export interface RestaurantDashboard {
 
 export interface RestaurantRangeReport { from:string;to:string;summary:{totalOrders:number;paidOrders:number;openOrders:number;cancelledOrders:number;paidRevenueCents:number;averagePaidOrderCents:number};serviceBreakdown:{dineIn:number;takeaway:number;delivery:number};statusBreakdown:Record<string,number>;paymentBreakdown:{method:string;count:number;amountCents:number}[];topItems:{name:string;quantity:number;revenueCents:number}[];dailySales:{date:string;orders:number;revenueCents:number}[];recentOrders:{id:string;displayOrderNumber:string;orderType:RestaurantOrderType;status:RestaurantOrderStatus;paymentStatus:RestaurantPaymentStatus;total:number;createdAt:string}[] }
 
+export interface RestaurantQEvidenceCard {
+    id: string;
+    type: 'kds_ticket' | 'order' | 'table' | 'payment' | 'menu_item' | 'daily_summary';
+    label: string;
+    facts: string[];
+    sourceIds: string[];
+    freshness: { generatedAt: string; dataWindowStart: string | null; dataWindowEnd: string | null };
+}
+
+export interface RestaurantQPulse {
+    requestId: string;
+    summary: string;
+    insights: Array<{
+        id: string;
+        severity: 'info' | 'attention' | 'urgent';
+        title: string;
+        recommendation: string;
+        evidenceIds: string[];
+        allowedActions: Array<'prepare_draft'>;
+    }>;
+    evidenceCards: RestaurantQEvidenceCard[];
+    drafts: [];
+    generatedAt: string;
+}
+
+export interface RestaurantQDraft {
+    id: string;
+    type: 'daily_report' | 'manager_task';
+    title: string;
+    body: string;
+    evidenceIds: string[];
+    status: 'pending' | 'approved' | 'rejected';
+    ownerEditedBody?: string | null;
+    approvalNote?: string | null;
+    createdAt?: string;
+    reviewedAt?: string | null;
+    requiresApproval?: boolean;
+}
+
 export interface RestaurantDailyReportOrder {
     id: string;
     displayOrderNumber: string;
@@ -172,6 +211,14 @@ export interface RestaurantDailyReport {
 
 export const restaurantApi = {
     getDashboard: () => http.get<RestaurantDashboard>('/restaurant/dashboard'),
+
+    getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
+    askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
+    getQDrafts: () => http.get<{ drafts: RestaurantQDraft[] }>('/restaurant/business-pulse/drafts'),
+    createQDraft: (type: RestaurantQDraft['type']) =>
+        http.post<{ draft: RestaurantQDraft }>('/restaurant/business-pulse/drafts', { type }),
+    decideQDraft: (id: string, payload: { decision: 'approve' | 'reject'; ownerEditedBody?: string; approvalNote?: string }) =>
+        http.post<{ draft: RestaurantQDraft; dispatched: false; message: string }>(`/restaurant/business-pulse/drafts/${id}/decision`, payload),
 
     getDailyReport: (date: string) =>
         http.get<RestaurantDailyReport>(`/restaurant/reports/daily?date=${encodeURIComponent(date)}`),

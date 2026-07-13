@@ -387,6 +387,27 @@ export const auditLogs = pgTable('audit_logs', {
     timestamp: timestamp('timestamp').defaultNow(),
 });
 
+// Q Assistant drafts are inert review records. They never execute operational
+// actions directly; an owner/admin decision is recorded separately.
+export const qAssistantDrafts = pgTable('q_assistant_drafts', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    createdBy: text('created_by').notNull(),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull().default([]),
+    status: text('status').notNull().default('pending'),
+    reviewedBy: text('reviewed_by'),
+    ownerEditedBody: text('owner_edited_body'),
+    approvalNote: text('approval_note'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    reviewedAt: timestamp('reviewed_at'),
+}, (table) => [
+    index('q_assistant_drafts_business_created_idx').on(table.businessId, table.createdAt),
+    index('q_assistant_drafts_business_status_idx').on(table.businessId, table.status),
+]);
+
 // Type exports for use in services
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
