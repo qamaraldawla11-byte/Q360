@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { ShoppingCart, Trash2, ArrowRight, Loader2, Minus, Plus } from 'lucide-react';
+import { ShoppingCart, Trash2, ArrowRight, Loader2, Minus, Plus, ShoppingBag, Utensils, Clock3, WalletCards } from 'lucide-react';
 import {
     restaurantApi,
     type RestaurantMenuItem,
@@ -321,20 +321,17 @@ export const PosView = () => {
                             <span>Choose service and payment options.</span>
                         </div>
                     {tablesEnabled && <div className="pos-field">
-                        <label htmlFor="restaurant-table">SERVICE</label>
-                        <select
-                            id="restaurant-table"
-                            value={selectedTable}
-                            onChange={(event) => {
-                                setSelectedTable(event.target.value);
-                                if (event.target.value) setPaymentTiming('pay_after_service');
-                            }}
-                        >
-                            <option value="">Takeaway</option>
+                        <span className="pos-field-label">SERVICE TYPE</span>
+                        <div className="pos-touch-options pos-service-options" role="group" aria-label="Service type and table assignment">
+                            <button type="button" className={!selectedTable ? 'selected' : ''} onClick={() => setSelectedTable('')}>
+                                <ShoppingBag size={20} /><span><strong>Takeaway</strong><small>No table</small></span>
+                            </button>
                             {tables.filter((table) => table.status === 'available').map((table) => (
-                                <option key={table.id} value={table.id}>{table.label} ({table.capacity}p)</option>
+                                <button type="button" key={table.id} className={selectedTable === table.id ? 'selected' : ''} onClick={() => { setSelectedTable(table.id); setPaymentTiming('pay_after_service'); }}>
+                                    <Utensils size={20} /><span><strong>{table.label}</strong><small>{table.capacity} seats</small></span>
+                                </button>
                             ))}
-                        </select>
+                        </div>
                         {!tables.some((table) => table.status === 'available') && (
                             <div className="pos-field-help">No available tables. Create or free a table in Floor / Tables.</div>
                         )}
@@ -345,15 +342,15 @@ export const PosView = () => {
                     {!tablesEnabled && <div className="pos-takeaway-notice">Takeaway mode is active. Enable Floor / Tables from Modules to accept dine-in orders.</div>}
 
                     <div className="pos-field">
-                        <label htmlFor="restaurant-payment-timing">PAYMENT TIMING</label>
-                        <select
-                            id="restaurant-payment-timing"
-                            value={paymentTiming}
-                            onChange={(event) => setPaymentTiming(event.target.value as RestaurantPaymentTiming)}
-                        >
-                            <option value="pay_after_service">Pay later</option>
-                            {!selectedTable && <option value="pay_before_service">Pay now</option>}
-                        </select>
+                        <span className="pos-field-label">PAYMENT TYPE</span>
+                        <div className="pos-touch-options" role="group" aria-label="Payment type">
+                            <button type="button" className={paymentTiming === 'pay_after_service' ? 'selected' : ''} onClick={() => setPaymentTiming('pay_after_service')}>
+                                <Clock3 size={20} /><span><strong>Pay later</strong><small>Keep payment open</small></span>
+                            </button>
+                            {!selectedTable && <button type="button" className={paymentTiming === 'pay_before_service' ? 'selected' : ''} onClick={() => setPaymentTiming('pay_before_service')}>
+                                <WalletCards size={20} /><span><strong>Pay now</strong><small>Complete at POS</small></span>
+                            </button>}
+                        </div>
                         {selectedTable && (
                             <div className="pos-field-help">Dine-in orders are paid after service.</div>
                         )}
@@ -483,9 +480,17 @@ export const PosView = () => {
                 .pos-checkout-heading strong { font-size: 16px; }
                 .pos-checkout-heading span { font-size: 12px; color: #64748b; }
                 .pos-field { margin-bottom: 15px; }
-                .pos-field label { display: block; margin-bottom: 7px; font-size: 11px; line-height: 1; letter-spacing: 0.06em; font-weight: 800; color: #475569; }
+                .pos-field label, .pos-field-label { display: block; margin-bottom: 7px; font-size: 11px; line-height: 1; letter-spacing: 0.06em; font-weight: 800; color: #475569; }
                 .pos-field select, .pos-field input { width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 11px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; }
                 .pos-field select:focus, .pos-field input:focus { outline: 2px solid rgba(59, 130, 246, 0.18); border-color: #3b82f6; }
+                .pos-touch-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+                .pos-service-options { grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); }
+                .pos-touch-options > button { min-height: 62px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #cbd5e1; border-radius: 12px; background: #fff; color: #475569; cursor: pointer; font: inherit; text-align: left; touch-action: manipulation; }
+                .pos-touch-options > button:hover { border-color: #93c5fd; background: #f8fbff; }
+                .pos-touch-options > button.selected { border: 2px solid #3b82f6; padding: 8px 9px; background: #eff6ff; color: #1d4ed8; box-shadow: 0 0 0 2px rgba(59,130,246,.08); }
+                .pos-touch-options > button > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+                .pos-touch-options > button strong { font-size: 12px; line-height: 1.2; }
+                .pos-touch-options > button small { color: #64748b; font-size: 10px; line-height: 1.2; }
                 .pos-field-help { margin-top: 7px; font-size: 12px; line-height: 1.45; color: #64748b; }
                 .pos-takeaway-notice { margin-bottom: 15px; padding: 11px 12px; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: 12px; line-height: 1.45; }
                 .pos-payment-card { margin: 4px 0 16px; padding: 14px; border-radius: 14px; background: #ffffff; border: 1px solid #dbe4f0; }
