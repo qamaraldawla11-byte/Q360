@@ -4,6 +4,8 @@ import { Navigate, type RouteObject, useLocation } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
 import { AppShell } from '@/layouts/AppShell';
 import { useAuthStore } from '@/store/auth.store';
+import { RestaurantAccessGuard } from '@/components/auth/RestaurantAccessGuard';
+import { hasRestaurantModuleAccess, isRestaurantManager } from '@/utils/restaurantAccess';
 
 // Admin Pages (Lazy Load)
 const AdminLayout = lazy(() => import('@/layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
@@ -58,6 +60,24 @@ const RestaurantReports = lazy(() => import('@/modules/commerce/restaurant/views
 const RestaurantModules = lazy(() => import('@/modules/commerce/restaurant/views/ModulesOverviewView').then(m => ({ default: m.ModulesOverviewView })));
 const RestaurantSettings = lazy(() => import('@/modules/commerce/restaurant/views/SettingsView').then(m => ({ default: m.SettingsView })));
 const RestaurantAssistant = lazy(() => import('@/modules/commerce/restaurant/views/AssistantView').then(m => ({ default: m.AssistantView })));
+const RestaurantProfile = lazy(() => import('@/modules/commerce/restaurant/views/ProfileView').then(m => ({ default: m.ProfileView })));
+
+const RESTAURANT_STAFF_LANDING = [
+    ['pos', '/app/restaurant/pos'],
+    ['kds', '/app/restaurant/kitchen'],
+    ['menu', '/app/restaurant/menu'],
+    ['tables', '/app/restaurant/floor'],
+    ['inventory', '/app/restaurant/inventory'],
+    ['payments', '/app/restaurant/billing'],
+    ['daily-report', '/app/restaurant/reports'],
+] as const;
+
+const RestaurantHomeRoute = () => {
+    const user = useAuthStore(state => state.user);
+    if (hasRestaurantModuleAccess(user, 'dashboard')) return <RestaurantDashboard />;
+    const landing = RESTAURANT_STAFF_LANDING.find(([accessKey]) => hasRestaurantModuleAccess(user, accessKey));
+    return <Navigate to={landing?.[1] || '/app/restaurant/profile'} replace />;
+};
 
 // Pharmacy Vertical
 const PharmacyDashboard = lazy(() => import('@/modules/commerce/pharmacy/views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -118,6 +138,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
     if (!user?.onboardingCompleted && !location.pathname.startsWith('/onboarding')) {
         return <Navigate to="/onboarding/identity" replace />;
+    }
+
+    if (
+        user?.segment === 'restaurant'
+        && !isRestaurantManager(user)
+        && location.pathname.startsWith('/app')
+        && !location.pathname.startsWith('/app/restaurant')
+    ) {
+        return <Navigate to="/app/restaurant" replace />;
     }
 
     // Rule 3: At /app root → Redirect to primary workspace or segments
@@ -197,18 +226,19 @@ export const appRoutes: RouteObject[] = [
             {
                 path: 'restaurant',
                 children: [
-                    { index: true, element: <RestaurantDashboard /> },
-                    { path: 'menu', element: <RestaurantMenu /> },
-                    { path: 'pos', element: <RestaurantPos /> },
-                    { path: 'kitchen', element: <RestaurantKitchen /> },
-                    { path: 'floor', element: <RestaurantFloor /> },
-                    { path: 'billing', element: <RestaurantOrderHistory /> },
-                    { path: 'assistant', element: <RestaurantAssistant /> },
-                    { path: 'staff', element: <RestaurantStaff /> },
-                    { path: 'inventory', element: <RestaurantInventory /> },
-                    { path: 'reports', element: <RestaurantReports /> },
-                    { path: 'modules', element: <RestaurantModules /> },
-                    { path: 'settings', element: <RestaurantSettings /> },
+                    { index: true, element: <RestaurantHomeRoute /> },
+                    { path: 'menu', element: <RestaurantAccessGuard accessKey="menu"><RestaurantMenu /></RestaurantAccessGuard> },
+                    { path: 'pos', element: <RestaurantAccessGuard accessKey="pos"><RestaurantPos /></RestaurantAccessGuard> },
+                    { path: 'kitchen', element: <RestaurantAccessGuard accessKey="kds"><RestaurantKitchen /></RestaurantAccessGuard> },
+                    { path: 'floor', element: <RestaurantAccessGuard accessKey="tables"><RestaurantFloor /></RestaurantAccessGuard> },
+                    { path: 'billing', element: <RestaurantAccessGuard accessKey="payments"><RestaurantOrderHistory /></RestaurantAccessGuard> },
+                    { path: 'assistant', element: <RestaurantAccessGuard management><RestaurantAssistant /></RestaurantAccessGuard> },
+                    { path: 'staff', element: <RestaurantAccessGuard management><RestaurantStaff /></RestaurantAccessGuard> },
+                    { path: 'inventory', element: <RestaurantAccessGuard accessKey="inventory"><RestaurantInventory /></RestaurantAccessGuard> },
+                    { path: 'reports', element: <RestaurantAccessGuard accessKey="daily-report"><RestaurantReports /></RestaurantAccessGuard> },
+                    { path: 'modules', element: <RestaurantAccessGuard management><RestaurantModules /></RestaurantAccessGuard> },
+                    { path: 'settings', element: <RestaurantAccessGuard management><RestaurantSettings /></RestaurantAccessGuard> },
+                    { path: 'profile', element: <RestaurantProfile /> },
                 ]
             },
             {

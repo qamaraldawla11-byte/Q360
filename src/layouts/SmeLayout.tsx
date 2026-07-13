@@ -12,6 +12,7 @@ import type { VerticalManifest, VerticalModule } from '@/types/vertical';
 import { LogoFull } from '@/components/ui/Logo';
 import { businessApi, type BusinessProfile } from '@/api/business.api';
 import { useBusinessModulesStore } from '@/store/businessModules.store';
+import { hasRestaurantModuleAccess, isRestaurantManager, RESTAURANT_MODULE_ACCESS } from '@/utils/restaurantAccess';
 
 const SME_MANIFESTS: VerticalManifest[] = [
     restaurantManifest,
@@ -52,6 +53,7 @@ export const SmeLayout = () => {
     const businessModules = useBusinessModulesStore(state => state.modules);
     const loadBusinessModules = useBusinessModulesStore(state => state.load);
     const menuRef = useRef<HTMLDivElement>(null);
+    const canManageRestaurant = isRestaurantManager(user);
 
     const manifest = SME_MANIFESTS.find(candidate =>
         location.pathname === candidate.basePath
@@ -62,14 +64,15 @@ export const SmeLayout = () => {
         if (manifest?.id !== 'restaurant') return modules;
         const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
         return modules.filter(module => {
-            const accessKey = module.id === 'floor' ? 'tables' : module.id === 'billing' ? 'payments' : module.id === 'reports' ? 'daily-report' : module.id;
-            if (user?.moduleAccess?.length && !['modules','settings'].includes(module.id) && !user.moduleAccess.includes(accessKey)) return false;
+            if (['staff', 'modules', 'settings'].includes(module.id)) return canManageRestaurant;
+            const accessKey = RESTAURANT_MODULE_ACCESS[module.id];
+            if (accessKey && !hasRestaurantModuleAccess(user, accessKey)) return false;
             if (module.id === 'floor') return enabled.get('tables') ?? true;
             if (module.id === 'inventory') return enabled.get('inventory') ?? true;
             if (module.id === 'staff') return enabled.get('staff') ?? true;
             return true;
         });
-    }, [businessModules, manifest, user]);
+    }, [businessModules, canManageRestaurant, manifest, user]);
     const sections = useMemo(() => getSections(visibleManifestModules), [visibleManifestModules]);
 
     const currentModule = manifest?.modules
@@ -184,17 +187,19 @@ export const SmeLayout = () => {
                 </nav>
 
                 <div style={{ ...styles.sidebarFooter, borderColor: isDark ? '#202631' : '#e5e7eb' }}>
-                    <button type="button" onClick={() => navigate(manifest.id === 'restaurant' ? '/app/restaurant/assistant' : '/ai')} style={styles.agentLink}>
-                        <Bot size={16} /> Q Assistant <span style={{ color: '#7dd3fc' }}>Preview</span>
-                    </button>
+                    {(manifest.id !== 'restaurant' || canManageRestaurant) && (
+                        <button type="button" onClick={() => navigate(manifest.id === 'restaurant' ? '/app/restaurant/assistant' : '/ai')} style={styles.agentLink}>
+                            <Bot size={16} /> Q Assistant <span style={{ color: '#7dd3fc' }}>Preview</span>
+                        </button>
+                    )}
                     <div style={styles.userSummary}>
                         <div style={{ ...styles.avatar, background: accentWash, color: manifest.color }}>
                             {user.avatar ? <img src={user.avatar} alt="" style={styles.avatarImage} /> : initials}
                         </div>
                         <div style={styles.userCopy}>
                             <strong style={styles.userName}>{displayName}</strong>
-                            <button type="button" onClick={() => navigate('/app/segments')} style={styles.switchLink}>
-                                Switch workspace
+                            <button type="button" onClick={() => navigate(manifest.id === 'restaurant' && !canManageRestaurant ? '/app/restaurant/profile' : '/app/segments')} style={styles.switchLink}>
+                                {manifest.id === 'restaurant' && !canManageRestaurant ? 'My profile' : 'Switch workspace'}
                             </button>
                         </div>
                     </div>
@@ -228,8 +233,14 @@ export const SmeLayout = () => {
                             </button>
                             {menuOpen && (
                                 <div style={{ ...styles.menu, background: isDark ? '#141821' : '#fff', borderColor: isDark ? '#2a313e' : '#e5e7eb' }}>
-                                    <button type="button" onClick={() => navigate('/app/settings')} style={styles.menuItem}><Settings size={16} /> Settings</button>
-                                    <button type="button" onClick={() => navigate('/app/segments')} style={styles.menuItem}><UserRound size={16} /> Workspaces</button>
+                                    {manifest.id === 'restaurant' ? (
+                                        canManageRestaurant
+                                            ? <button type="button" onClick={() => navigate('/app/restaurant/settings')} style={styles.menuItem}><Settings size={16} /> Business settings</button>
+                                            : <button type="button" onClick={() => navigate('/app/restaurant/profile')} style={styles.menuItem}><UserRound size={16} /> My profile</button>
+                                    ) : <button type="button" onClick={() => navigate('/app/settings')} style={styles.menuItem}><Settings size={16} /> Settings</button>}
+                                    {(manifest.id !== 'restaurant' || canManageRestaurant) && (
+                                        <button type="button" onClick={() => navigate('/app/segments')} style={styles.menuItem}><UserRound size={16} /> Workspaces</button>
+                                    )}
                                     <button type="button" onClick={signOut} style={styles.menuItem}><LogOut size={16} /> Sign out</button>
                                 </div>
                             )}

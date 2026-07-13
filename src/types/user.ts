@@ -1,4 +1,4 @@
-export type UserRole = 'owner' | 'admin' | 'manager' | 'staff';
+export type UserRole = 'user' | 'owner' | 'admin' | 'manager' | 'waiter' | 'cashier' | 'kitchen' | 'staff';
 export type UserType = 'sme' | 'personal';
 export type UserSegment =
     | 'restaurant'
