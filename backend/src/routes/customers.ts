@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db, first } from '../db/client.js';
 import { customers } from '../db/schema.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
 
@@ -56,7 +56,7 @@ customersRouter.get('/:id', async (c) => {
 });
 
 // POST /api/customers
-customersRouter.post('/', async (c) => {
+customersRouter.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => {
     let body: CustomerInput;
 
     try {
@@ -95,7 +95,7 @@ customersRouter.post('/', async (c) => {
 });
 
 // PATCH /api/customers/:id
-customersRouter.patch('/:id', async (c) => {
+customersRouter.patch('/:id', requireRole(['owner', 'admin', 'manager']), async (c) => {
     let body: CustomerInput;
 
     try {
@@ -130,6 +130,7 @@ customersRouter.patch('/:id', async (c) => {
     }
 
     const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Customer id is required' }, 400);
     const businessId = c.get('businessId');
     const updatedCustomer = await first(db.update(customers)
         .set({ ...updates, updatedAt: new Date() })

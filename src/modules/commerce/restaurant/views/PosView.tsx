@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { ShoppingCart, Trash2, ArrowRight, Loader2, Minus, Plus, ShoppingBag, Utensils, Clock3, WalletCards } from 'lucide-react';
+import { ShoppingCart, Trash2, ArrowRight, Loader2, Minus, Plus, ShoppingBag, Utensils, Clock3, WalletCards, Bike, MapPin, Phone, UserRound } from 'lucide-react';
 import {
     restaurantApi,
     type RestaurantMenuItem,
@@ -16,10 +16,12 @@ import {
 } from '@/utils/performanceInstrumentation';
 import { useBusinessModulesStore } from '@/store/businessModules.store';
 import { BillingView } from './BillingView';
+import { customersApi, type Customer } from '@/api/customers.api';
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
 type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
 type PosCategoryFilter = 'All' | 'Food' | 'Drinks' | 'Snacks';
+type PosServiceType = 'takeaway' | 'dine_in' | 'delivery';
 
 const POS_CATEGORY_FILTERS: PosCategoryFilter[] = ['All', 'Food', 'Drinks', 'Snacks'];
 
@@ -37,7 +39,14 @@ export const PosView = () => {
     const [tables, setTables] = useState<RestaurantTable[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<PosCategoryFilter>('All');
     const [cart, setCart] = useState<CartItem[]>([]);
+    const [serviceType, setServiceType] = useState<PosServiceType>('takeaway');
     const [selectedTable, setSelectedTable] = useState('');
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [selectedCustomerId, setSelectedCustomerId] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [deliveryNotes, setDeliveryNotes] = useState('');
     const [paymentTiming, setPaymentTiming] = useState<RestaurantPaymentTiming>('pay_after_service');
     const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
     const [cashReceived, setCashReceived] = useState('');
@@ -50,10 +59,14 @@ export const PosView = () => {
         const load = async () => {
             try {
                 await loadBusinessModules();
-                const menu = await restaurantApi.getMenu();
+                const [menu, customerData] = await Promise.all([
+                    restaurantApi.getMenu(),
+                    customersApi.list().catch(() => [] as Customer[]),
+                ]);
                 const tableData = useBusinessModulesStore.getState().isEnabled('tables') ? await restaurantApi.getTables() : [];
                 setCategories(menu.categories);
                 setTables(tableData);
+                setCustomers(customerData);
                 setSelectedCategory((current) => current || 'All');
             } catch {
                 setMessage({ kind: 'error', text: 'Unable to load the menu and tables.' });
@@ -68,8 +81,9 @@ export const PosView = () => {
         if (!tablesEnabled) {
             setSelectedTable('');
             setTables([]);
+            if (serviceType === 'dine_in') setServiceType('takeaway');
         }
-    }, [tablesEnabled]);
+    }, [serviceType, tablesEnabled]);
 
     useEffect(() => {
         if (!message) return;
@@ -78,10 +92,26 @@ export const PosView = () => {
     }, [message]);
 
     useEffect(() => {
-        if (selectedTable && paymentTiming === 'pay_before_service') {
+        if (serviceType === 'dine_in' && paymentTiming === 'pay_before_service') {
             setPaymentTiming('pay_after_service');
         }
-    }, [paymentTiming, selectedTable]);
+    }, [paymentTiming, serviceType]);
+
+    const chooseServiceType = (next: PosServiceType) => {
+        if (next === 'dine_in' && !tablesEnabled) return;
+        setServiceType(next);
+        if (next !== 'dine_in') setSelectedTable('');
+        if (next === 'dine_in') setPaymentTiming('pay_after_service');
+    };
+
+    const chooseCustomer = (customerId: string) => {
+        setSelectedCustomerId(customerId);
+        const customer = customers.find((entry) => entry.id === customerId);
+        if (!customer) return;
+        setCustomerName(customer.name);
+        setCustomerPhone(customer.phone || '');
+        setDeliveryAddress(customer.address || '');
+    };
 
     const menuItems = useMemo(() => (
         categories.flatMap((category) => category.items.map((item) => ({
@@ -118,7 +148,11 @@ export const PosView = () => {
     const totalCents = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const totalAmount = totalCents / 100;
-    const isPayNow = !selectedTable && paymentTiming === 'pay_before_service';
+    const isPayNow = serviceType !== 'dine_in' && paymentTiming === 'pay_before_service';
+    const deliveryDetailsComplete = serviceType !== 'delivery' || (
+        customerName.trim() !== '' && customerPhone.trim() !== '' && deliveryAddress.trim() !== ''
+    );
+    const serviceSelectionComplete = serviceType !== 'dine_in' || selectedTable !== '';
     const cashReceivedAmount = Number(cashReceived);
     const hasValidCashReceived = cashReceived.trim() !== '' && Number.isFinite(cashReceivedAmount);
     const changeDue = paymentMethod === 'cash' && hasValidCashReceived
@@ -135,7 +169,7 @@ export const PosView = () => {
         const submitStartedAt = performanceMark();
         logPerformanceTiming('restaurant.pos.submit.start', {
             correlationId,
-            orderType: selectedTable ? 'dine_in' : 'takeaway',
+            orderType: serviceType,
             payNow: isPayNow,
         });
         setIsSubmitting(true);
@@ -147,16 +181,27 @@ export const PosView = () => {
             }));
             const requestStartedAt = performanceMark();
             const result = isPayNow
-                ? await restaurantApi.createPayNowTakeawayOrder({
+                ? await restaurantApi.createPayNowOrder({
+                    order_type: serviceType === 'delivery' ? 'delivery' : 'takeaway',
                     payment_method: paymentMethod,
                     cash_received: paymentMethod === 'cash' ? cashReceivedAmount : undefined,
+                    customer_id: serviceType === 'delivery' && selectedCustomerId ? selectedCustomerId : undefined,
+                    customer_name: serviceType === 'delivery' ? customerName.trim() : undefined,
+                    customer_phone: serviceType === 'delivery' ? customerPhone.trim() : undefined,
+                    delivery_address: serviceType === 'delivery' ? deliveryAddress.trim() : undefined,
+                    delivery_notes: serviceType === 'delivery' ? deliveryNotes.trim() || undefined : undefined,
                     idempotency_key: submissionKey,
                     items: orderItems,
                 }, { correlationId })
                 : await restaurantApi.createOrder({
-                    table_id: selectedTable || undefined,
-                    order_type: selectedTable ? 'dine_in' : 'takeaway',
+                    table_id: serviceType === 'dine_in' ? selectedTable : undefined,
+                    order_type: serviceType,
                     payment_timing: paymentTiming,
+                    customer_id: serviceType === 'delivery' && selectedCustomerId ? selectedCustomerId : undefined,
+                    customer_name: serviceType === 'delivery' ? customerName.trim() : undefined,
+                    customer_phone: serviceType === 'delivery' ? customerPhone.trim() : undefined,
+                    delivery_address: serviceType === 'delivery' ? deliveryAddress.trim() : undefined,
+                    delivery_notes: serviceType === 'delivery' ? deliveryNotes.trim() || undefined : undefined,
                     idempotency_key: submissionKey,
                     items: orderItems,
                 }, { correlationId });
@@ -166,14 +211,20 @@ export const PosView = () => {
             });
             const displayOrderNumber = isPayNow ? result.displayOrderNumber : result.displayOrderNumber;
             setCart([]);
+            setServiceType('takeaway');
             setSelectedTable('');
+            setSelectedCustomerId('');
+            setCustomerName('');
+            setCustomerPhone('');
+            setDeliveryAddress('');
+            setDeliveryNotes('');
             setPaymentTiming('pay_after_service');
             setPaymentMethod('cash');
             setCashReceived('');
             setSubmissionKey(crypto.randomUUID());
             const [menu, tableData] = await Promise.all([
                 restaurantApi.getMenu(),
-                restaurantApi.getTables(),
+                tablesEnabled ? restaurantApi.getTables() : Promise.resolve([]),
             ]);
             setCategories(menu.categories);
             setTables(tableData);
@@ -187,8 +238,8 @@ export const PosView = () => {
         } catch (error) {
             setMessage({
                 kind: 'error',
-                text: axios.isAxiosError(error) && error.response?.status === 403
-                    ? 'You do not have permission to create orders'
+                text: axios.isAxiosError(error) && typeof error.response?.data?.error === 'string'
+                    ? error.response.data.error
                     : 'Order could not be sent. Your cart was kept.',
             });
             logPerformanceTiming('restaurant.pos.response.handled', {
@@ -320,38 +371,64 @@ export const PosView = () => {
                             <strong>Order details</strong>
                             <span>Choose service and payment options.</span>
                         </div>
-                    {tablesEnabled && <div className="pos-field">
+                    <div className="pos-field">
                         <span className="pos-field-label">SERVICE TYPE</span>
-                        <div className="pos-touch-options pos-service-options" role="group" aria-label="Service type and table assignment">
-                            <button type="button" className={!selectedTable ? 'selected' : ''} onClick={() => setSelectedTable('')}>
+                        <div className="pos-touch-options pos-service-options" role="group" aria-label="Service type">
+                            <button type="button" className={serviceType === 'takeaway' ? 'selected' : ''} onClick={() => chooseServiceType('takeaway')}>
                                 <ShoppingBag size={20} /><span><strong>Takeaway</strong><small>No table</small></span>
                             </button>
+                            <button type="button" disabled={!tablesEnabled} className={serviceType === 'dine_in' ? 'selected' : ''} onClick={() => chooseServiceType('dine_in')}>
+                                <Utensils size={20} /><span><strong>Dine-in</strong><small>{tablesEnabled ? 'Choose table' : 'Tables disabled'}</small></span>
+                            </button>
+                            <button type="button" className={serviceType === 'delivery' ? 'selected' : ''} onClick={() => chooseServiceType('delivery')}>
+                                <Bike size={20} /><span><strong>Delivery</strong><small>Customer address</small></span>
+                            </button>
+                        </div>
+                        <div className="pos-field-help">
+                            {serviceType === 'dine_in' ? 'Choose an available table. Dine-in is paid after service.' : serviceType === 'delivery' ? 'Add the customer contact and delivery address below.' : 'Takeaway orders can be paid now or left open.'}
+                        </div>
+                    </div>
+
+                    {serviceType === 'dine_in' && <div className="pos-field">
+                        <span className="pos-field-label">TABLE</span>
+                        <div className="pos-touch-options pos-table-options" role="group" aria-label="Table assignment">
                             {tables.filter((table) => table.status === 'available').map((table) => (
-                                <button type="button" key={table.id} className={selectedTable === table.id ? 'selected' : ''} onClick={() => { setSelectedTable(table.id); setPaymentTiming('pay_after_service'); }}>
-                                    <Utensils size={20} /><span><strong>{table.label}</strong><small>{table.capacity} seats</small></span>
+                                <button type="button" key={table.id} className={selectedTable === table.id ? 'selected' : ''} onClick={() => setSelectedTable(table.id)}>
+                                    <Utensils size={19} /><span><strong>{table.label}</strong><small>{table.capacity} seats</small></span>
                                 </button>
                             ))}
                         </div>
-                        {!tables.some((table) => table.status === 'available') && (
-                            <div className="pos-field-help">No available tables. Create or free a table in Floor / Tables.</div>
-                        )}
-                        <div className="pos-field-help">
-                            {selectedTable ? 'Dine-in orders are sent to the kitchen and paid after service.' : 'Takeaway orders can be paid now or left open.'}
-                        </div>
+                        {!tables.some((table) => table.status === 'available') && <div className="pos-field-help pos-field-help--error">No available tables. Free or create one in Floor / Tables.</div>}
                     </div>}
-                    {!tablesEnabled && <div className="pos-takeaway-notice">Takeaway mode is active. Enable Floor / Tables from Modules to accept dine-in orders.</div>}
+
+                    {serviceType === 'delivery' && <section className="pos-delivery-card" aria-label="Delivery customer details">
+                        <div className="pos-delivery-heading"><Bike size={18}/><div><strong>Delivery customer</strong><small>Name, phone and address are required.</small></div></div>
+                        <label className="pos-delivery-customer">Saved customer
+                            <select value={selectedCustomerId} onChange={event => chooseCustomer(event.target.value)}>
+                                <option value="">New / walk-in customer</option>
+                                {customers.map(customer => <option value={customer.id} key={customer.id}>{customer.name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}
+                            </select>
+                        </label>
+                        <div className="pos-delivery-grid">
+                            <label><UserRound size={15}/><span>Name *</span><input value={customerName} onChange={event => setCustomerName(event.target.value)} maxLength={160} autoComplete="name" placeholder="Customer name" /></label>
+                            <label><Phone size={15}/><span>Phone *</span><input value={customerPhone} onChange={event => setCustomerPhone(event.target.value)} maxLength={60} type="tel" autoComplete="tel" placeholder="Contact number" /></label>
+                            <label className="wide"><MapPin size={15}/><span>Delivery address *</span><textarea value={deliveryAddress} onChange={event => setDeliveryAddress(event.target.value)} maxLength={500} rows={2} autoComplete="street-address" placeholder="Street, building, area and city" /></label>
+                            <label className="wide"><span>Delivery notes</span><input value={deliveryNotes} onChange={event => setDeliveryNotes(event.target.value)} maxLength={1000} placeholder="Door, landmark or driver note (optional)" /></label>
+                        </div>
+                        {!deliveryDetailsComplete && <div className="pos-field-help pos-field-help--error">Complete the customer name, phone and delivery address.</div>}
+                    </section>}
 
                     <div className="pos-field">
                         <span className="pos-field-label">PAYMENT TYPE</span>
                         <div className="pos-touch-options" role="group" aria-label="Payment type">
                             <button type="button" className={paymentTiming === 'pay_after_service' ? 'selected' : ''} onClick={() => setPaymentTiming('pay_after_service')}>
-                                <Clock3 size={20} /><span><strong>Pay later</strong><small>Keep payment open</small></span>
+                                <Clock3 size={20} /><span><strong>{serviceType === 'delivery' ? 'Pay on delivery' : 'Pay later'}</strong><small>Keep payment open</small></span>
                             </button>
-                            {!selectedTable && <button type="button" className={paymentTiming === 'pay_before_service' ? 'selected' : ''} onClick={() => setPaymentTiming('pay_before_service')}>
+                            {serviceType !== 'dine_in' && <button type="button" className={paymentTiming === 'pay_before_service' ? 'selected' : ''} onClick={() => setPaymentTiming('pay_before_service')}>
                                 <WalletCards size={20} /><span><strong>Pay now</strong><small>Complete at POS</small></span>
                             </button>}
                         </div>
-                        {selectedTable && (
+                        {serviceType === 'dine_in' && (
                             <div className="pos-field-help">Dine-in orders are paid after service.</div>
                         )}
                     </div>
@@ -409,11 +486,13 @@ export const PosView = () => {
                     <button
                         type="button"
                         onClick={handleCheckout}
-                        disabled={!cart.length || isSubmitting || isShortCash}
+                        disabled={!cart.length || isSubmitting || isShortCash || !deliveryDetailsComplete || !serviceSelectionComplete}
                     >
                         {isSubmitting ? <><Loader2 size={20} /> Sending...</> : <>{isPayNow ? 'Pay & Send to Kitchen' : 'Send to Kitchen'} <ArrowRight size={20} /></>}
                     </button>
                     {isShortCash && <span className="pos-footer-help">Enter enough cash to complete payment.</span>}
+                    {!serviceSelectionComplete && <span className="pos-footer-help">Choose a table for this dine-in order.</span>}
+                    {!deliveryDetailsComplete && <span className="pos-footer-help">Complete the required delivery details.</span>}
                 </footer>
             </aside>
             <style>{`
@@ -487,12 +566,24 @@ export const PosView = () => {
                 .pos-service-options { grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); }
                 .pos-touch-options > button { min-height: 62px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #cbd5e1; border-radius: 12px; background: #fff; color: #475569; cursor: pointer; font: inherit; text-align: left; touch-action: manipulation; }
                 .pos-touch-options > button:hover { border-color: #93c5fd; background: #f8fbff; }
+                .pos-touch-options > button:disabled { cursor: not-allowed; opacity: .45; }
                 .pos-touch-options > button.selected { border: 2px solid #3b82f6; padding: 8px 9px; background: #eff6ff; color: #1d4ed8; box-shadow: 0 0 0 2px rgba(59,130,246,.08); }
                 .pos-touch-options > button > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
                 .pos-touch-options > button strong { font-size: 12px; line-height: 1.2; }
                 .pos-touch-options > button small { color: #64748b; font-size: 10px; line-height: 1.2; }
                 .pos-field-help { margin-top: 7px; font-size: 12px; line-height: 1.45; color: #64748b; }
+                .pos-field-help--error { color: #b91c1c; font-weight: 700; }
                 .pos-takeaway-notice { margin-bottom: 15px; padding: 11px 12px; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: 12px; line-height: 1.45; }
+                .pos-delivery-card { margin: 4px 0 16px; padding: 14px; border: 1px solid #fed7aa; border-radius: 14px; background: #fffaf5; }
+                .pos-delivery-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; color: #9a3412; }
+                .pos-delivery-heading > div { display: flex; flex-direction: column; gap: 2px; }
+                .pos-delivery-heading small { color: #78716c; font-size: 11px; }
+                .pos-delivery-customer { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; color: #475569; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+                .pos-delivery-customer select { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #0f172a; font: inherit; text-transform: none; letter-spacing: normal; }
+                .pos-delivery-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+                .pos-delivery-grid label { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 5px; color: #475569; font-size: 11px; font-weight: 800; }
+                .pos-delivery-grid label.wide { grid-column: 1/-1; }
+                .pos-delivery-grid input,.pos-delivery-grid textarea { grid-column: 1/-1; width: 100%; min-height: 42px; padding: 9px 11px; resize: vertical; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #0f172a; font: inherit; font-size: 13px; }
                 .pos-payment-card { margin: 4px 0 16px; padding: 14px; border-radius: 14px; background: #ffffff; border: 1px solid #dbe4f0; }
                 .pos-payment-card .pos-field:last-child { margin-bottom: 0; }
                 .pos-cash-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
@@ -536,6 +627,12 @@ export const PosView = () => {
                     }
 
                     .pos-cart-scroll { overflow: visible; }
+                }
+                @media (max-width: 480px) {
+                    .pos-service-options { grid-template-columns: repeat(3,minmax(0,1fr)); }
+                    .pos-service-options > button { min-height: 76px; flex-direction: column; justify-content: center; text-align: center; }
+                    .pos-delivery-grid { grid-template-columns: 1fr; }
+                    .pos-delivery-grid label.wide { grid-column: auto; }
                 }
             `}</style>
         </div>

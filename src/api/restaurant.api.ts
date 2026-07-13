@@ -2,7 +2,7 @@ import { http } from './http';
 
 export type RestaurantTableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
 export type RestaurantOrderStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'served' | 'collected' | 'closed' | 'paid' | 'cancelled';
-export type RestaurantOrderType = 'dine_in' | 'takeaway';
+export type RestaurantOrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type RestaurantServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled';
 export type RestaurantPaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type RestaurantPaymentTiming = 'pay_before_service' | 'pay_after_service';
@@ -78,6 +78,11 @@ export interface RestaurantOrder {
     serviceStatus: RestaurantServiceStatus;
     paymentStatus: RestaurantPaymentStatus;
     paymentTiming: RestaurantPaymentTiming;
+    customerId: string | null;
+    customerName: string | null;
+    customerPhone: string | null;
+    deliveryAddress: string | null;
+    deliveryNotes: string | null;
     idempotencyKey: string | null;
     cancellationReason: string | null;
     cancelledBy: string | null;
@@ -97,6 +102,10 @@ export interface KdsOrder {
     tableId: string | null;
     orderType: RestaurantOrderType;
     serviceStatus: RestaurantServiceStatus;
+    customerName: string | null;
+    customerPhone: string | null;
+    deliveryAddress: string | null;
+    deliveryNotes: string | null;
     createdAt: string;
     updatedAt: string;
     items: RestaurantOrderItem[];
@@ -131,7 +140,7 @@ export interface RestaurantDashboard {
     live_diners_count: number;
 }
 
-export interface RestaurantRangeReport { from:string;to:string;summary:{totalOrders:number;paidOrders:number;openOrders:number;cancelledOrders:number;paidRevenueCents:number;averagePaidOrderCents:number};serviceBreakdown:{dineIn:number;takeaway:number};statusBreakdown:Record<string,number>;paymentBreakdown:{method:string;count:number;amountCents:number}[];topItems:{name:string;quantity:number;revenueCents:number}[];dailySales:{date:string;orders:number;revenueCents:number}[];recentOrders:{id:string;displayOrderNumber:string;orderType:RestaurantOrderType;status:RestaurantOrderStatus;paymentStatus:RestaurantPaymentStatus;total:number;createdAt:string}[] }
+export interface RestaurantRangeReport { from:string;to:string;summary:{totalOrders:number;paidOrders:number;openOrders:number;cancelledOrders:number;paidRevenueCents:number;averagePaidOrderCents:number};serviceBreakdown:{dineIn:number;takeaway:number;delivery:number};statusBreakdown:Record<string,number>;paymentBreakdown:{method:string;count:number;amountCents:number}[];topItems:{name:string;quantity:number;revenueCents:number}[];dailySales:{date:string;orders:number;revenueCents:number}[];recentOrders:{id:string;displayOrderNumber:string;orderType:RestaurantOrderType;status:RestaurantOrderStatus;paymentStatus:RestaurantPaymentStatus;total:number;createdAt:string}[] }
 
 export interface RestaurantDailyReportOrder {
     id: string;
@@ -201,20 +210,36 @@ export const restaurantApi = {
         table_id?: string;
         order_type?: RestaurantOrderType;
         payment_timing?: RestaurantPaymentTiming;
+        customer_id?: string;
+        customer_name?: string;
+        customer_phone?: string;
+        delivery_address?: string;
+        delivery_notes?: string;
         idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
     }, options?: { correlationId?: string }) => http.post<RestaurantOrder>('/restaurant/orders', payload, {
         headers: options?.correlationId ? { 'X-Q360-Correlation-Id': options.correlationId } : undefined,
     }),
 
-    createPayNowTakeawayOrder: (payload: {
+    createPayNowOrder: (payload: {
+        order_type?: 'takeaway' | 'delivery';
         payment_method: Exclude<RestaurantPaymentMethod, 'mobile'>;
         cash_received?: number;
+        customer_id?: string;
+        customer_name?: string;
+        customer_phone?: string;
+        delivery_address?: string;
+        delivery_notes?: string;
         idempotency_key?: string;
         items: { menu_item_id: string; quantity: number; notes?: string }[];
     }, options?: { correlationId?: string }) => http.post<RestaurantPayNowOrderResult>('/restaurant/orders/pay-now', payload, {
         headers: options?.correlationId ? { 'X-Q360-Correlation-Id': options.correlationId } : undefined,
     }),
+
+    createPayNowTakeawayOrder: (payload: {
+        payment_method: Exclude<RestaurantPaymentMethod, 'mobile'>; cash_received?: number; idempotency_key?: string;
+        items: { menu_item_id: string; quantity: number; notes?: string }[];
+    }, options?: { correlationId?: string }) => restaurantApi.createPayNowOrder({ ...payload, order_type: 'takeaway' }, options),
 
     getOrders: (active = false) =>
         http.get<RestaurantOrder[]>(`/restaurant/orders${active ? '?status=active' : ''}`),

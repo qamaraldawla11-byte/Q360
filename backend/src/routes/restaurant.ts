@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono';
 import { and, asc, desc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import {
+    customers,
     kdsTickets,
     menuCategories,
     menuItems,
@@ -39,7 +40,7 @@ const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const
 const orderStatuses = ['pending', 'in_kitchen', 'ready', 'delivered', 'served', 'collected', 'closed', 'paid', 'cancelled'] as const;
 const ticketStatuses = ['new', 'cooking', 'done', 'cancelled'] as const;
 const paymentMethods = ['cash', 'card', 'manual', 'mobile'] as const;
-const orderTypes = ['dine_in', 'takeaway'] as const;
+const orderTypes = ['dine_in', 'takeaway', 'delivery'] as const;
 const paymentTimings = ['pay_before_service', 'pay_after_service'] as const;
 type TableStatus = typeof tableStatuses[number];
 type OrderStatus = typeof orderStatuses[number];
@@ -149,6 +150,47 @@ const parseJson = async <T>(c: Context<AppEnv>) => {
     }
 };
 
+type CustomerSnapshotBody = {
+    customerId?: unknown; customer_id?: unknown;
+    customerName?: unknown; customer_name?: unknown;
+    customerPhone?: unknown; customer_phone?: unknown;
+    deliveryAddress?: unknown; delivery_address?: unknown;
+    deliveryNotes?: unknown; delivery_notes?: unknown;
+};
+
+const customerSnapshotFor = async (body: CustomerSnapshotBody, businessId: string, orderType: OrderType) => {
+    const value = (camel: unknown, snake: unknown) => camel ?? snake;
+    const text = (raw: unknown, maximum: number) => {
+        if (raw === undefined || raw === null) return { value: null as string | null };
+        if (typeof raw !== 'string') return { error: 'Customer and delivery fields must be text' };
+        const normalized = raw.trim() || null;
+        if (normalized && normalized.length > maximum) return { error: `Customer or delivery field exceeds ${maximum} characters` };
+        return { value: normalized };
+    };
+    const rawCustomerId = value(body.customerId, body.customer_id);
+    if (rawCustomerId !== undefined && rawCustomerId !== null && typeof rawCustomerId !== 'string') return { error: 'Invalid customer id', status: 400 as const };
+    const customerId = typeof rawCustomerId === 'string' ? rawCustomerId.trim() || null : null;
+    const customer = customerId ? await first(db.select().from(customers).where(and(eq(customers.id, customerId), eq(customers.businessId, businessId)))) : null;
+    if (customerId && !customer) return { error: 'Customer not found', status: 404 as const };
+    const name = text(value(body.customerName, body.customer_name), 160);
+    const phone = text(value(body.customerPhone, body.customer_phone), 60);
+    const address = text(value(body.deliveryAddress, body.delivery_address), 500);
+    const notes = text(value(body.deliveryNotes, body.delivery_notes), 1000);
+    const fieldError = name.error || phone.error || address.error || notes.error;
+    if (fieldError) return { error: fieldError, status: 400 as const };
+    const snapshot = {
+        customerId,
+        customerName: name.value ?? customer?.name ?? null,
+        customerPhone: phone.value ?? customer?.phone ?? null,
+        deliveryAddress: address.value ?? customer?.address ?? null,
+        deliveryNotes: notes.value,
+    };
+    if (orderType === 'delivery' && (!snapshot.customerName || !snapshot.customerPhone || !snapshot.deliveryAddress)) {
+        return { error: 'Delivery orders require customer name, phone, and delivery address', status: 400 as const };
+    }
+    return { snapshot };
+};
+
 const forbid = (c: Context<AppEnv>, message = 'Forbidden: Insufficient permissions') => c.json({ error: message }, 403);
 
 const restaurantActorFor = async (c: Context<AppEnv>): Promise<RestaurantActor> => {
@@ -224,6 +266,11 @@ const kitchenOrderPayload = (
     displayOrderNumber: displayOrderNumberFor(order),
     tableId: order.tableId,
     orderType: orderTypeFor(order),
+    customerId: order.customerId,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    deliveryAddress: order.deliveryAddress,
+    deliveryNotes: order.deliveryNotes,
     serviceStatus: serviceStatusFor(order),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
@@ -944,6 +991,11 @@ restaurant.post('/orders/pay-now', async (c) => {
         cash_received?: unknown;
         idempotencyKey?: unknown;
         idempotency_key?: unknown;
+        customerId?: unknown; customer_id?: unknown;
+        customerName?: unknown; customer_name?: unknown;
+        customerPhone?: unknown; customer_phone?: unknown;
+        deliveryAddress?: unknown; delivery_address?: unknown;
+        deliveryNotes?: unknown; delivery_notes?: unknown;
         items?: {
             menuItemId?: unknown;
             menu_item_id?: unknown;
@@ -957,12 +1009,13 @@ restaurant.post('/orders/pay-now', async (c) => {
     }
     const tableId = body.tableId ?? body.table_id;
     if (tableId !== undefined && tableId !== null) {
-        return c.json({ error: 'Pay-now is only available for takeaway orders' }, 409);
+        return c.json({ error: 'Pay-now takeaway and delivery orders cannot have a table' }, 409);
     }
     const requestedOrderType = body.orderType ?? body.order_type;
-    if (requestedOrderType !== undefined && requestedOrderType !== 'takeaway') {
+    if (requestedOrderType !== undefined && requestedOrderType !== 'takeaway' && requestedOrderType !== 'delivery') {
         return c.json({ error: 'Dine-in pay-now is not allowed' }, 409);
     }
+    const orderType: OrderType = requestedOrderType === 'delivery' ? 'delivery' : 'takeaway';
     const paymentMethodValue = body.paymentMethod ?? body.payment_method;
     if (
         typeof paymentMethodValue !== 'string' ||
@@ -995,6 +1048,9 @@ restaurant.post('/orders/pay-now', async (c) => {
     }
 
     const businessId = c.get('businessId');
+    const customerResult = await customerSnapshotFor(body, businessId, orderType);
+    if (!customerResult.snapshot) return c.json({ error: customerResult.error }, customerResult.status);
+    const customerSnapshot = customerResult.snapshot;
     if (idempotencyKey) {
         const existingOrder = await first(db.select().from(restaurantOrders)
             .where(and(
@@ -1076,7 +1132,8 @@ restaurant.post('/orders/pay-now', async (c) => {
                         orderNumberDate,
                         tableId: null,
                         status: 'pending',
-                        orderType: 'takeaway',
+                        orderType,
+                        ...customerSnapshot,
                         serviceStatus: 'pending',
                         paymentStatus: 'paid',
                         paymentTiming: 'pay_before_service',
@@ -1126,7 +1183,7 @@ restaurant.post('/orders/pay-now', async (c) => {
             }
         }
         await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
-            orderType: 'takeaway',
+            orderType,
             paymentTiming: 'pay_before_service',
             tableId: null,
             idempotencyKey: Boolean(idempotencyKey),
@@ -1135,7 +1192,7 @@ restaurant.post('/orders/pay-now', async (c) => {
         await logAudit(c, 'RESTAURANT_ORDER_PAYMENT_COMPLETED', 'RESTAURANT_ORDER', orderId, {
             method: paymentMethodValue,
             amount: createdOrder ? createdOrder.total / 100 : null,
-            orderType: 'takeaway',
+            orderType,
             paymentTiming: 'pay_before_service',
             integratedPayNow: true,
         });
@@ -1172,7 +1229,7 @@ restaurant.post('/orders/pay-now', async (c) => {
         paymentWriteDurationMs,
         kdsWriteDurationMs,
         responsePreparationDurationMs,
-        orderType: 'takeaway',
+        orderType,
     });
     return c.json(response, 201);
 });
@@ -1210,6 +1267,11 @@ restaurant.post('/orders', async (c) => {
         payment_timing?: unknown;
         idempotencyKey?: unknown;
         idempotency_key?: unknown;
+        customerId?: unknown; customer_id?: unknown;
+        customerName?: unknown; customer_name?: unknown;
+        customerPhone?: unknown; customer_phone?: unknown;
+        deliveryAddress?: unknown; delivery_address?: unknown;
+        deliveryNotes?: unknown; delivery_notes?: unknown;
         items?: {
             menuItemId?: unknown;
             menu_item_id?: unknown;
@@ -1231,7 +1293,7 @@ restaurant.post('/orders', async (c) => {
         return c.json({ error: 'Invalid order type' }, 400);
     }
     if (typeof requestedOrderType === 'string' && !orderTypes.includes(requestedOrderType as OrderType)) {
-        return c.json({ error: 'Order type must be dine_in or takeaway' }, 400);
+        return c.json({ error: 'Order type must be dine_in, takeaway, or delivery' }, 400);
     }
     const orderType: OrderType = typeof requestedOrderType === 'string'
         ? requestedOrderType as OrderType
@@ -1239,8 +1301,8 @@ restaurant.post('/orders', async (c) => {
     if (orderType === 'dine_in' && !await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
         return c.json({ error: 'Dine-in orders are unavailable while Tables is disabled' }, 409);
     }
-    if (orderType === 'takeaway' && typeof tableId === 'string') {
-        return c.json({ error: 'Takeaway orders cannot have a table' }, 400);
+    if ((orderType === 'takeaway' || orderType === 'delivery') && typeof tableId === 'string') {
+        return c.json({ error: 'Takeaway and delivery orders cannot have a table' }, 400);
     }
     if (orderType === 'dine_in' && tableId !== undefined && tableId !== null && typeof tableId !== 'string') {
         return c.json({ error: 'Dine-in table id is invalid' }, 400);
@@ -1297,6 +1359,9 @@ restaurant.post('/orders', async (c) => {
     }
 
     const businessId = c.get('businessId');
+    const customerResult = await customerSnapshotFor(body, businessId, orderType);
+    if (!customerResult.snapshot) return c.json({ error: customerResult.error }, customerResult.status);
+    const customerSnapshot = customerResult.snapshot;
     if (idempotencyKey) {
         const idempotencyLookupStartedAt = timingNow();
         const existingOrder = await first(db.select().from(restaurantOrders)
@@ -1388,6 +1453,7 @@ restaurant.post('/orders', async (c) => {
                         tableId: typeof tableId === 'string' ? tableId : null,
                         status: 'pending',
                         orderType,
+                        ...customerSnapshot,
                         serviceStatus: 'pending',
                         paymentStatus: 'unpaid',
                         paymentTiming,
@@ -1458,6 +1524,7 @@ restaurant.post('/orders', async (c) => {
             paymentTiming,
             tableId: typeof tableId === 'string' ? tableId : null,
             idempotencyKey: Boolean(idempotencyKey),
+            customerLinked: Boolean(customerSnapshot.customerId),
         });
         auditLogInsertDurationMs += durationSince(auditLogInsertStartedAt);
     } catch (error) {
@@ -1611,6 +1678,11 @@ restaurant.get('/reports/daily', async (c) => {
             status,
             total: order.total,
             createdAt: order.createdAt,
+            customerId: order.customerId,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            deliveryAddress: order.deliveryAddress,
+            deliveryNotes: order.deliveryNotes,
             payments: orderPayments,
             items: items.filter((item) => item.orderId === order.id),
         };
@@ -1634,6 +1706,7 @@ restaurant.get('/reports/daily', async (c) => {
             paidRevenueCents,
             dineInOrders: reportOrders.filter((order) => order.orderType === 'dine_in').length,
             takeawayOrders: reportOrders.filter((order) => order.orderType === 'takeaway').length,
+            deliveryOrders: reportOrders.filter((order) => order.orderType === 'delivery').length,
         },
         statusBreakdown,
         recentOrders: reportOrders.slice(0, 10),
@@ -1656,11 +1729,11 @@ restaurant.get('/reports/summary', async (c) => {
     const payments = orderIds.length ? await db.select().from(restaurantPayments).where(and(eq(restaurantPayments.businessId, businessId), inArray(restaurantPayments.orderId, orderIds), eq(restaurantPayments.status, 'completed'))) : [];
     const paidOrderIds = new Set(payments.map(payment => payment.orderId));
     const paidRevenueCents = Math.round(payments.reduce((sum, payment) => sum + payment.amount * 100, 0));
-    const serviceBreakdown = { dineIn: 0, takeaway: 0 };
+    const serviceBreakdown = { dineIn: 0, takeaway: 0, delivery: 0 };
     const statusBreakdown: Record<string, number> = {};
     const dailySales: Record<string, { date: string; orders: number; revenueCents: number }> = {};
     for (const order of orders) {
-        const orderType = orderTypeFor(order); serviceBreakdown[orderType === 'dine_in' ? 'dineIn' : 'takeaway'] += 1;
+        const orderType = orderTypeFor(order); serviceBreakdown[orderType === 'dine_in' ? 'dineIn' : orderType === 'delivery' ? 'delivery' : 'takeaway'] += 1;
         const status = legacyStatusFor(orderType, serviceStatusFor(order), paymentStatusFor(order)); statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
         const date = order.createdAt.toISOString().slice(0, 10); dailySales[date] ||= { date, orders: 0, revenueCents: 0 }; dailySales[date].orders += 1;
         if (paidOrderIds.has(order.id)) dailySales[date].revenueCents += order.total;
@@ -1673,7 +1746,7 @@ restaurant.get('/reports/summary', async (c) => {
         from, to,
         summary: { totalOrders: orders.length, paidOrders: paidOrderIds.size, openOrders: orders.filter(order => paymentStatusFor(order) !== 'paid' && serviceStatusFor(order) !== 'cancelled').length, cancelledOrders: orders.filter(order => serviceStatusFor(order) === 'cancelled').length, paidRevenueCents, averagePaidOrderCents: paidOrderIds.size ? Math.round(paidRevenueCents / paidOrderIds.size) : 0 },
         serviceBreakdown, statusBreakdown, paymentBreakdown: Object.values(paymentBreakdown), topItems: Object.values(topItems).sort((a,b)=>b.quantity-a.quantity).slice(0,10), dailySales: Object.values(dailySales).sort((a,b)=>a.date.localeCompare(b.date)),
-        recentOrders: orders.slice(0,50).map(order => ({ id: order.id, displayOrderNumber: displayOrderNumberFor(order), orderType: orderTypeFor(order), status: legacyStatusFor(orderTypeFor(order), serviceStatusFor(order), paymentStatusFor(order)), paymentStatus: paymentStatusFor(order), total: order.total, createdAt: order.createdAt })),
+        recentOrders: orders.slice(0,50).map(order => ({ id: order.id, displayOrderNumber: displayOrderNumberFor(order), orderType: orderTypeFor(order), status: legacyStatusFor(orderTypeFor(order), serviceStatusFor(order), paymentStatusFor(order)), paymentStatus: paymentStatusFor(order), total: order.total, createdAt: order.createdAt, customerId: order.customerId, customerName: order.customerName, customerPhone: order.customerPhone, deliveryAddress: order.deliveryAddress, deliveryNotes: order.deliveryNotes })),
     });
 });
 
@@ -1736,6 +1809,7 @@ restaurant.post('/orders/:id/deliver', async (c) => {
     const orderType = orderTypeFor(order);
     const actor = await restaurantActorFor(c);
     if (orderType === 'dine_in' && !canPerformRestaurantAction(actor, 'mark_delivered', order)) return forbid(c);
+    if (orderType === 'delivery' && !canPerformRestaurantAction(actor, 'mark_delivered', order)) return forbid(c);
     if (orderType === 'takeaway' && !canPerformRestaurantAction(actor, 'mark_collected', order)) return forbid(c);
     const currentServiceStatus = serviceStatusFor(order);
     if (currentServiceStatus === 'cancelled' || order.status === 'cancelled') {

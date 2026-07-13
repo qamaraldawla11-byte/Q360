@@ -45,7 +45,15 @@ const formatDate = (value?: string | null) => {
     return date.toLocaleDateString();
 };
 
-export const CustomersView = () => {
+interface CustomersViewProps {
+    title?: string;
+    subtitle?: string;
+}
+
+export const CustomersView = ({
+    title = 'Customers',
+    subtitle = 'Customer records backed by the shared Q360 Commerce API.',
+}: CustomersViewProps = {}) => {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [form, setForm] = useState<CreateCustomerInput>(emptyForm);
@@ -155,8 +163,8 @@ export const CustomersView = () => {
         <section className="retail-page">
             <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
                 <div>
-                    <h1 style={{ margin: '0 0 6px' }}>Customers</h1>
-                    <p style={{ margin: 0, color: 'var(--fg-secondary)' }}>Customer records backed by the shared Q360 Commerce API.</p>
+                    <h1 style={{ margin: '0 0 6px' }}>{title}</h1>
+                    <p style={{ margin: 0, color: 'var(--fg-secondary)' }}>{subtitle}</p>
                 </div>
                 <div className="retail-actions">
                     <button className="retail-button" onClick={loadCustomers} disabled={isLoading}>

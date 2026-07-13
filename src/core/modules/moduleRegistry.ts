@@ -212,6 +212,17 @@ export const q360ModuleRegistry: readonly Q360ModuleDefinition[] = [
         routePath: '/app/restaurant/finance',
     },
     {
+        moduleKey: 'customers',
+        workspaceKey: 'restaurant',
+        label: 'Customers',
+        description: 'Tenant-scoped Restaurant customer contact and address records.',
+        status: 'enabled',
+        category: 'crm',
+        isShared: true,
+        riskLevel: 'medium',
+        routePath: '/app/restaurant/customers',
+    },
+    {
         moduleKey: 'settings',
         workspaceKey: 'restaurant',
         label: 'Settings',

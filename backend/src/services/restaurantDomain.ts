@@ -11,7 +11,7 @@ export const restaurantActions = [
 ] as const;
 
 export type RestaurantAction = typeof restaurantActions[number];
-export type RestaurantOrderType = 'dine_in' | 'takeaway';
+export type RestaurantOrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type RestaurantServiceStatus = 'pending' | 'in_kitchen' | 'ready' | 'delivered' | 'collected' | 'closed' | 'cancelled';
 export type RestaurantPaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type RestaurantPaymentTiming = 'pay_before_service' | 'pay_after_service';
@@ -99,6 +99,7 @@ export const legacyStatusFor = (
     if (serviceStatus === 'cancelled') return 'cancelled';
     if (orderType === 'takeaway' && serviceStatus === 'closed') return 'closed';
     if (orderType === 'takeaway' && serviceStatus === 'collected' && paymentStatus === 'paid') return 'closed';
+    if (orderType === 'delivery' && serviceStatus === 'delivered' && paymentStatus === 'paid') return 'closed';
     if (paymentStatus === 'paid' && serviceStatus === 'closed') return 'paid';
     if (serviceStatus === 'collected') return 'collected';
     if (orderType === 'dine_in' && serviceStatus === 'delivered' && paymentStatus === 'paid') return 'paid';
@@ -130,8 +131,8 @@ export const validateRestaurantOrderTransition = (
 
     if (action === 'mark_delivered') {
         if (serviceStatus === 'delivered') return { ok: false, reason: 'already_done' };
-        if (orderType !== 'dine_in' || serviceStatus !== 'ready') return { ok: false, reason: 'not_ready' };
-        if (paymentStatus === 'paid') return { ok: false, reason: 'paid_before_delivery' };
+        if (!['dine_in', 'delivery'].includes(orderType) || serviceStatus !== 'ready') return { ok: false, reason: 'not_ready' };
+        if (orderType === 'dine_in' && paymentStatus === 'paid') return { ok: false, reason: 'paid_before_delivery' };
         return { ok: true };
     }
 
@@ -172,7 +173,7 @@ export const canPerformRestaurantAction = (
     const orderType = order ? orderTypeFor(order) : undefined;
 
     if (action === 'create_order') {
-        return hasRole(actor, waiterRoles) || orderType === 'takeaway' && hasRole(actor, ['cashier']) || legacyOwner;
+        return hasRole(actor, waiterRoles) || (orderType === 'takeaway' || orderType === 'delivery') && hasRole(actor, ['cashier']) || legacyOwner;
     }
     if (action === 'create_pay_now_takeaway_order') return hasRole(actor, paymentRoles) || legacyOwner;
     if (action === 'mark_ready') return hasRole(actor, kitchenRoles) || legacyOwner;
@@ -189,7 +190,7 @@ export const canPerformRestaurantAction = (
             return orderType === 'dine_in' && serviceStatusFor(order) === 'pending' && order.createdBy === actor.userId;
         }
         if (actor.role === 'cashier') {
-            return orderType === 'takeaway' && serviceStatusFor(order) === 'pending';
+            return (orderType === 'takeaway' || orderType === 'delivery') && serviceStatusFor(order) === 'pending';
         }
         return actor.role === 'manager' || actor.role === 'owner' || actor.role === 'admin';
     }

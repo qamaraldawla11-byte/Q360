@@ -97,12 +97,15 @@ export const KitchenView = () => {
                     const elapsed = Math.max(0, Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / 60_000));
                     const isLate = elapsed > 20;
                     const headerColor = isLate ? '#fee2e2' : ticket.status === 'cooking' ? '#fef3c7' : '#f8fafc';
+                    const serviceLabel = ticket.order?.orderType === 'delivery'
+                        ? `Delivery${ticket.order.customerName ? ` · ${ticket.order.customerName}` : ''}`
+                        : ticket.tableLabel || 'Takeaway';
                     return (
                         <div key={ticket.id} style={{ background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: `1px solid ${isLate ? '#ef4444' : 'var(--border-subtle)'}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)', background: headerColor, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
                                     <span style={{ fontWeight: 800, fontSize: '16px' }}>{ticket.order?.displayOrderNumber ?? 'Order pending number'}</span>
-                                    <span style={{ marginLeft: '8px', fontSize: '13px', color: '#64748b' }}>{ticket.tableLabel || 'Takeaway'}</span>
+                                    <span style={{ marginLeft: '8px', fontSize: '13px', color: '#64748b' }}>{serviceLabel}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
                                     <Clock size={14} /> {elapsed}m

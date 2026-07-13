@@ -60,7 +60,7 @@ const canCancel = (order: RestaurantOrder, role: string, userId?: string) => {
         return order.orderType === 'dine_in' && order.serviceStatus === 'pending' && order.createdBy === userId;
     }
     if (role === 'cashier') {
-        return order.orderType === 'takeaway' && order.serviceStatus === 'pending';
+        return (order.orderType === 'takeaway' || order.orderType === 'delivery') && order.serviceStatus === 'pending';
     }
     return role === 'manager' || role === 'owner' || role === 'admin';
 };
@@ -110,8 +110,11 @@ export const BillingView = ({ embedded = false }: { embedded?: boolean }) => {
     }), [orders, tab]);
 
     const runningTotal = visibleOrders.reduce((sum, order) => sum + order.total, 0);
-    const tableLabel = (tableId: string | null) =>
-        tables.find((table) => table.id === tableId)?.label || (tableId ? 'Table pending' : 'Takeaway');
+    const serviceLabel = (order: RestaurantOrder) => {
+        if (order.orderType === 'delivery') return `Delivery${order.customerName ? ` · ${order.customerName}` : ''}`;
+        if (order.orderType === 'takeaway') return 'Takeaway';
+        return tables.find((table) => table.id === order.tableId)?.label || (order.tableId ? 'Table pending' : 'Dine-in');
+    };
 
     const markPaid = async (order: RestaurantOrder) => {
         const method = paymentMethods[order.id] ?? 'cash';
@@ -202,7 +205,7 @@ export const BillingView = ({ embedded = false }: { embedded?: boolean }) => {
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
                             <th style={{ padding: '16px' }}>Order</th>
-                            <th style={{ padding: '16px' }}>Table</th>
+                            <th style={{ padding: '16px' }}>Service</th>
                             <th style={{ padding: '16px' }}>Time</th>
                             <th style={{ padding: '16px' }}>Total</th>
                             <th style={{ padding: '16px' }}>Status</th>
@@ -232,7 +235,7 @@ export const BillingView = ({ embedded = false }: { embedded?: boolean }) => {
                             return (
                                 <tr key={order.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                 <td style={{ padding: '16px', fontWeight: 800 }}>{formatOrderNumber(order)}</td>
-                                <td style={{ padding: '16px' }}>{tableLabel(order.tableId)}</td>
+                                <td style={{ padding: '16px' }}>{serviceLabel(order)}{order.orderType === 'delivery' && <small style={{ display: 'block', marginTop: 3, color: '#64748b' }}>{order.customerPhone}<br/>{order.deliveryAddress}</small>}</td>
                                 <td style={{ padding: '16px' }}>{new Date(order.createdAt).toLocaleTimeString()}</td>
                                 <td style={{ padding: '16px', fontWeight: 600 }}>${(order.total / 100).toFixed(2)}</td>
                                 <td style={{ padding: '16px' }}>

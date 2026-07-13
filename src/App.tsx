@@ -26,6 +26,7 @@ function AppContent() {
       businesses: 'Businesses',
       catalog: 'Catalog',
       clients: 'Clients',
+      customers: 'Customers',
       docs: 'Documentation',
       expenses: 'Expenses',
       floor: 'Floor',
