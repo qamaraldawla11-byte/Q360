@@ -1,93 +1,26 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Package, Plus, ShoppingCart, Truck } from 'lucide-react';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { Package, AlertTriangle, TrendingDown } from 'lucide-react';
+import { inventoryApi, type InventoryItem, type PurchaseOrder, type Supplier } from '@/api/inventory.api';
 
-export const InventoryView = () => {
-    const lowStockItems = [
-        { name: 'Tomatoes', current: 12, min: 50, unit: 'kg', status: 'critical' },
-        { name: 'Chicken Breast', current: 25, min: 40, unit: 'kg', status: 'low' },
-        { name: 'Pasta', current: 8, min: 20, unit: 'kg', status: 'critical' },
-        { name: 'Olive Oil', current: 15, min: 25, unit: 'L', status: 'low' },
-    ];
-
-    return (
-        <ModuleShell>
-            <PageHeader
-                title="Inventory preview"
-                subtitle="Preview-only sample data. Restaurant inventory persistence is not production-ready yet."
-            />
-
-            <div style={{ marginBottom: 20, padding: 16, border: '1px solid #fed7aa', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontWeight: 700 }}>
-                Coming soon: these numbers are static examples and are not connected to saved Restaurant stock.
-            </div>
-
-            <div className="restaurant-inventory-preview-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '20px', marginBottom: '32px' }}>
-                {[
-                    { label: 'Total Items', value: '247', icon: Package, color: '#3b82f6' },
-                    { label: 'Low Stock', value: '12', icon: AlertTriangle, color: '#f59e0b' },
-                    { label: 'Out of Stock', value: '4', icon: TrendingDown, color: '#ef4444' },
-                ].map((stat, i) => (
-                    <div key={i} style={{
-                        background: 'white', padding: '24px', borderRadius: '8px',
-                        border: '1px solid var(--border-subtle)', color: '#0f172a'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                            <div style={{
-                                width: '40px', height: '40px', borderRadius: '10px',
-                                background: `${stat.color}15`, color: stat.color,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <stat.icon size={20} />
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '28px', fontWeight: 700 }}>{stat.value}</div>
-                                <div style={{ fontSize: '13px', color: '#64748b' }}>{stat.label}</div>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <div style={{ background: 'white', color: '#0f172a', borderRadius: '8px', border: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
-                <div style={{ padding: '20px', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <h3 style={{ margin: 0, color: '#0f172a', fontSize: '16px', fontWeight: 700 }}>Low Stock Alerts</h3>
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ background: '#f8fafc' }}>
-                            <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Item</th>
-                            <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Current</th>
-                            <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Minimum</th>
-                            <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {lowStockItems.map((item, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                <td style={{ padding: '16px 20px', fontWeight: 500 }}>{item.name}</td>
-                                <td style={{ padding: '16px 20px' }}>{item.current} {item.unit}</td>
-                                <td style={{ padding: '16px 20px', color: '#64748b' }}>{item.min} {item.unit}</td>
-                                <td style={{ padding: '16px 20px' }}>
-                                    <span style={{
-                                        padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 600,
-                                        background: item.status === 'critical' ? '#fee2e2' : '#fef3c7',
-                                        color: item.status === 'critical' ? '#991b1b' : '#92400e'
-                                    }}>
-                                        {item.status === 'critical' ? 'Critical' : 'Low'}
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            <style>{`
-                @media (max-width: 760px) {
-                    .restaurant-inventory-preview-stats {
-                        grid-template-columns: 1fr !important;
-                    }
-                }
-            `}</style>
-        </ModuleShell>
-    );
+type Tab='Stock'|'Suppliers'|'Purchasing';
+export const InventoryView=()=>{
+ const [tab,setTab]=useState<Tab>('Stock'),[items,setItems]=useState<InventoryItem[]>([]),[suppliers,setSuppliers]=useState<Supplier[]>([]),[orders,setOrders]=useState<PurchaseOrder[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [itemForm,setItemForm]=useState({name:'',current:'0',min:'0',max:'',unit:'kg',category:'',price:'0'});
+ const [supplierForm,setSupplierForm]=useState({name:'',contact:'',phone:'',email:'',address:''});
+ const [poForm,setPoForm]=useState({itemId:'',supplierId:'',quantity:'1',unitCost:'0'});
+ const load=useCallback(async()=>{try{const [a,b,c]=await Promise.all([inventoryApi.items(),inventoryApi.suppliers(),inventoryApi.purchaseOrders()]);setItems(a);setSuppliers(b);setOrders(c);setError('')}catch{setError('Unable to load inventory data.')}},[]);
+ useEffect(()=>{void load()},[load]);
+ const low=useMemo(()=>items.filter(i=>i.status!=='ok'),[items]);
+ const submitItem=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{await inventoryApi.createItem({name:itemForm.name,current:Number(itemForm.current),min:Number(itemForm.min),max:itemForm.max?Number(itemForm.max):undefined,unit:itemForm.unit,category:itemForm.category||undefined,price:Number(itemForm.price)});setItemForm({name:'',current:'0',min:'0',max:'',unit:'kg',category:'',price:'0'});await load()}catch{setError('Unable to create inventory item.')}finally{setBusy(false)}};
+ const submitSupplier=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{await inventoryApi.createSupplier(supplierForm);setSupplierForm({name:'',contact:'',phone:'',email:'',address:''});await load()}catch{setError('Unable to create supplier.')}finally{setBusy(false)}};
+ const submitPo=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{await inventoryApi.createPurchaseOrder({itemId:poForm.itemId,supplierId:poForm.supplierId||undefined,quantity:Number(poForm.quantity),unitCost:Number(poForm.unitCost)});await load()}catch{setError('Unable to create purchase order.')}finally{setBusy(false)}};
+ return <ModuleShell><PageHeader title="Inventory & Purchasing" subtitle="Saved stock, suppliers, purchase orders, and receiving for this business." />
+ {error&&<div className="inv-error">{error}</div>}<div className="inv-stats"><article><Package/><b>{items.length}</b><span>Stock items</span></article><article><AlertTriangle/><b>{low.length}</b><span>Low stock</span></article><article><ShoppingCart/><b>{orders.filter(o=>o.status==='ordered').length}</b><span>Open purchases</span></article></div>
+ <div className="inv-tabs">{(['Stock','Suppliers','Purchasing'] as Tab[]).map(x=><button className={tab===x?'active':''} onClick={()=>setTab(x)} key={x}>{x}</button>)}</div>
+ {tab==='Stock'&&<><form className="inv-form" onSubmit={submitItem}><input required placeholder="Item name" value={itemForm.name} onChange={e=>setItemForm({...itemForm,name:e.target.value})}/><input required type="number" min="0" step="any" placeholder="Current" value={itemForm.current} onChange={e=>setItemForm({...itemForm,current:e.target.value})}/><input required type="number" min="0" step="any" placeholder="Minimum" value={itemForm.min} onChange={e=>setItemForm({...itemForm,min:e.target.value})}/><input placeholder="Unit" required value={itemForm.unit} onChange={e=>setItemForm({...itemForm,unit:e.target.value})}/><input type="number" min="0" step="any" placeholder="Unit cost" value={itemForm.price} onChange={e=>setItemForm({...itemForm,price:e.target.value})}/><button disabled={busy}><Plus size={16}/> Add item</button></form><div className="inv-table"><table><thead><tr><th>Item</th><th>Stock</th><th>Minimum</th><th>Status</th><th>Adjust</th></tr></thead><tbody>{items.map(i=><tr key={i.id}><td><b>{i.name}</b><small>{i.category}</small></td><td>{i.current} {i.unit}</td><td>{i.min} {i.unit}</td><td><span className={`status ${i.status}`}>{i.status}</span></td><td><button onClick={async()=>{const value=prompt('Adjustment amount (use negative to reduce)');if(value&&Number.isFinite(Number(value))){await inventoryApi.adjust(i.id,Number(value),'manual_adjustment');await load()}}}>Adjust</button></td></tr>)}</tbody></table></div></>}
+ {tab==='Suppliers'&&<><form className="inv-form" onSubmit={submitSupplier}><input required placeholder="Supplier name" value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm,name:e.target.value})}/><input placeholder="Contact" value={supplierForm.contact} onChange={e=>setSupplierForm({...supplierForm,contact:e.target.value})}/><input placeholder="Phone" value={supplierForm.phone} onChange={e=>setSupplierForm({...supplierForm,phone:e.target.value})}/><input type="email" placeholder="Email" value={supplierForm.email} onChange={e=>setSupplierForm({...supplierForm,email:e.target.value})}/><button disabled={busy}><Plus size={16}/> Add supplier</button></form><div className="inv-cards">{suppliers.map(s=><article key={s.id}><Truck/><div><b>{s.name}</b><span>{s.contact||s.email||s.phone||'No contact details'}</span></div></article>)}</div></>}
+ {tab==='Purchasing'&&<><form className="inv-form" onSubmit={submitPo}><select required value={poForm.itemId} onChange={e=>setPoForm({...poForm,itemId:e.target.value})}><option value="">Select item</option>{items.map(i=><option value={i.id} key={i.id}>{i.name}</option>)}</select><select value={poForm.supplierId} onChange={e=>setPoForm({...poForm,supplierId:e.target.value})}><option value="">No supplier</option>{suppliers.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select><input required type="number" min="0.01" step="any" placeholder="Quantity" value={poForm.quantity} onChange={e=>setPoForm({...poForm,quantity:e.target.value})}/><input required type="number" min="0" step="any" placeholder="Unit cost" value={poForm.unitCost} onChange={e=>setPoForm({...poForm,unitCost:e.target.value})}/><button disabled={busy}><ShoppingCart size={16}/> Create PO</button></form><div className="inv-table"><table><thead><tr><th>Item</th><th>Quantity</th><th>Cost</th><th>Status</th><th>Action</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td>{items.find(i=>i.id===o.inventoryItemId)?.name||'Item'}</td><td>{o.quantity}</td><td>${(o.quantity*o.unitCost).toFixed(2)}</td><td>{o.status}</td><td>{o.status==='ordered'?<button onClick={async()=>{await inventoryApi.receivePurchaseOrder(o.id);await load()}}>Receive stock</button>:'Received'}</td></tr>)}</tbody></table></div></>}
+ <style>{`.inv-error{padding:12px;background:#fef2f2;color:#b91c1c;border-radius:8px;margin-bottom:14px}.inv-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}.inv-stats article{display:grid;grid-template-columns:40px 1fr;align-items:center;padding:16px;background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:12px}.inv-stats svg{grid-row:1/3;color:#f97316}.inv-stats b{font-size:24px}.inv-stats span{color:#64748b;font-size:12px}.inv-tabs{display:flex;gap:8px;margin-bottom:16px}.inv-tabs button{padding:9px 15px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#475569;font-weight:700}.inv-tabs .active{background:#f97316;color:#fff;border-color:#f97316}.inv-form{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;padding:14px;margin-bottom:16px;background:#fff;border:1px solid #d8dee8;border-radius:12px}.inv-form input,.inv-form select{min-height:40px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a}.inv-form button,.inv-table button{min-height:38px;padding:8px 12px;display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:8px;background:#f97316;color:#fff;font-weight:700}.inv-table{overflow:auto;background:#fff;border:1px solid #d8dee8;border-radius:12px}.inv-table table{width:100%;border-collapse:collapse;min-width:700px}.inv-table th,.inv-table td{padding:13px;text-align:left;border-bottom:1px solid #e2e8f0}.inv-table small,.inv-cards span{display:block;color:#64748b;font-size:12px}.status{padding:4px 8px;border-radius:99px}.status.ok{background:#dcfce7;color:#166534}.status.low{background:#fef3c7;color:#92400e}.status.critical{background:#fee2e2;color:#991b1b}.inv-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.inv-cards article{display:flex;gap:12px;padding:18px;background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:12px}.inv-cards svg{color:#f97316}@media(max-width:850px){.inv-form{grid-template-columns:1fr 1fr}.inv-stats{grid-template-columns:1fr}}@media(max-width:520px){.inv-form{grid-template-columns:1fr}}`}</style></ModuleShell>
 };

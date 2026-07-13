@@ -18,6 +18,7 @@
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:business-settings": "tsx src/scripts/verify_business_settings.ts",
         "verify:business-modules": "tsx src/scripts/verify_business_modules.ts",
+        "verify:inventory-procurement": "tsx src/scripts/verify_inventory_procurement.ts",
         "verify:customers": "tsx src/scripts/verify_customers.ts",
         "verify:quotes": "tsx src/scripts/verify_quotes.ts",
         "verify:jwt-init": "tsx src/scripts/verify_jwt_init.ts",

@@ -63,7 +63,8 @@ export const SmeLayout = () => {
         const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
         return modules.filter(module => {
             if (module.id === 'floor') return enabled.get('tables') ?? true;
-            if (module.id === 'inventory' || module.id === 'staff') return false;
+            if (module.id === 'inventory') return enabled.get('inventory') ?? true;
+            if (module.id === 'staff') return false;
             return true;
         });
     }, [businessModules, manifest]);

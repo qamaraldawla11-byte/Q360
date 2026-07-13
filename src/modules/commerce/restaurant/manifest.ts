@@ -28,7 +28,7 @@ export const restaurantManifest: VerticalManifest = {
         { id: 'kitchen', label: 'Kitchen', path: '/kitchen', icon: ChefHat },
         { id: 'menu', label: 'Menu', path: '/menu', icon: UtensilsCrossed },
         { id: 'floor', label: 'Floor / Tables', path: '/floor', icon: LayoutGrid },
-        { id: 'inventory', label: 'Inventory preview', path: '/inventory', icon: Package },
+        { id: 'inventory', label: 'Inventory & Purchasing', path: '/inventory', icon: Package },
         { id: 'billing', label: 'Order History', path: '/billing', icon: Receipt },
         { id: 'staff', label: 'Staff preview', path: '/staff', icon: Users },
         { id: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },

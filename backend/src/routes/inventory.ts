@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { db, first } from '../db/client.js';
-import { inventoryItems, products } from '../db/schema.js';
+import { inventoryItems, products, stockMovements } from '../db/schema.js';
+import { randomUUID } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
@@ -32,13 +33,13 @@ inventory.get('/:id', async (c) => {
 });
 
 // PATCH /api/inventory/:id/stock
-inventory.patch('/:id/stock', requireRole(['owner', 'admin', 'manager']), async (c) => {
+inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
     const id = c.req.param('id');
     if (!id) {
         return c.json({ error: 'Item ID is required' }, 400);
     }
     const businessId = c.get('businessId');
-    const body = await c.req.json<{ delta: number }>();
+    const body = await c.req.json<{ delta: number; reason?: string }>();
 
     if (typeof body.delta !== 'number' || !Number.isFinite(body.delta)) {
         return c.json({ error: 'Delta must be a finite number' }, 400);
@@ -61,9 +62,17 @@ inventory.patch('/:id/stock', requireRole(['owner', 'admin', 'manager']), async 
         newStatus = 'low';
     }
 
-    await db.update(inventoryItems)
-        .set({ current: newCurrent, status: newStatus })
-        .where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId)));
+    const appliedDelta = newCurrent - item.current;
+    await db.transaction(async (tx) => {
+        await tx.update(inventoryItems)
+            .set({ current: newCurrent, status: newStatus })
+            .where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId)));
+        await tx.insert(stockMovements).values({
+            id: randomUUID(), businessId, inventoryItemId: id, delta: appliedDelta,
+            reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'manual_adjustment',
+            createdBy: c.get('userId'),
+        });
+    });
 
     await logAudit(c, 'UPDATE_STOCK', 'INVENTORY', id, { delta, newCurrent, newStatus });
 
@@ -73,7 +82,7 @@ inventory.patch('/:id/stock', requireRole(['owner', 'admin', 'manager']), async 
 });
 
 // POST /api/inventory
-inventory.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => {
+inventory.post('/', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
     let body: {
         name?: string;
         current?: number;
@@ -161,6 +170,32 @@ inventory.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => {
         console.error('[INVENTORY] Failed to create item:', error);
         return c.json({ error: 'Failed to create inventory item' }, 500);
     }
+});
+
+inventory.patch('/:id', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Item ID is required' }, 400);
+    const existing = await first(db.select().from(inventoryItems).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))));
+    if (!existing) return c.json({ error: 'Item not found' }, 404);
+    let body: { name?: unknown; min?: unknown; max?: unknown; unit?: unknown; category?: unknown; supplier?: unknown; price?: unknown };
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+    const name = typeof body.name === 'string' ? body.name.trim() : existing.name;
+    const unit = typeof body.unit === 'string' ? body.unit.trim() : existing.unit;
+    const min = typeof body.min === 'number' ? body.min : existing.min;
+    const max = typeof body.max === 'number' ? body.max : existing.max;
+    const price = typeof body.price === 'number' ? body.price : existing.price;
+    if (!name || !unit || !Number.isFinite(min) || min < 0 || !Number.isFinite(price) || price < 0 || (max !== null && max !== undefined && (!Number.isFinite(max) || max < existing.current))) {
+        return c.json({ error: 'Invalid inventory fields' }, 400);
+    }
+    const status = existing.current <= min / 2 ? 'critical' : existing.current <= min ? 'low' : 'ok';
+    const [updated] = await db.update(inventoryItems).set({
+        name, unit, min, max, price, status,
+        category: typeof body.category === 'string' ? body.category.trim() || null : existing.category,
+        supplier: typeof body.supplier === 'string' ? body.supplier.trim() || null : existing.supplier,
+    }).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))).returning();
+    await logAudit(c, 'UPDATE', 'INVENTORY', id, { fields: Object.keys(body) });
+    return c.json(updated);
 });
 
 export default inventory;

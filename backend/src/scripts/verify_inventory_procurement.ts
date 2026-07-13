@@ -1,0 +1,27 @@
+import { createHmac } from 'crypto';
+import { Hono } from 'hono';
+import { inArray } from 'drizzle-orm';
+import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
+requireQ360StagingDatabaseGuard('verify:inventory-procurement'); requireDatabaseUrl();
+process.env.JWT_SECRET ||= 'inventory-procurement-verification'; process.env.NODE_ENV='test';
+const {db,closeDatabase}=await import('../db/client.js');
+const {auditLogs,businesses,inventoryItems,purchaseOrders,stockMovements,suppliers,users}=await import('../db/schema.js');
+const {default:inventoryRoutes}=await import('../routes/inventory.js'); const {default:supplierRoutes}=await import('../routes/suppliers.js');
+const app=new Hono(); app.route('/api/inventory',inventoryRoutes); app.route('/api/suppliers',supplierRoutes);
+const businessIds=['biz_verify_inventory_a','biz_verify_inventory_b'],userIds=['usr_verify_inventory_a','usr_verify_inventory_b'];
+const token=(u:string,b:string)=>{const e=(v:unknown)=>Buffer.from(JSON.stringify(v)).toString('base64url'),n=Math.floor(Date.now()/1000),h=e({alg:'HS256',typ:'JWT'}),p=e({sub:u,email:`${u}@example.com`,role:'admin',businessId:b,iat:n,exp:n+3600}),s=createHmac('sha256',process.env.JWT_SECRET!).update(`${h}.${p}`).digest('base64url');return `${h}.${p}.${s}`};
+const req=(t:string,path:string,init?:RequestInit)=>app.request(path,{...init,headers:{Authorization:`Bearer ${t}`,'Content-Type':'application/json',...init?.headers}});
+try{
+ await db.delete(auditLogs).where(inArray(auditLogs.businessId,businessIds));await db.delete(stockMovements).where(inArray(stockMovements.businessId,businessIds));await db.delete(purchaseOrders).where(inArray(purchaseOrders.businessId,businessIds));await db.delete(inventoryItems).where(inArray(inventoryItems.businessId,businessIds));await db.delete(suppliers).where(inArray(suppliers.businessId,businessIds));await db.delete(users).where(inArray(users.id,userIds));await db.delete(businesses).where(inArray(businesses.id,businessIds));
+ await db.insert(businesses).values(businessIds.map((id,i)=>({id,name:`Inventory ${i}`,type:'restaurant'})));await db.insert(users).values(userIds.map((id,i)=>({id,email:`${id}@example.com`,role:'admin',businessId:businessIds[i]})));
+ const a=token(userIds[0],businessIds[0]),b=token(userIds[1],businessIds[1]);
+ const itemRes=await req(a,'/api/inventory',{method:'POST',body:JSON.stringify({name:'Coffee Beans',current:10,min:5,max:100,unit:'kg',category:'Beverage',price:8})});if(itemRes.status!==201)throw new Error(`Item create ${itemRes.status} ${await itemRes.text()}`);const item=await itemRes.json() as {id:string;current:number};
+ const supRes=await req(a,'/api/suppliers',{method:'POST',body:JSON.stringify({name:'Coffee Supplier',email:'supplier@example.com'})});if(supRes.status!==201)throw new Error(`Supplier create ${supRes.status}`);const supplier=await supRes.json() as {id:string};
+ const poRes=await req(a,'/api/suppliers/procurement/orders',{method:'POST',body:JSON.stringify({itemId:item.id,supplierId:supplier.id,quantity:20,unitCost:7.5})});if(poRes.status!==201)throw new Error(`PO create ${poRes.status} ${await poRes.text()}`);const po=await poRes.json() as {id:string;status:string};
+ const before=await (await req(a,`/api/inventory/${item.id}`)).json() as {current:number};if(before.current!==10)throw new Error('Creating PO changed stock before receiving');
+ const receive=await req(a,`/api/suppliers/procurement/orders/${po.id}/receive`,{method:'PATCH',body:'{}'});if(receive.status!==200)throw new Error(`Receive ${receive.status} ${await receive.text()}`);const after=await (await req(a,`/api/inventory/${item.id}`)).json() as {current:number};if(after.current!==30)throw new Error(`Expected stock 30, got ${after.current}`);
+ const duplicate=await req(a,`/api/suppliers/procurement/orders/${po.id}/receive`,{method:'PATCH',body:'{}'});if(duplicate.status!==409)throw new Error(`Duplicate receive returned ${duplicate.status}`);
+ const bItems=await (await req(b,'/api/inventory')).json() as {id:string}[];const bOrders=await (await req(b,'/api/suppliers/procurement/orders')).json() as {id:string}[];if(bItems.some(x=>x.id===item.id)||bOrders.some(x=>x.id===po.id))throw new Error('Tenant isolation failed');
+ const movements=await db.select().from(stockMovements).where(inArray(stockMovements.businessId,[businessIds[0]]));if(movements.length!==1||movements[0].delta!==20)throw new Error('Stock movement missing');
+ console.log(JSON.stringify({persistentItem:true,persistentSupplier:true,purchaseOrderCreated:po.status==='ordered',stockChangedOnlyOnReceive:true,duplicateReceiveBlocked:true,stockMovementRecorded:true,tenantIsolation:true},null,2));
+}catch(e){console.error('Inventory/procurement verification failed:',e);process.exitCode=1}finally{await db.delete(auditLogs).where(inArray(auditLogs.businessId,businessIds));await db.delete(stockMovements).where(inArray(stockMovements.businessId,businessIds));await db.delete(purchaseOrders).where(inArray(purchaseOrders.businessId,businessIds));await db.delete(inventoryItems).where(inArray(inventoryItems.businessId,businessIds));await db.delete(suppliers).where(inArray(suppliers.businessId,businessIds));await db.delete(users).where(inArray(users.id,userIds));await db.delete(businesses).where(inArray(businesses.id,businessIds));await closeDatabase()}

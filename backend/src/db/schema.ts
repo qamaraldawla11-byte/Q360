@@ -242,6 +242,35 @@ export const suppliers = pgTable('suppliers', {
     businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
 });
 
+export const purchaseOrders = pgTable('purchase_orders', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    supplierId: text('supplier_id'),
+    inventoryItemId: text('inventory_item_id').notNull(),
+    quantity: doublePrecision('quantity').notNull(),
+    unitCost: doublePrecision('unit_cost').notNull().default(0),
+    status: text('status').$type<'ordered' | 'received' | 'cancelled'>().notNull().default('ordered'),
+    orderedAt: timestamp('ordered_at').notNull().defaultNow(),
+    receivedAt: timestamp('received_at'),
+    createdBy: text('created_by').notNull(),
+}, (table) => [
+    index('purchase_orders_business_idx').on(table.businessId),
+]);
+
+export const stockMovements = pgTable('stock_movements', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    inventoryItemId: text('inventory_item_id').notNull(),
+    purchaseOrderId: text('purchase_order_id'),
+    delta: doublePrecision('delta').notNull(),
+    reason: text('reason').notNull(),
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+    index('stock_movements_business_idx').on(table.businessId),
+    index('stock_movements_item_idx').on(table.inventoryItemId),
+]);
+
 // Businesses table
 export const businesses = pgTable('businesses', {
     id: text('id').primaryKey(),

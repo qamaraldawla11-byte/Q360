@@ -20,7 +20,7 @@ export const restaurantModulePolicies: readonly BusinessModulePolicy[] = [
     { moduleKey: 'tables', label: 'Floor / Tables', description: 'Dine-in table assignment and floor status.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
     { moduleKey: 'payments', label: 'Orders & Payments', description: 'Protected service and payment completion.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'daily-report', label: 'Reports', description: 'Restaurant daily performance records.', category: 'Management', defaultEnabled: true, configurable: false, availability: 'ready' },
-    { moduleKey: 'inventory', label: 'Inventory', description: 'Stock and purchasing module planned for a later milestone.', category: 'Operations', defaultEnabled: false, configurable: false, availability: 'preview' },
+    { moduleKey: 'inventory', label: 'Inventory & Purchasing', description: 'Saved stock, suppliers, purchase orders, and receiving.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
     { moduleKey: 'staff', label: 'Staff / HR', description: 'Staff access, shifts, and HR planned for a later milestone.', category: 'Management', defaultEnabled: false, configurable: false, availability: 'preview' },
 ];
 
