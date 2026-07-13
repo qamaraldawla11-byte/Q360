@@ -1,115 +1,31 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Building2, CheckCircle2, ImagePlus, Loader2, Lock, Upload } from 'lucide-react';
+import { Building2, CheckCircle2, Copy, Download, ExternalLink, ImagePlus, Loader2, Lock, QrCode, Upload } from 'lucide-react';
+import QRCode from 'qrcode';
 import { ModuleShell } from '@/components/shared/ModuleShell';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { businessApi, type BusinessProfile, type RestaurantBusinessType } from '@/api/business.api';
 import { useAuthStore } from '@/store/auth.store';
 
-const EMPTY_PROFILE = {
-    name: '', country: '', city: '', address: '', phone: '', email: '', currency: 'USD',
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', taxIdentifier: '',
-    restaurantType: 'both' as RestaurantBusinessType,
-};
+const EMPTY_PROFILE = { name:'',country:'',city:'',address:'',phone:'',email:'',currency:'USD',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',taxIdentifier:'',restaurantType:'both' as RestaurantBusinessType };
+type Message={kind:'success'|'error';text:string}|null;
 
-export const SettingsView = () => {
-    const updateUser = useAuthStore(state => state.updateUser);
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [profile, setProfile] = useState<BusinessProfile | null>(null);
-    const [form, setForm] = useState(EMPTY_PROFILE);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-
-    useEffect(() => {
-        businessApi.getProfile().then(result => {
-            setProfile(result);
-            setForm({
-                name: result.name || '', country: result.country || '', city: result.city || '',
-                address: result.address || '', phone: result.phone || '', email: result.email || '',
-                currency: result.currency || 'USD', timezone: result.timezone || EMPTY_PROFILE.timezone,
-                taxIdentifier: result.taxIdentifier || '', restaurantType: result.restaurantType || 'both',
-            });
-        }).catch(error => setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to load business profile' }))
-            .finally(() => setLoading(false));
-    }, []);
-
-    const update = (field: keyof typeof form) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setForm(current => ({ ...current, [field]: event.target.value }));
-    };
-
-    const save = async (event: FormEvent) => {
-        event.preventDefault();
-        setSaving(true); setMessage(null);
-        try {
-            const updated = await businessApi.updateProfile(form);
-            setProfile(updated);
-            updateUser({ businessName: updated.name, country: updated.country, currency: updated.currency });
-            window.dispatchEvent(new CustomEvent('q360:business-profile', { detail: updated }));
-            setMessage({ kind: 'success', text: 'Business profile saved.' });
-        } catch (error) {
-            setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to save business profile' });
-        } finally { setSaving(false); }
-    };
-
-    const uploadLogo = async (event: ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
-            setMessage({ kind: 'error', text: 'Choose a PNG, JPEG, or WebP logo up to 2 MB.' });
-            return;
-        }
-        setUploading(true); setMessage(null);
-        try {
-            const updated = await businessApi.uploadLogo(file);
-            setProfile(updated);
-            window.dispatchEvent(new CustomEvent('q360:business-profile', { detail: updated }));
-            setMessage({ kind: 'success', text: 'Business logo updated.' });
-        } catch (error) {
-            setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to upload logo' });
-        } finally { setUploading(false); }
-    };
-
-    return (
-        <ModuleShell>
-            <PageHeader title="Business Settings" subtitle="Your saved Restaurant identity and operating defaults." />
-            {message && <div className={`settings-message settings-message--${message.kind}`}>{message.kind === 'success' && <CheckCircle2 size={17} />}{message.text}</div>}
-            {loading ? <div className="settings-loading"><Loader2 size={20} /> Loading business profile...</div> : (
-                <div className="business-settings-layout">
-                    <section className="business-settings-card business-settings-brand">
-                        <div className="settings-section-heading"><ImagePlus size={20} /><div><h2>Business logo</h2><p>Shown in your Q360 sidebar and business surfaces.</p></div></div>
-                        <div className="business-logo-preview">
-                            {profile?.logoUrl ? <img src={`${profile.logoUrl}?v=${encodeURIComponent(profile.updatedAt || '')}`} alt={`${profile.name} logo`} /> : <Building2 size={40} />}
-                        </div>
-                        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadLogo} hidden />
-                        <button type="button" className="settings-secondary-button" onClick={() => inputRef.current?.click()} disabled={uploading}>
-                            {uploading ? <Loader2 size={17} /> : <Upload size={17} />} {uploading ? 'Uploading...' : 'Upload logo'}
-                        </button>
-                        <small>PNG, JPEG, or WebP. Maximum 2 MB.</small>
-                    </section>
-
-                    <form className="business-settings-card business-settings-form" onSubmit={save}>
-                        <div className="settings-section-heading"><Building2 size={20} /><div><h2>Business profile</h2><p>Country is required for future suppliers, tax, and regional services.</p></div></div>
-                        <div className="settings-fields">
-                            <label><span>Business name *</span><input value={form.name} onChange={update('name')} maxLength={120} required /></label>
-                            <label><span>Country *</span><input value={form.country} onChange={update('country')} maxLength={80} placeholder="e.g. United Kingdom" required /></label>
-                            <label><span>City</span><input value={form.city} onChange={update('city')} maxLength={100} /></label>
-                            <label><span>Phone</span><input value={form.phone} onChange={update('phone')} maxLength={40} type="tel" /></label>
-                            <label className="settings-field-wide"><span>Address</span><input value={form.address} onChange={update('address')} maxLength={240} /></label>
-                            <label><span>Business email</span><input value={form.email} onChange={update('email')} type="email" /></label>
-                            <label><span>Tax identifier</span><input value={form.taxIdentifier} onChange={update('taxIdentifier')} maxLength={80} /></label>
-                            <label><span>Currency *</span><input value={form.currency} onChange={update('currency')} maxLength={3} pattern="[A-Za-z]{3}" required /></label>
-                            <label><span>Timezone *</span><input value={form.timezone} onChange={update('timezone')} maxLength={80} required /></label>
-                            <label className="settings-field-wide"><span>Restaurant service *</span><select value={form.restaurantType} onChange={update('restaurantType')}><option value="both">Dine-in and takeaway</option><option value="dine_in">Dine-in only</option><option value="takeaway">Takeaway only</option></select></label>
-                        </div>
-                        <div className="settings-form-footer"><span><Lock size={14} /> Saved only to this business.</span><button type="submit" disabled={saving}>{saving ? <Loader2 size={17} /> : null}{saving ? 'Saving...' : 'Save profile'}</button></div>
-                    </form>
-                </div>
-            )}
-            <style>{`
-                .business-settings-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:20px;max-width:1100px}.business-settings-card{background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:16px;padding:22px}.settings-section-heading{display:flex;gap:12px;align-items:flex-start;margin-bottom:22px}.settings-section-heading svg{color:#f97316;flex:none}.settings-section-heading h2{margin:0 0 4px;font-size:17px}.settings-section-heading p{margin:0;color:#64748b;font-size:13px;line-height:1.45}.business-settings-brand{display:flex;flex-direction:column;align-items:stretch;height:max-content}.business-logo-preview{height:170px;display:grid;place-items:center;overflow:hidden;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#94a3b8;margin-bottom:14px}.business-logo-preview img{width:100%;height:100%;object-fit:contain;padding:16px}.settings-secondary-button,.settings-form-footer button{min-height:42px;display:flex;justify-content:center;align-items:center;gap:8px;border-radius:9px;cursor:pointer;font:inherit;font-weight:700}.settings-secondary-button{border:1px solid #cbd5e1;background:#fff;color:#334155}.business-settings-brand small{margin-top:9px;color:#64748b;text-align:center}.settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.settings-fields label{display:flex;flex-direction:column;gap:7px;color:#334155;font-size:12px;font-weight:700}.settings-fields input,.settings-fields select{width:100%;min-height:42px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#0f172a;font:inherit;font-size:14px}.settings-field-wide{grid-column:1/-1}.settings-form-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0}.settings-form-footer span{display:flex;align-items:center;gap:6px;color:#64748b;font-size:12px}.settings-form-footer button{min-width:140px;padding:0 18px;border:0;background:#f97316;color:#fff}.settings-message,.settings-loading{max-width:1100px;margin:0 0 18px;padding:13px 15px;display:flex;align-items:center;gap:8px;border-radius:10px;font-size:13px}.settings-message--success{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}.settings-message--error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}.settings-loading{background:#fff;color:#475569;border:1px solid #d8dee8}@media(max-width:820px){.business-settings-layout{grid-template-columns:1fr}.business-logo-preview{height:140px}}@media(max-width:620px){.settings-fields{grid-template-columns:1fr}.settings-field-wide{grid-column:auto}.settings-form-footer{align-items:stretch;flex-direction:column}.settings-form-footer button{width:100%}}
-            `}</style>
-        </ModuleShell>
-    );
+export const SettingsView=()=>{
+    const updateUser=useAuthStore(state=>state.updateUser);const inputRef=useRef<HTMLInputElement>(null);const[profile,setProfile]=useState<BusinessProfile|null>(null);const[form,setForm]=useState(EMPTY_PROFILE);const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[uploading,setUploading]=useState(false);const[togglingMenu,setTogglingMenu]=useState(false);const[message,setMessage]=useState<Message>(null);const[menuQr,setMenuQr]=useState('');const[connectQr,setConnectQr]=useState('');
+    const applyProfile=(result:BusinessProfile)=>{setProfile(result);window.dispatchEvent(new CustomEvent('q360:business-profile',{detail:result}))};
+    useEffect(()=>{businessApi.getProfile().then(result=>{setProfile(result);setForm({name:result.name||'',country:result.country||'',city:result.city||'',address:result.address||'',phone:result.phone||'',email:result.email||'',currency:result.currency||'USD',timezone:result.timezone||EMPTY_PROFILE.timezone,taxIdentifier:result.taxIdentifier||'',restaurantType:result.restaurantType||'both'})}).catch(error=>setMessage({kind:'error',text:error instanceof Error?error.message:'Unable to load business profile'})).finally(()=>setLoading(false))},[]);
+    const menuUrl=profile?.publicCode?`${window.location.origin}/menu/${profile.publicCode}`:'';const connectUrl=profile?.publicCode?`${window.location.origin}/connect/${profile.publicCode}`:'';
+    useEffect(()=>{if(!menuUrl||!connectUrl)return;void QRCode.toDataURL(menuUrl,{width:360,margin:2,color:{dark:'#111827',light:'#ffffff'}}).then(setMenuQr);void QRCode.toDataURL(connectUrl,{width:360,margin:2,color:{dark:'#111827',light:'#ffffff'}}).then(setConnectQr)},[connectUrl,menuUrl]);
+    const update=(field:keyof typeof form)=>(event:ChangeEvent<HTMLInputElement|HTMLSelectElement>)=>setForm(current=>({...current,[field]:event.target.value}));
+    const save=async(event:FormEvent)=>{event.preventDefault();setSaving(true);setMessage(null);try{const updated=await businessApi.updateProfile(form);applyProfile(updated);updateUser({businessName:updated.name,country:updated.country,currency:updated.currency});setMessage({kind:'success',text:'Business profile saved.'})}catch(error){setMessage({kind:'error',text:error instanceof Error?error.message:'Unable to save business profile'})}finally{setSaving(false)}};
+    const uploadLogo=async(event:ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];event.target.value='';if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>2*1024*1024){setMessage({kind:'error',text:'Choose a PNG, JPEG, or WebP logo up to 2 MB.'});return}setUploading(true);setMessage(null);try{applyProfile(await businessApi.uploadLogo(file));setMessage({kind:'success',text:'Business logo updated.'})}catch(error){setMessage({kind:'error',text:error instanceof Error?error.message:'Unable to upload logo'})}finally{setUploading(false)}};
+    const togglePublicMenu=async()=>{if(!profile)return;setTogglingMenu(true);try{applyProfile(await businessApi.setPublicMenuEnabled(!profile.publicMenuEnabled));setMessage({kind:'success',text:`Customer menu ${profile.publicMenuEnabled?'disabled':'enabled'}.`})}catch(error){setMessage({kind:'error',text:error instanceof Error?error.message:'Unable to update customer menu'})}finally{setTogglingMenu(false)}};
+    const copy=async(value:string,label:string)=>{await navigator.clipboard.writeText(value);setMessage({kind:'success',text:`${label} copied.`})};
+    const download=(data:string,name:string)=>{const anchor=document.createElement('a');anchor.href=data;anchor.download=name;anchor.click()};
+    return <ModuleShell><PageHeader title="Business Settings" subtitle="Your Restaurant identity, public code and customer menu sharing."/>{message&&<div className={`settings-message settings-message--${message.kind}`}>{message.kind==='success'&&<CheckCircle2 size={17}/>} {message.text}</div>}{loading?<div className="settings-loading"><Loader2 size={20}/> Loading business profile…</div>:<>
+        <div className="business-settings-layout"><section className="business-settings-card business-settings-brand"><div className="settings-section-heading"><ImagePlus size={20}/><div><h2>Business logo</h2><p>Shown in Q360 and on the public customer menu.</p></div></div><div className="business-logo-preview">{profile?.logoUrl?<img src={`${profile.logoUrl}?v=${encodeURIComponent(profile.updatedAt||'')}`} alt={`${profile.name} logo`}/>:<Building2 size={40}/>}</div><input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadLogo} hidden/><button type="button" className="settings-secondary-button" onClick={()=>inputRef.current?.click()} disabled={uploading}>{uploading?<Loader2 size={17}/>:<Upload size={17}/>} {uploading?'Uploading…':'Upload logo'}</button><small>PNG, JPEG or WebP · Maximum 2 MB</small></section>
+        <form className="business-settings-card business-settings-form" onSubmit={save}><div className="settings-section-heading"><Building2 size={20}/><div><h2>Business profile</h2><p>Country supports suppliers, tax and regional services.</p></div></div><div className="settings-fields"><label>Business name *<input value={form.name} onChange={update('name')} maxLength={120} required/></label><label>Country *<input value={form.country} onChange={update('country')} maxLength={80} required/></label><label>City<input value={form.city} onChange={update('city')} maxLength={100}/></label><label>Phone<input value={form.phone} onChange={update('phone')} maxLength={40} type="tel"/></label><label className="settings-field-wide">Address<input value={form.address} onChange={update('address')} maxLength={240}/></label><label>Business email<input value={form.email} onChange={update('email')} type="email"/></label><label>Tax identifier<input value={form.taxIdentifier} onChange={update('taxIdentifier')} maxLength={80}/></label><label>Currency *<input value={form.currency} onChange={update('currency')} maxLength={3} pattern="[A-Za-z]{3}" required/></label><label>Timezone *<input value={form.timezone} onChange={update('timezone')} maxLength={80} required/></label><label className="settings-field-wide">Restaurant service *<select value={form.restaurantType} onChange={update('restaurantType')}><option value="both">Dine-in and takeaway</option><option value="dine_in">Dine-in only</option><option value="takeaway">Takeaway only</option></select></label></div><div className="settings-form-footer"><span><Lock size={14}/> Saved only to this business.</span><button type="submit" disabled={saving}>{saving&&<Loader2 size={17}/>} {saving?'Saving…':'Save profile'}</button></div></form></div>
+        {profile?.publicCode&&<section className="identity-card"><div className="identity-heading"><div><span className="identity-eyebrow"><QrCode size={15}/> PUBLIC BUSINESS IDENTITY</span><h2>Share the right QR for each audience.</h2><p>The public code is safe to share. Your internal tenant ID remains private.</p></div><div className="public-code"><small>Business ID</small><strong>{profile.publicCode}</strong><button type="button" onClick={()=>void copy(profile.publicCode,'Business ID')}><Copy size={15}/> Copy</button></div></div><div className="qr-grid"><article><img src={menuQr} alt="Customer menu QR"/><div><h3>Customer Menu QR</h3><p>Customers scan this to see available items, descriptions, images and prices without signing in.</p><label><span>{menuUrl}</span><button type="button" onClick={()=>void copy(menuUrl,'Menu link')}><Copy size={14}/></button></label><div className="qr-actions"><button type="button" onClick={()=>window.open(menuUrl,'_blank')}><ExternalLink size={14}/> Preview</button><button type="button" onClick={()=>download(menuQr,`${profile.publicCode}-customer-menu.png`)}><Download size={14}/> Download QR</button><button type="button" className={profile.publicMenuEnabled?'enabled':'disabled'} onClick={()=>void togglePublicMenu()} disabled={togglingMenu}>{profile.publicMenuEnabled?'Menu enabled':'Menu disabled'}</button></div></div></article><article><img src={connectQr} alt="Business connection QR"/><div><h3>Business Connection QR</h3><p>Suppliers and partners use this public identity to find the business without seeing private account data.</p><label><span>{connectUrl}</span><button type="button" onClick={()=>void copy(connectUrl,'Connection link')}><Copy size={14}/></button></label><div className="qr-actions"><button type="button" onClick={()=>window.open(connectUrl,'_blank')}><ExternalLink size={14}/> Preview</button><button type="button" onClick={()=>download(connectQr,`${profile.publicCode}-business-connection.png`)}><Download size={14}/> Download QR</button></div></div></article></div></section>}</>}
+        <style>{`
+        .business-settings-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:20px;max-width:1100px}.business-settings-card,.identity-card{background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:16px;padding:22px}.settings-section-heading{display:flex;gap:12px;align-items:flex-start;margin-bottom:22px}.settings-section-heading svg{color:#f97316}.settings-section-heading h2{margin:0 0 4px;font-size:17px}.settings-section-heading p{margin:0;color:#64748b;font-size:13px}.business-settings-brand{display:flex;flex-direction:column;height:max-content}.business-logo-preview{height:170px;display:grid;place-items:center;overflow:hidden;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#94a3b8;margin-bottom:14px}.business-logo-preview img{width:100%;height:100%;object-fit:contain;padding:16px}.settings-secondary-button,.settings-form-footer button,.public-code button,.qr-actions button{min-height:40px;display:flex;justify-content:center;align-items:center;gap:7px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#334155;font:inherit;font-weight:700}.business-settings-brand small{margin-top:9px;color:#64748b;text-align:center}.settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.settings-fields label{display:flex;flex-direction:column;gap:7px;color:#334155;font-size:12px;font-weight:700}.settings-fields input,.settings-fields select{width:100%;min-height:42px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#0f172a}.settings-field-wide{grid-column:1/-1}.settings-form-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0}.settings-form-footer span{display:flex;align-items:center;gap:6px;color:#64748b;font-size:12px}.settings-form-footer button{min-width:140px;border:0;background:#f97316;color:#fff}.settings-message,.settings-loading{max-width:1100px;margin:0 0 18px;padding:13px 15px;display:flex;align-items:center;gap:8px;border-radius:10px}.settings-message--success{background:#ecfdf5;color:#047857}.settings-message--error{background:#fef2f2;color:#b91c1c}.identity-card{max-width:1100px;margin-top:20px}.identity-heading{display:flex;justify-content:space-between;gap:20px}.identity-eyebrow{display:flex;align-items:center;gap:6px;color:#ea580c;font-size:11px;font-weight:900}.identity-heading h2{margin:8px 0 5px}.identity-heading p{margin:0;color:#64748b}.public-code{min-width:250px;padding:13px;border:1px solid #fed7aa;border-radius:12px;background:#fff7ed}.public-code small{display:block;color:#9a3412}.public-code strong{display:block;margin:3px 0 8px;letter-spacing:.08em}.public-code button{min-height:32px;padding:5px 9px}.qr-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px}.qr-grid article{display:grid;grid-template-columns:135px minmax(0,1fr);gap:16px;padding:16px;border:1px solid #e2e8f0;border-radius:14px}.qr-grid article>img{width:135px;height:135px}.qr-grid h3{margin:0 0 5px}.qr-grid p{margin:0 0 10px;color:#64748b;font-size:12px;line-height:1.5}.qr-grid article>label{display:flex;align-items:center;gap:5px;padding:7px;border-radius:8px;background:#f8fafc;color:#64748b;font-size:10px}.qr-grid label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qr-grid label button{margin-left:auto;border:0;background:transparent}.qr-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.qr-actions button{min-height:32px;padding:5px 8px;font-size:10px}.qr-actions .enabled{background:#ecfdf5;color:#047857}.qr-actions .disabled{background:#fef2f2;color:#b91c1c}@media(max-width:900px){.business-settings-layout,.qr-grid{grid-template-columns:1fr}.identity-heading{flex-direction:column}.public-code{min-width:0}}@media(max-width:620px){.settings-fields{grid-template-columns:1fr}.settings-field-wide{grid-column:auto}.settings-form-footer{flex-direction:column;align-items:stretch}.qr-grid article{grid-template-columns:1fr}.qr-grid article>img{margin:auto}}
+        `}</style></ModuleShell>;
 };

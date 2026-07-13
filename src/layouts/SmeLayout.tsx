@@ -184,8 +184,8 @@ export const SmeLayout = () => {
                 </nav>
 
                 <div style={{ ...styles.sidebarFooter, borderColor: isDark ? '#202631' : '#e5e7eb' }}>
-                    <button type="button" onClick={() => navigate('/ai')} style={styles.agentLink}>
-                        <Bot size={16} /> Agent <span style={{ color: '#fbbf24' }}>⚡</span>
+                    <button type="button" onClick={() => navigate(manifest.id === 'restaurant' ? '/app/restaurant/assistant' : '/ai')} style={styles.agentLink}>
+                        <Bot size={16} /> Q Assistant <span style={{ color: '#7dd3fc' }}>Preview</span>
                     </button>
                     <div style={styles.userSummary}>
                         <div style={{ ...styles.avatar, background: accentWash, color: manifest.color }}>

@@ -19,6 +19,7 @@ import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
 import businessRoutes from './routes/business.js';
 import staffRoutes from './routes/staff.js';
+import publicRoutes from './routes/public.js';
 
 const app = new Hono();
 
@@ -69,6 +70,7 @@ app.route('/api/user', userRoutes);
 app.route('/api/restaurant', restaurantRoutes);
 app.route('/api/business', businessRoutes);
 app.route('/api/staff', staffRoutes);
+app.route('/api/public', publicRoutes);
 
 // 404 handler
 app.notFound((c) => {

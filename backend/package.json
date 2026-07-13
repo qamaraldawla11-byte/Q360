@@ -17,6 +17,7 @@
         "verify:business-pulse": "tsx src/scripts/verify_business_pulse_snapshot.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:business-settings": "tsx src/scripts/verify_business_settings.ts",
+        "verify:public-identity": "tsx src/scripts/verify_public_identity.ts",
         "verify:business-modules": "tsx src/scripts/verify_business_modules.ts",
         "verify:inventory-procurement": "tsx src/scripts/verify_inventory_procurement.ts",
         "verify:staff-hr": "tsx src/scripts/verify_staff_hr.ts",

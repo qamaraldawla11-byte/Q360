@@ -166,6 +166,7 @@ export const menuItems = pgTable('menu_items', {
     categoryId: text('category_id').notNull(),
     name: text('name').notNull(),
     description: text('description'),
+    imageUrl: text('image_url'),
     price: integer('price').notNull(),
     isAvailable: boolean('is_available').default(true).notNull(),
     prepTimeMinutes: integer('prep_time_minutes').default(0).notNull(),
@@ -275,6 +276,7 @@ export const stockMovements = pgTable('stock_movements', {
 // Businesses table
 export const businesses = pgTable('businesses', {
     id: text('id').primaryKey(),
+    publicCode: text('public_code').unique(),
     name: text('name').notNull(),
     type: text('type').default('retail'),
     country: text('country'),
@@ -287,10 +289,18 @@ export const businesses = pgTable('businesses', {
     taxIdentifier: text('tax_identifier'),
     restaurantType: text('restaurant_type').$type<'dine_in' | 'takeaway' | 'both'>().default('both'),
     logoPath: text('logo_path'),
+    publicMenuEnabled: boolean('public_menu_enabled').default(true).notNull(),
     status: text('status').default('active'), // active | suspended
     suspensionReason: text('suspension_reason'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const businessAssets = pgTable('business_assets', {
+    businessId: text('business_id').primaryKey(),
+    mimeType: text('mime_type').notNull(),
+    dataBase64: text('data_base64').notNull(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const staffMembers = pgTable('staff_members', {

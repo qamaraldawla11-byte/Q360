@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/auth.store';
 
 // Environment sensitive configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+export const publicApiBaseUrl = API_BASE_URL;
 
 class HttpClient {
     private static instance: HttpClient;

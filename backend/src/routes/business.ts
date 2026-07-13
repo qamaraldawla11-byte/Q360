@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { db, first, supabase } from '../db/client.js';
-import { businessModules, businesses, users } from '../db/schema.js';
+import { businessAssets, businessModules, businesses, users } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
@@ -22,13 +22,16 @@ const LOGO_TYPES: Record<string, string> = {
 businessRoutes.use('*', authMiddleware);
 
 const canEdit = (role: string) => EDIT_ROLES.has(role);
-const publicLogoUrl = (path: string | null) => {
-    if (!path || !supabase) return null;
+const publicLogoUrl = (path: string | null, publicCode: string | null, origin: string) => {
+    if (!path) return null;
+    if (path === 'database' && publicCode) return `${origin}/api/public/businesses/${encodeURIComponent(publicCode)}/logo`;
+    if (!supabase) return null;
     return supabase.storage.from(LOGO_BUCKET).getPublicUrl(path).data.publicUrl;
 };
 
-const serializeBusiness = (business: typeof businesses.$inferSelect) => ({
+const serializeBusiness = (business: typeof businesses.$inferSelect, origin: string) => ({
     id: business.id,
+    publicCode: business.publicCode,
     name: business.name,
     type: business.type,
     country: business.country,
@@ -40,15 +43,24 @@ const serializeBusiness = (business: typeof businesses.$inferSelect) => ({
     timezone: business.timezone || 'UTC',
     taxIdentifier: business.taxIdentifier,
     restaurantType: business.restaurantType || 'both',
-    logoUrl: publicLogoUrl(business.logoPath),
+    logoUrl: business.logoPath === 'database' && business.publicCode
+        ? `${origin}/api/public/businesses/${encodeURIComponent(business.publicCode)}/logo`
+        : publicLogoUrl(business.logoPath, business.publicCode, origin),
+    publicMenuEnabled: business.publicMenuEnabled,
     updatedAt: business.updatedAt,
 });
 
 businessRoutes.get('/profile', async (c) => {
-    const business = await first(db.select().from(businesses)
+    let business = await first(db.select().from(businesses)
         .where(eq(businesses.id, c.get('businessId'))));
     if (!business) return c.json({ error: 'Business not found' }, 404);
-    return c.json(serializeBusiness(business));
+    if (!business.publicCode) {
+        const publicCode = `Q360-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+        const rows = await db.update(businesses).set({ publicCode, updatedAt: new Date() })
+            .where(eq(businesses.id, business.id)).returning();
+        business = rows[0] ?? business;
+    }
+    return c.json(serializeBusiness(business, new URL(c.req.url).origin));
 });
 
 businessRoutes.patch('/profile', async (c) => {
@@ -99,13 +111,11 @@ businessRoutes.patch('/profile', async (c) => {
     await db.update(users).set({ businessName: name, country, currency })
         .where(eq(users.businessId, businessId));
     await logAudit(c, 'BUSINESS_PROFILE_UPDATED', 'BUSINESS', businessId, { fields: Object.keys(body) });
-    return c.json(serializeBusiness(updated[0]));
+    return c.json(serializeBusiness(updated[0], new URL(c.req.url).origin));
 });
 
 businessRoutes.post('/logo', async (c) => {
     if (!canEdit(c.get('userRole'))) return c.json({ error: 'Forbidden: Insufficient permissions' }, 403);
-    if (!supabase) return c.json({ error: 'Logo storage is not configured' }, 503);
-
     let form: FormData;
     try {
         form = await c.req.formData();
@@ -118,36 +128,34 @@ businessRoutes.post('/logo', async (c) => {
     if (!extension) return c.json({ error: 'Logo must be PNG, JPEG, or WebP' }, 400);
     if (file.size <= 0 || file.size > MAX_LOGO_BYTES) return c.json({ error: 'Logo must be 2 MB or smaller' }, 400);
 
-    const bucketCheck = await supabase.storage.getBucket(LOGO_BUCKET);
-    if (bucketCheck.error) {
-        const created = await supabase.storage.createBucket(LOGO_BUCKET, {
-            public: true,
-            fileSizeLimit: MAX_LOGO_BYTES,
-            allowedMimeTypes: Object.keys(LOGO_TYPES),
-        });
-        if (created.error && !created.error.message.toLowerCase().includes('already exists')) {
-            console.error('[Business Logo] Bucket error:', created.error.message);
-            return c.json({ error: 'Unable to prepare logo storage' }, 503);
-        }
-    }
-
     const businessId = c.get('businessId');
-    const path = `${businessId}/logo.${extension}`;
-    const upload = await supabase.storage.from(LOGO_BUCKET).upload(path, await file.arrayBuffer(), {
-        contentType: file.type,
-        upsert: true,
-        cacheControl: '3600',
-    });
-    if (upload.error) {
-        console.error('[Business Logo] Upload error:', upload.error.message);
-        return c.json({ error: 'Unable to upload logo' }, 503);
+    const dataBase64 = Buffer.from(await file.arrayBuffer()).toString('base64');
+    const existingAsset = await first(db.select().from(businessAssets).where(eq(businessAssets.businessId, businessId)));
+    if (existingAsset) {
+        await db.update(businessAssets).set({ mimeType: file.type, dataBase64, updatedAt: new Date() })
+            .where(eq(businessAssets.businessId, businessId));
+    } else {
+        await db.insert(businessAssets).values({ businessId, mimeType: file.type, dataBase64 });
     }
-
-    const updated = await db.update(businesses).set({ logoPath: path, updatedAt: new Date() })
+    const currentBusiness = await first(db.select().from(businesses).where(eq(businesses.id, businessId)));
+    const publicCode = currentBusiness?.publicCode || `Q360-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const updated = await db.update(businesses).set({ logoPath: 'database', publicCode, updatedAt: new Date() })
         .where(eq(businesses.id, businessId)).returning();
     if (!updated.length) return c.json({ error: 'Business not found' }, 404);
     await logAudit(c, 'BUSINESS_LOGO_UPDATED', 'BUSINESS', businessId, { contentType: file.type, size: file.size });
-    return c.json(serializeBusiness(updated[0]));
+    return c.json(serializeBusiness(updated[0], new URL(c.req.url).origin));
+});
+
+businessRoutes.patch('/public-menu', async (c) => {
+    if (!canEdit(c.get('userRole'))) return c.json({ error: 'Forbidden: Insufficient permissions' }, 403);
+    const body = await c.req.json<{ enabled?: unknown }>().catch(() => null);
+    if (!body || typeof body.enabled !== 'boolean') return c.json({ error: 'Enabled must be a boolean' }, 400);
+    const businessId = c.get('businessId');
+    const updated = await db.update(businesses).set({ publicMenuEnabled: body.enabled, updatedAt: new Date() })
+        .where(eq(businesses.id, businessId)).returning();
+    if (!updated.length) return c.json({ error: 'Business not found' }, 404);
+    await logAudit(c, body.enabled ? 'PUBLIC_MENU_ENABLED' : 'PUBLIC_MENU_DISABLED', 'BUSINESS', businessId);
+    return c.json(serializeBusiness(updated[0], new URL(c.req.url).origin));
 });
 
 businessRoutes.get('/modules', async (c) => {

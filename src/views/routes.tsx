@@ -20,6 +20,8 @@ const PricingView = lazy(() => import('@/modules/public/PricingView').then(m => 
 const DocsView = lazy(() => import('@/modules/public/DocsView').then(m => ({ default: m.DocsView })));
 const SupportView = lazy(() => import('@/modules/public/SupportView').then(m => ({ default: m.SupportView })));
 const AiView = lazy(() => import('@/modules/public/AiView').then(m => ({ default: m.AiView })));
+const PublicMenuView = lazy(() => import('@/modules/public/PublicMenuView').then(m => ({ default: m.PublicMenuView })));
+const PublicBusinessView = lazy(() => import('@/modules/public/PublicBusinessView').then(m => ({ default: m.PublicBusinessView })));
 
 // Onboarding
 const OnboardingLayout = lazy(() => import('@/modules/onboarding/layout/OnboardingLayout').then(m => ({ default: m.OnboardingLayout })));
@@ -49,12 +51,13 @@ const RestaurantMenu = lazy(() => import('@/modules/commerce/restaurant/views/Me
 const RestaurantPos = lazy(() => import('@/modules/commerce/restaurant/views/PosView').then(m => ({ default: m.PosView })));
 const RestaurantKitchen = lazy(() => import('@/modules/commerce/restaurant/views/KitchenView').then(m => ({ default: m.KitchenView })));
 const RestaurantFloor = lazy(() => import('@/modules/commerce/restaurant/views/FloorView').then(m => ({ default: m.FloorView })));
-const RestaurantBilling = lazy(() => import('@/modules/commerce/restaurant/views/BillingView').then(m => ({ default: m.BillingView })));
+const RestaurantOrderHistory = lazy(() => import('@/modules/commerce/restaurant/views/OrderHistoryView').then(m => ({ default: m.OrderHistoryView })));
 const RestaurantStaff = lazy(() => import('@/modules/commerce/restaurant/views/StaffView').then(m => ({ default: m.StaffView })));
 const RestaurantInventory = lazy(() => import('@/modules/commerce/restaurant/views/InventoryView').then(m => ({ default: m.InventoryView })));
 const RestaurantReports = lazy(() => import('@/modules/commerce/restaurant/views/ReportsView').then(m => ({ default: m.ReportsView })));
 const RestaurantModules = lazy(() => import('@/modules/commerce/restaurant/views/ModulesOverviewView').then(m => ({ default: m.ModulesOverviewView })));
 const RestaurantSettings = lazy(() => import('@/modules/commerce/restaurant/views/SettingsView').then(m => ({ default: m.SettingsView })));
+const RestaurantAssistant = lazy(() => import('@/modules/commerce/restaurant/views/AssistantView').then(m => ({ default: m.AssistantView })));
 
 // Pharmacy Vertical
 const PharmacyDashboard = lazy(() => import('@/modules/commerce/pharmacy/views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -154,6 +157,8 @@ export const appRoutes: RouteObject[] = [
     { path: '/docs', element: <Suspense fallback={<PageLoader />}><DocsView /></Suspense> },
     { path: '/support', element: <Suspense fallback={<PageLoader />}><SupportView /></Suspense> },
     { path: '/ai', element: <Suspense fallback={<PageLoader />}><AiView /></Suspense> },
+    { path: '/menu/:publicCode', element: <Suspense fallback={<PageLoader />}><PublicMenuView /></Suspense> },
+    { path: '/connect/:publicCode', element: <Suspense fallback={<PageLoader />}><PublicBusinessView /></Suspense> },
 
     {
         path: '/login',
@@ -197,7 +202,8 @@ export const appRoutes: RouteObject[] = [
                     { path: 'pos', element: <RestaurantPos /> },
                     { path: 'kitchen', element: <RestaurantKitchen /> },
                     { path: 'floor', element: <RestaurantFloor /> },
-                    { path: 'billing', element: <RestaurantBilling /> },
+                    { path: 'billing', element: <RestaurantOrderHistory /> },
+                    { path: 'assistant', element: <RestaurantAssistant /> },
                     { path: 'staff', element: <RestaurantStaff /> },
                     { path: 'inventory', element: <RestaurantInventory /> },
                     { path: 'reports', element: <RestaurantReports /> },

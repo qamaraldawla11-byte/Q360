@@ -792,6 +792,7 @@ restaurant.post('/menu/items', async (c) => {
                 categoryId: category.id,
                 name,
                 description: typeof body.description === 'string' ? body.description.trim() || null : null,
+                imageUrl: null,
                 price: Math.round(body.price as number * 100),
                 isAvailable: typeof availability === 'boolean' ? availability : true,
                 prepTimeMinutes: prepTime,
@@ -807,6 +808,51 @@ restaurant.post('/menu/items', async (c) => {
     return c.json(await first(db.select().from(menuItems)
         .where(and(eq(menuItems.id, itemId), eq(menuItems.businessId, businessId)))
     ), 201);
+});
+
+restaurant.patch('/menu/categories/:id', async (c) => {
+    const body = await parseJson<{ name?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name || name.length > 80) return c.json({ error: 'Category name is required and must be 80 characters or fewer' }, 400);
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const current = await first(db.select().from(menuCategories).where(and(eq(menuCategories.id, id), eq(menuCategories.businessId, businessId))));
+    if (!current) return c.json({ error: 'Category not found' }, 404);
+    const duplicate = await first(db.select().from(menuCategories).where(and(
+        eq(menuCategories.businessId, businessId), eq(menuCategories.menuId, current.menuId), eq(menuCategories.name, name),
+    )));
+    if (duplicate && duplicate.id !== id) return c.json({ error: 'Category already exists' }, 409);
+    const rows = await db.update(menuCategories).set({ name }).where(and(eq(menuCategories.id, id), eq(menuCategories.businessId, businessId))).returning();
+    await logAudit(c, 'RESTAURANT_MENU_CATEGORY_UPDATED', 'MENU_CATEGORY', id, { name });
+    return c.json({ id: rows[0].id, name: rows[0].name, items: [] });
+});
+
+restaurant.patch('/menu/items/:id', async (c) => {
+    const body = await parseJson<{ name?: unknown; description?: unknown; price?: unknown; categoryId?: unknown; isAvailable?: unknown; prepTimeMinutes?: unknown; imageUrl?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+    const businessId = c.get('businessId');
+    const id = c.req.param('id');
+    const current = await first(db.select().from(menuItems).where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId))));
+    if (!current) return c.json({ error: 'Menu item not found' }, 404);
+    const name = body.name === undefined ? current.name : typeof body.name === 'string' ? body.name.trim() : '';
+    const price = body.price === undefined ? current.price : typeof body.price === 'number' && Number.isFinite(body.price) && body.price > 0 ? Math.round(body.price * 100) : 0;
+    const prepTimeMinutes = body.prepTimeMinutes === undefined ? current.prepTimeMinutes : typeof body.prepTimeMinutes === 'number' ? body.prepTimeMinutes : Number.NaN;
+    const categoryId = body.categoryId === undefined ? current.categoryId : typeof body.categoryId === 'string' ? body.categoryId : '';
+    if (!name || name.length > 120) return c.json({ error: 'Item name is required and must be 120 characters or fewer' }, 400);
+    if (price <= 0) return c.json({ error: 'Price must be greater than 0' }, 400);
+    if (!Number.isSafeInteger(prepTimeMinutes) || prepTimeMinutes < 0 || prepTimeMinutes > 480) return c.json({ error: 'Preparation time must be from 0 to 480 minutes' }, 400);
+    const category = await first(db.select().from(menuCategories).where(and(eq(menuCategories.id, categoryId), eq(menuCategories.businessId, businessId))));
+    if (!category) return c.json({ error: 'Category not found' }, 404);
+    const description = body.description === undefined ? current.description : typeof body.description === 'string' ? body.description.trim() || null : null;
+    const imageUrl = body.imageUrl === undefined ? current.imageUrl : typeof body.imageUrl === 'string' ? body.imageUrl.trim() || null : null;
+    if (imageUrl && !/^https:\/\//i.test(imageUrl)) return c.json({ error: 'Item image must use an HTTPS URL' }, 400);
+    const isAvailable = body.isAvailable === undefined ? current.isAvailable : body.isAvailable;
+    if (typeof isAvailable !== 'boolean') return c.json({ error: 'Availability must be true or false' }, 400);
+    const rows = await db.update(menuItems).set({ name, description, imageUrl, price, categoryId, isAvailable, prepTimeMinutes })
+        .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId))).returning();
+    await logAudit(c, 'RESTAURANT_MENU_ITEM_UPDATED', 'MENU_ITEM', id, { isAvailable, categoryId });
+    return c.json(rows[0]);
 });
 
 restaurant.get('/tables', async (c) => {

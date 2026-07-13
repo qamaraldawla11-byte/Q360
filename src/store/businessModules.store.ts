@@ -23,6 +23,7 @@ export const useBusinessModulesStore = create<BusinessModulesState>((set, get) =
     setEnabled: async (moduleKey, enabled) => {
         const updated = await businessApi.setModuleEnabled(moduleKey, enabled);
         set(state => ({ modules: state.modules.map(module => module.moduleKey === moduleKey ? updated : module) }));
+        window.dispatchEvent(new CustomEvent('q360:business-module-changed', { detail: updated }));
     },
     isEnabled: moduleKey => get().modules.find(module => module.moduleKey === moduleKey)?.enabled ?? true,
 }));

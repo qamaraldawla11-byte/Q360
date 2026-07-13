@@ -59,8 +59,8 @@ try {
     if (dineIn.status !== 409) throw new Error(`Disabled dine-in returned ${dineIn.status}`);
     const protectedToggle = await request(tokenA, '/api/business/modules/pos', { method: 'PATCH', body: JSON.stringify({ workspaceKey: 'restaurant', enabled: false }) });
     if (protectedToggle.status !== 409) throw new Error(`Protected POS toggle returned ${protectedToggle.status}`);
-    const previewToggle = await request(tokenA, '/api/business/modules/inventory', { method: 'PATCH', body: JSON.stringify({ workspaceKey: 'restaurant', enabled: true }) });
-    if (previewToggle.status !== 409) throw new Error(`Preview toggle returned ${previewToggle.status}`);
+    const inventoryToggle = await request(tokenA, '/api/business/modules/inventory', { method: 'PATCH', body: JSON.stringify({ workspaceKey: 'restaurant', enabled: false }) });
+    if (inventoryToggle.status !== 200) throw new Error(`Inventory toggle returned ${inventoryToggle.status}`);
     const tablesB = await modules(tokenB);
     if (tablesB.find(item => item.moduleKey === 'tables')?.enabled !== true) throw new Error('Tenant A disabled Tenant B tables');
     const existingRows = await db.select().from(restaurantTables).where(inArray(restaurantTables.id, [tableId]));

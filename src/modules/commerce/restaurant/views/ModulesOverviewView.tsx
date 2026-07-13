@@ -24,7 +24,7 @@ const ModuleCard = ({ module, busy, onToggle }: { module: BusinessModule; busy: 
             </div>
             {module.configurable ? (
                 <button type="button" className={module.enabled ? 'module-remove' : 'module-add'} disabled={busy} onClick={() => onToggle(module)}>
-                    {busy ? <Loader2 size={15} /> : null}{module.enabled ? 'Remove' : 'Add'}
+                    {busy ? <Loader2 size={15} /> : null}{module.enabled ? 'Disable' : 'Enable'}
                 </button>
             ) : (
                 <div className={`module-state ${module.availability === 'preview' ? 'module-state--preview' : ''}`}>
@@ -55,9 +55,10 @@ export const ModulesOverviewView = () => {
 
     const toggle = async (module: BusinessModule) => {
         setBusy(module.moduleKey); setMessage(null);
+        if (module.enabled && !window.confirm(`Disable ${module.label}? It will disappear from navigation, but saved data will not be deleted.`)) return;
         try {
             await setEnabled(module.moduleKey, !module.enabled);
-            setMessage({ kind: 'success', text: module.enabled ? `${module.label} removed from this workspace. Saved data was not deleted.` : `${module.label} added to this workspace.` });
+            setMessage({ kind: 'success', text: module.enabled ? `${module.label} disabled and removed from navigation. Saved data was not deleted.` : `${module.label} enabled for this workspace.` });
         } catch (error) {
             setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to update module' });
         } finally { setBusy(null); }

@@ -5,6 +5,7 @@ export type RestaurantBusinessType = 'dine_in' | 'takeaway' | 'both';
 
 export interface BusinessProfile {
     id: string;
+    publicCode: string;
     name: string;
     type: string | null;
     country: string | null;
@@ -17,6 +18,7 @@ export interface BusinessProfile {
     taxIdentifier: string | null;
     restaurantType: RestaurantBusinessType;
     logoUrl: string | null;
+    publicMenuEnabled: boolean;
     updatedAt: string | null;
 }
 
@@ -54,6 +56,7 @@ export const businessApi = {
             });
         } catch (error) { throw new Error(friendlyError(error, 'Unable to upload logo')); }
     },
+    setPublicMenuEnabled: (enabled: boolean) => http.patch<BusinessProfile>('/business/public-menu', { enabled }),
     getModules: () => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=restaurant'),
     setModuleEnabled: (moduleKey: string, enabled: boolean) => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
         workspaceKey: 'restaurant', enabled,

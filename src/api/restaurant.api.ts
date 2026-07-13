@@ -16,6 +16,7 @@ export interface RestaurantMenuItem {
     name: string;
     description: string | null;
     price: number;
+    imageUrl: string | null;
     isAvailable: boolean;
     prepTimeMinutes: number;
 }
@@ -179,6 +180,14 @@ export const restaurantApi = {
         description?: string;
         prep_time_minutes?: number;
     }) => http.post<RestaurantMenuItem>('/restaurant/menu/items', payload),
+
+    updateMenuCategory: (id: string, payload: { name: string }) =>
+        http.patch<RestaurantMenuCategory>(`/restaurant/menu/categories/${id}`, payload),
+
+    updateMenuItem: (id: string, payload: {
+        name?: string; description?: string; price?: number; categoryId?: string;
+        isAvailable?: boolean; prepTimeMinutes?: number; imageUrl?: string;
+    }) => http.patch<RestaurantMenuItem>(`/restaurant/menu/items/${id}`, payload),
 
     getTables: () => http.get<RestaurantTable[]>('/restaurant/tables'),
 
