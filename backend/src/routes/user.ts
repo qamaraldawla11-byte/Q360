@@ -60,6 +60,7 @@ const serializeUser = (user: typeof users.$inferSelect) => ({
     currency: user.currency,
     onboardingCompleted: user.onboardingCompleted,
     primaryWorkspace: user.primaryWorkspace,
+    moduleAccess: user.moduleAccess,
     workspaces: [],
 });
 

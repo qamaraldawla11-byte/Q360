@@ -62,12 +62,14 @@ export const SmeLayout = () => {
         if (manifest?.id !== 'restaurant') return modules;
         const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
         return modules.filter(module => {
+            const accessKey = module.id === 'floor' ? 'tables' : module.id === 'billing' ? 'payments' : module.id === 'reports' ? 'daily-report' : module.id;
+            if (user?.moduleAccess?.length && !['modules','settings'].includes(module.id) && !user.moduleAccess.includes(accessKey)) return false;
             if (module.id === 'floor') return enabled.get('tables') ?? true;
             if (module.id === 'inventory') return enabled.get('inventory') ?? true;
-            if (module.id === 'staff') return false;
+            if (module.id === 'staff') return enabled.get('staff') ?? true;
             return true;
         });
-    }, [businessModules, manifest]);
+    }, [businessModules, manifest, user]);
     const sections = useMemo(() => getSections(visibleManifestModules), [visibleManifestModules]);
 
     const currentModule = manifest?.modules

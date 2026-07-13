@@ -36,6 +36,7 @@ export interface User {
     // CRITICAL FLAGS (per architecture spec)
     onboardingCompleted: boolean;
     primaryWorkspace: string | null;
+    moduleAccess?: string[] | null;
 
     // MULTI-BUSINESS (future-ready)
     workspaces: WorkspaceRef[];

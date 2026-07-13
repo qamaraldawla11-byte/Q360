@@ -21,7 +21,7 @@ export const restaurantModulePolicies: readonly BusinessModulePolicy[] = [
     { moduleKey: 'payments', label: 'Orders & Payments', description: 'Protected service and payment completion.', category: 'Core', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'daily-report', label: 'Reports', description: 'Restaurant daily performance records.', category: 'Management', defaultEnabled: true, configurable: false, availability: 'ready' },
     { moduleKey: 'inventory', label: 'Inventory & Purchasing', description: 'Saved stock, suppliers, purchase orders, and receiving.', category: 'Operations', defaultEnabled: true, configurable: true, availability: 'ready' },
-    { moduleKey: 'staff', label: 'Staff / HR', description: 'Staff access, shifts, and HR planned for a later milestone.', category: 'Management', defaultEnabled: false, configurable: false, availability: 'preview' },
+    { moduleKey: 'staff', label: 'Staff / HR', description: 'Staff records, shifts, roles, module access, and invitations.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
 ];
 
 export const getModulePolicy = (workspaceKey: string, moduleKey: string) =>

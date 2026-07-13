@@ -1,59 +1,15 @@
-export const StaffView = () => {
-    const staff = [
-        { id: 1, name: 'Alice Walker', role: 'Manager', shift: 'Morning', status: 'Active' },
-        { id: 2, name: 'Bob Smith', role: 'Head Chef', shift: 'Full Day', status: 'Active' },
-        { id: 3, name: 'Charlie Brown', role: 'Server', shift: 'Evening', status: 'Active' },
-        { id: 4, name: 'Dana White', role: 'Server', shift: 'Evening', status: 'Break' },
-        { id: 5, name: 'Eddie Jones', role: 'Kitchen Porter', shift: 'Evening', status: 'Active' },
-    ];
-
-    return (
-        <div style={{ padding: 24 }}>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 8px' }}>Staff preview</h1>
-            <p style={{ margin: '0 0 16px', color: 'var(--fg-secondary)' }}>
-                Preview-only sample data. Staff records, shifts, and payroll are not production-ready yet.
-            </p>
-            <div style={{ marginBottom: 20, padding: 16, border: '1px solid #fed7aa', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontWeight: 700 }}>
-                Coming soon: these cards are static examples and are not connected to saved Restaurant staff.
-            </div>
-
-            <div className="restaurant-staff-grid" style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                {staff.map(person => (
-                    <div className="restaurant-staff-card" key={person.id} style={{
-                        width: '280px', background: 'white', color: '#0f172a', padding: '24px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)',
-                        display: 'flex', flexDirection: 'column', gap: '16px'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
-                                {person.name.split(' ').map(n => n[0]).join('')}
-                            </div>
-                            <div style={{
-                                padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600,
-                                background: person.status === 'Active' ? '#dcfce7' : '#fef9c3',
-                                color: person.status === 'Active' ? '#166534' : '#854d0e'
-                            }}>
-                                {person.status}
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style={{ fontWeight: 700, fontSize: '18px' }}>{person.name}</div>
-                            <div style={{ color: '#64748b', fontSize: '14px' }}>{person.role}</div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#64748b', marginTop: 'auto' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} />
-                            Shift: {person.shift}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            <style>{`
-                @media (max-width: 680px) {
-                    .restaurant-staff-grid { display: grid !important; grid-template-columns: 1fr; }
-                    .restaurant-staff-card { width: 100% !important; }
-                }
-            `}</style>
-        </div>
-    );
-};
+import { useCallback,useEffect,useState } from 'react';
+import { Clock,Mail,ShieldCheck,UserPlus,Users } from 'lucide-react';
+import { ModuleShell } from '@/components/shared/ModuleShell';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { staffApi,type StaffMember } from '@/api/staff.api';
+const MODULES=[['dashboard','Dashboard'],['pos','POS / Cashier'],['kds','Kitchen'],['menu','Menu'],['tables','Tables'],['inventory','Inventory'],['payments','Payments'],['daily-report','Reports']] as const;
+export const StaffView=()=>{const [staff,setStaff]=useState<StaffMember[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[form,setForm]=useState({name:'',email:'',role:'staff',moduleAccess:['dashboard'],shiftName:'',shiftStart:'',shiftEnd:''});
+ const load=useCallback(async()=>{try{setStaff(await staffApi.list());setError('')}catch{setError('Unable to load staff records.')}},[]);useEffect(()=>{void load()},[load]);
+ const invite=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setMessage('');try{const r=await staffApi.invite(form);setMessage(r.emailDelivered?'Invitation email sent.':'Staff saved, but email delivery is not configured. They can still sign in with the invited email.');setForm({name:'',email:'',role:'staff',moduleAccess:['dashboard'],shiftName:'',shiftStart:'',shiftEnd:''});await load()}catch{setError('Unable to invite staff member.')}finally{setBusy(false)}};
+ const toggle=(key:string)=>setForm(f=>({...f,moduleAccess:f.moduleAccess.includes(key)?f.moduleAccess.filter(x=>x!==key):[...f.moduleAccess,key]}));
+ return <ModuleShell><PageHeader title="Staff / HR" subtitle="Invite staff, assign roles and modules, and manage shift access." />{error&&<div className="staff-alert error">{error}</div>}{message&&<div className="staff-alert success">{message}</div>}
+ <div className="staff-summary"><article><Users/><b>{staff.length}</b><span>Total staff</span></article><article><ShieldCheck/><b>{staff.filter(x=>x.status==='active').length}</b><span>Active</span></article><article><Mail/><b>{staff.filter(x=>x.status==='invited').length}</b><span>Invited</span></article></div>
+ <form className="staff-invite" onSubmit={invite}><div className="staff-heading"><UserPlus/><div><h2>Invite staff member</h2><p>They accept through secure email OTP sign-in.</p></div></div><div className="staff-fields"><input required placeholder="Full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input required type="email" placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/><select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}><option value="manager">Manager</option><option value="waiter">Waiter / Server</option><option value="cashier">Cashier</option><option value="kitchen">Kitchen</option><option value="staff">Staff</option></select><input placeholder="Shift name" value={form.shiftName} onChange={e=>setForm({...form,shiftName:e.target.value})}/><input type="time" value={form.shiftStart} onChange={e=>setForm({...form,shiftStart:e.target.value})}/><input type="time" value={form.shiftEnd} onChange={e=>setForm({...form,shiftEnd:e.target.value})}/></div><div className="staff-modules"><b>Module access</b><div>{MODULES.map(([key,label])=><label key={key}><input type="checkbox" checked={form.moduleAccess.includes(key)} onChange={()=>toggle(key)}/>{label}</label>)}</div></div><button className="staff-primary" disabled={busy}><Mail size={16}/>{busy?'Sending...':'Send invitation'}</button></form>
+ <div className="staff-grid">{staff.map(person=><article key={person.id}><div className="staff-card-head"><div className="staff-avatar">{person.name.split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()}</div><span className={`staff-status ${person.status}`}>{person.status}</span></div><h3>{person.name}</h3><p>{person.email}</p><b className="staff-role">{person.role}</b><div className="staff-shift"><Clock size={14}/>{person.shiftName||'No shift'} {person.shiftStart&&`${person.shiftStart}–${person.shiftEnd||''}`}</div><div className="staff-access">{person.moduleAccess.map(x=><span key={x}>{MODULES.find(m=>m[0]===x)?.[1]||x}</span>)}</div><button onClick={async()=>{await staffApi.update(person.id,{status:person.status==='inactive'?'active':'inactive'});await load()}}>{person.status==='inactive'?'Activate':'Deactivate'}</button></article>)}</div>
+ <style>{`.staff-alert{padding:12px;margin-bottom:14px;border-radius:8px}.staff-alert.error{background:#fef2f2;color:#b91c1c}.staff-alert.success{background:#ecfdf5;color:#047857}.staff-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.staff-summary article{display:grid;grid-template-columns:38px 1fr;padding:15px;background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:12px}.staff-summary svg{grid-row:1/3;color:#f97316}.staff-summary b{font-size:23px}.staff-summary span{font-size:12px;color:#64748b}.staff-invite{padding:18px;margin-bottom:20px;background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:14px}.staff-heading{display:flex;gap:10px}.staff-heading svg{color:#f97316}.staff-heading h2{margin:0;font-size:18px}.staff-heading p{margin:3px 0 15px;color:#64748b;font-size:12px}.staff-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.staff-fields input,.staff-fields select{min-height:40px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a}.staff-modules{margin:14px 0}.staff-modules>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}.staff-modules label{padding:7px 9px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px}.staff-primary{min-height:40px;padding:8px 14px;display:flex;gap:7px;align-items:center;border:0;border-radius:8px;background:#f97316;color:#fff;font-weight:700}.staff-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:13px}.staff-grid article{padding:17px;background:#fff;color:#0f172a;border:1px solid #d8dee8;border-radius:14px}.staff-card-head{display:flex;justify-content:space-between}.staff-avatar{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:#fff7ed;color:#c2410c;font-weight:800}.staff-status{padding:5px 8px;height:max-content;border-radius:99px;font-size:11px}.staff-status.active{background:#dcfce7;color:#166534}.staff-status.invited{background:#dbeafe;color:#1e40af}.staff-status.inactive{background:#f1f5f9;color:#475569}.staff-grid h3{margin:12px 0 2px}.staff-grid p{margin:0;color:#64748b;font-size:12px}.staff-role{display:block;margin:8px 0;text-transform:capitalize}.staff-shift{display:flex;gap:6px;color:#64748b;font-size:12px}.staff-access{display:flex;flex-wrap:wrap;gap:5px;margin:12px 0}.staff-access span{padding:4px 6px;border-radius:6px;background:#f1f5f9;color:#475569;font-size:10px}.staff-grid article>button{padding:7px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569}@media(max-width:700px){.staff-fields{grid-template-columns:1fr}.staff-summary{grid-template-columns:1fr}}`}</style></ModuleShell>};

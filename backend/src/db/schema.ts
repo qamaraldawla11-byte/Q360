@@ -38,6 +38,7 @@ export const users = pgTable('users', {
     onboardingCompleted: boolean('onboarding_completed').default(false),
     businessId: text('business_id'),
     primaryWorkspace: text('primary_workspace'),
+    moduleAccess: jsonb('module_access').$type<string[]>(),
     createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -291,6 +292,22 @@ export const businesses = pgTable('businesses', {
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+export const staffMembers = pgTable('staff_members', {
+    id: text('id').primaryKey(), businessId: text('business_id').notNull(), userId: text('user_id'),
+    name: text('name').notNull(), email: text('email').notNull(), role: text('role').notNull(),
+    moduleAccess: jsonb('module_access').$type<string[]>().notNull().default([]),
+    shiftName: text('shift_name'), shiftStart: text('shift_start'), shiftEnd: text('shift_end'),
+    status: text('status').$type<'invited'|'active'|'inactive'>().notNull().default('invited'),
+    createdAt: timestamp('created_at').notNull().defaultNow(), updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, table => [uniqueIndex('staff_members_business_email_unique').on(table.businessId, table.email), index('staff_members_business_idx').on(table.businessId)]);
+
+export const staffInvitations = pgTable('staff_invitations', {
+    id: text('id').primaryKey(), businessId: text('business_id').notNull(), staffMemberId: text('staff_member_id').notNull(),
+    email: text('email').notNull(), role: text('role').notNull(), moduleAccess: jsonb('module_access').$type<string[]>().notNull().default([]),
+    status: text('status').$type<'pending'|'accepted'|'revoked'>().notNull().default('pending'),
+    invitedBy: text('invited_by').notNull(), createdAt: timestamp('created_at').notNull().defaultNow(), acceptedAt: timestamp('accepted_at'),
+}, table => [index('staff_invitations_email_idx').on(table.email), index('staff_invitations_business_idx').on(table.businessId)]);
 
 export const businessModules = pgTable('business_modules', {
     id: text('id').primaryKey(),

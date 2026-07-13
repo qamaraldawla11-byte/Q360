@@ -2,7 +2,7 @@ import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { otpCodes, users } from '../db/schema.js';
+import { businesses, otpCodes, staffInvitations, staffMembers, users } from '../db/schema.js';
 import { generateToken, authMiddleware } from '../middleware/auth.js';
 import { sendOtpEmail } from '../services/email.js';
 import type { AppEnv } from '../types/app.js';
@@ -155,25 +155,45 @@ auth.post('/verify', async (c) => {
         return c.json({ error: 'This code has already been used' }, 400);
     }
 
+    const invitation = await first(db.select().from(staffInvitations).where(and(eq(staffInvitations.email, email), eq(staffInvitations.status, 'pending'))).orderBy(desc(staffInvitations.createdAt)));
     let user = await first(db.select().from(users).where(eq(users.email, email)));
     if (!user) {
         const newUserId = `usr_${randomUUID()}`;
-        const businessId = `biz_${randomUUID()}`;
-        await ensureBusinessRecord(businessId, `${email.split('@')[0]}'s Business`, 'retail');
+        const businessId = invitation?.businessId || `biz_${randomUUID()}`;
+        if (!invitation) await ensureBusinessRecord(businessId, `${email.split('@')[0]}'s Business`, 'retail');
+        const invitedBusiness = invitation ? await first(db.select().from(businesses).where(eq(businesses.id, businessId))) : undefined;
         await db.insert(users).values({
             id: newUserId,
             email,
             name: email.split('@')[0],
-            role: 'user',
+            role: invitation?.role || 'user',
             businessId,
-            onboardingCompleted: false,
-            primaryWorkspace: null,
+            moduleAccess: invitation?.moduleAccess || null,
+            userType: invitation ? 'sme' : null,
+            segment: invitation ? 'restaurant' : null,
+            businessName: invitedBusiness?.name || null,
+            onboardingCompleted: Boolean(invitation),
+            primaryWorkspace: invitation ? '/app/restaurant' : null,
         });
         user = await first(db.select().from(users).where(eq(users.id, newUserId)));
     }
 
     if (!user) {
         return c.json({ error: 'Failed to create user' }, 500);
+    }
+
+    if (invitation && (!user.onboardingCompleted || user.businessId === invitation.businessId)) {
+        const invitedBusiness = await first(db.select().from(businesses).where(eq(businesses.id, invitation.businessId)));
+        await db.transaction(async tx => {
+            await tx.update(users).set({ businessId: invitation.businessId, role: invitation.role, moduleAccess: invitation.moduleAccess, userType: 'sme', segment: 'restaurant', businessName: invitedBusiness?.name || user!.businessName, onboardingCompleted: true, primaryWorkspace: '/app/restaurant' }).where(eq(users.id, user!.id));
+            await tx.update(staffInvitations).set({ status: 'accepted', acceptedAt: new Date() }).where(eq(staffInvitations.id, invitation.id));
+            await tx.update(staffMembers).set({ userId: user!.id, status: 'active', updatedAt: new Date() }).where(and(eq(staffMembers.id, invitation.staffMemberId), eq(staffMembers.businessId, invitation.businessId)));
+        });
+        user = await first(db.select().from(users).where(eq(users.id, user.id)));
+    }
+
+    if (!user) {
+        return c.json({ error: 'Failed to activate invited user' }, 500);
     }
 
     if (user.isLocked || user.status === 'inactive') {
@@ -210,6 +230,7 @@ auth.post('/verify', async (c) => {
             currency: user.currency,
             onboardingCompleted: user.onboardingCompleted,
             primaryWorkspace: user.primaryWorkspace,
+            moduleAccess: user.moduleAccess,
             workspaces: [],
         },
     });
