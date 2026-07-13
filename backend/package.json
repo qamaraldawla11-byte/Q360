@@ -21,6 +21,7 @@
         "verify:business-modules": "tsx src/scripts/verify_business_modules.ts",
         "verify:inventory-procurement": "tsx src/scripts/verify_inventory_procurement.ts",
         "verify:staff-hr": "tsx src/scripts/verify_staff_hr.ts",
+        "verify:purchases-expenses": "tsx src/scripts/verify_purchases_expenses.ts",
         "verify:customers": "tsx src/scripts/verify_customers.ts",
         "verify:quotes": "tsx src/scripts/verify_quotes.ts",
         "verify:jwt-init": "tsx src/scripts/verify_jwt_init.ts",

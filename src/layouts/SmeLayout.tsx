@@ -22,7 +22,7 @@ const SME_MANIFESTS: VerticalManifest[] = [
     schoolManifest,
 ];
 
-const MANAGEMENT_MODULES = new Set(['staff', 'reports', 'modules', 'settings']);
+const MANAGEMENT_MODULES = new Set(['staff', 'reports', 'finance', 'modules', 'settings']);
 
 function getSections(modules: VerticalModule[]) {
     return [
@@ -64,7 +64,7 @@ export const SmeLayout = () => {
         if (manifest?.id !== 'restaurant') return modules;
         const enabled = new Map(businessModules.map(module => [module.moduleKey, module.enabled]));
         return modules.filter(module => {
-            if (['staff', 'modules', 'settings'].includes(module.id)) return canManageRestaurant;
+            if (['staff', 'finance', 'modules', 'settings'].includes(module.id)) return canManageRestaurant;
             const accessKey = RESTAURANT_MODULE_ACCESS[module.id];
             if (accessKey && !hasRestaurantModuleAccess(user, accessKey)) return false;
             if (module.id === 'floor') return enabled.get('tables') ?? true;

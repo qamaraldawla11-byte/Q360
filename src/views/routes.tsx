@@ -57,6 +57,7 @@ const RestaurantOrderHistory = lazy(() => import('@/modules/commerce/restaurant/
 const RestaurantStaff = lazy(() => import('@/modules/commerce/restaurant/views/StaffView').then(m => ({ default: m.StaffView })));
 const RestaurantInventory = lazy(() => import('@/modules/commerce/restaurant/views/InventoryView').then(m => ({ default: m.InventoryView })));
 const RestaurantReports = lazy(() => import('@/modules/commerce/restaurant/views/ReportsView').then(m => ({ default: m.ReportsView })));
+const RestaurantFinance = lazy(() => import('@/modules/commerce/restaurant/views/FinanceView').then(m => ({ default: m.FinanceView })));
 const RestaurantModules = lazy(() => import('@/modules/commerce/restaurant/views/ModulesOverviewView').then(m => ({ default: m.ModulesOverviewView })));
 const RestaurantSettings = lazy(() => import('@/modules/commerce/restaurant/views/SettingsView').then(m => ({ default: m.SettingsView })));
 const RestaurantAssistant = lazy(() => import('@/modules/commerce/restaurant/views/AssistantView').then(m => ({ default: m.AssistantView })));
@@ -236,6 +237,7 @@ export const appRoutes: RouteObject[] = [
                     { path: 'staff', element: <RestaurantAccessGuard management><RestaurantStaff /></RestaurantAccessGuard> },
                     { path: 'inventory', element: <RestaurantAccessGuard accessKey="inventory"><RestaurantInventory /></RestaurantAccessGuard> },
                     { path: 'reports', element: <RestaurantAccessGuard accessKey="daily-report"><RestaurantReports /></RestaurantAccessGuard> },
+                    { path: 'finance', element: <RestaurantAccessGuard management><RestaurantFinance /></RestaurantAccessGuard> },
                     { path: 'modules', element: <RestaurantAccessGuard management><RestaurantModules /></RestaurantAccessGuard> },
                     { path: 'settings', element: <RestaurantAccessGuard management><RestaurantSettings /></RestaurantAccessGuard> },
                     { path: 'profile', element: <RestaurantProfile /> },

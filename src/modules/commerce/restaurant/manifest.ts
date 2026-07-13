@@ -11,6 +11,7 @@ import {
     Settings,
     Package,
     Blocks,
+    WalletCards,
 } from 'lucide-react';
 
 export const restaurantManifest: VerticalManifest = {
@@ -32,6 +33,7 @@ export const restaurantManifest: VerticalManifest = {
         { id: 'billing', label: 'Order History', path: '/billing', icon: Receipt },
         { id: 'staff', label: 'Staff / HR', path: '/staff', icon: Users },
         { id: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },
+        { id: 'finance', label: 'Finance & Costs', path: '/finance', icon: WalletCards },
         { id: 'modules', label: 'Modules', path: '/modules', icon: Blocks },
         { id: 'settings', label: 'Settings', path: '/settings', icon: Settings },
     ],

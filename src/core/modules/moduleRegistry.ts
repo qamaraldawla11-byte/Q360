@@ -201,6 +201,17 @@ export const q360ModuleRegistry: readonly Q360ModuleDefinition[] = [
         routePath: '/app/restaurant/staff',
     },
     {
+        moduleKey: 'finance',
+        workspaceKey: 'restaurant',
+        label: 'Finance & Costs',
+        description: 'Manual purchases, expenses, bills, salaries, and profit/loss visibility.',
+        status: 'enabled',
+        category: 'reports',
+        isShared: true,
+        riskLevel: 'high',
+        routePath: '/app/restaurant/finance',
+    },
+    {
         moduleKey: 'settings',
         workspaceKey: 'restaurant',
         label: 'Settings',

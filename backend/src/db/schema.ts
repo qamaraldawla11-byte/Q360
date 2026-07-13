@@ -259,6 +259,36 @@ export const purchaseOrders = pgTable('purchase_orders', {
     index('purchase_orders_business_idx').on(table.businessId),
 ]);
 
+export const purchaseExpenseRecords = pgTable('purchase_expense_records', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    workspaceContext: text('workspace_context').$type<'restaurant'>().notNull().default('restaurant'),
+    recordType: text('record_type').$type<'purchase' | 'expense'>().notNull(),
+    status: text('status').$type<'saved' | 'voided'>().notNull().default('saved'),
+    supplierName: text('supplier_name'),
+    supplierId: text('supplier_id'),
+    category: text('category').notNull(),
+    amountMinor: integer('amount_minor').notNull(),
+    currency: text('currency').notNull(),
+    recordDate: text('record_date').notNull(),
+    reference: text('reference'),
+    notes: text('notes'),
+    source: text('source').$type<'manual' | 'approved_extraction'>().notNull().default('manual'),
+    approvedDraftId: text('approved_draft_id'),
+    duplicateKeyExact: text('duplicate_key_exact'),
+    duplicateFingerprint: text('duplicate_fingerprint'),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    voidedAt: timestamp('voided_at'),
+    voidedBy: text('voided_by'),
+}, (table) => [
+    index('purchase_expense_records_business_idx').on(table.businessId),
+    index('purchase_expense_records_business_date_idx').on(table.businessId, table.recordDate),
+    index('purchase_expense_records_business_exact_idx').on(table.businessId, table.duplicateKeyExact),
+]);
+
 export const stockMovements = pgTable('stock_movements', {
     id: text('id').primaryKey(),
     businessId: text('business_id').notNull(),
@@ -374,6 +404,7 @@ export type RestaurantOrder = typeof restaurantOrders.$inferSelect;
 export type RestaurantOrderItem = typeof restaurantOrderItems.$inferSelect;
 export type KdsTicket = typeof kdsTickets.$inferSelect;
 export type RestaurantPayment = typeof restaurantPayments.$inferSelect;
+export type PurchaseExpenseRecord = typeof purchaseExpenseRecords.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
