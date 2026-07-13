@@ -358,6 +358,13 @@ try {
         };
         recentOrders: { id: string }[];
     }>(`/api/restaurant/reports/daily?date=${todayDateParam()}`, undefined, { role: 'manager' });
+    const rangeReport = await request<{
+        summary: { totalOrders: number; paidOrders: number; openOrders: number; paidRevenueCents: number; averagePaidOrderCents: number };
+        serviceBreakdown: { dineIn: number; takeaway: number };
+        paymentBreakdown: { method: string; count: number; amountCents: number }[];
+        topItems: { name: string; quantity: number }[];
+        dailySales: { date: string; orders: number; revenueCents: number }[];
+    }>(`/api/restaurant/reports/summary?from=${todayDateParam()}&to=${todayDateParam()}`, undefined, { role: 'manager' });
     const duplicatePayment = await requestResponse(`/api/restaurant/orders/${created.id}/payments`, {
         method: 'POST',
         body: JSON.stringify({ method: 'cash', amount: ready.total / 100 }),
@@ -394,6 +401,7 @@ try {
         },
         dashboard,
         dailyReport,
+        rangeReport,
         kdsTicket: doneTicket,
         duplicatePayment,
         paymentCountAfterDuplicate: paymentsAfterDuplicate.length,
@@ -421,6 +429,17 @@ try {
         result.dailyReport.summary.dineInOrders !== 1 ||
         result.dailyReport.summary.takeawayOrders !== 1 ||
         result.dailyReport.recentOrders.length !== 2 ||
+        result.rangeReport.summary.totalOrders !== 2 ||
+        result.rangeReport.summary.paidOrders !== 1 ||
+        result.rangeReport.summary.openOrders !== 1 ||
+        result.rangeReport.summary.paidRevenueCents !== paid.total ||
+        result.rangeReport.summary.averagePaidOrderCents !== paid.total ||
+        result.rangeReport.serviceBreakdown.dineIn !== 1 ||
+        result.rangeReport.serviceBreakdown.takeaway !== 1 ||
+        result.rangeReport.paymentBreakdown.find(entry => entry.method === 'cash')?.count !== 1 ||
+        result.rangeReport.dailySales[0]?.orders !== 2 ||
+        result.rangeReport.dailySales[0]?.revenueCents !== paid.total ||
+        !result.rangeReport.topItems.some(item => item.quantity >= 1) ||
         result.kdsTicket.status !== 'done' ||
         !result.kdsTicket.completedAt ||
         result.duplicatePayment.status !== 409 ||

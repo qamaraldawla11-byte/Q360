@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Hono, type Context } from 'hono';
-import { and, asc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import {
     kdsTickets,
@@ -1591,6 +1591,43 @@ restaurant.get('/reports/daily', async (c) => {
         },
         statusBreakdown,
         recentOrders: reportOrders.slice(0, 10),
+    });
+});
+
+restaurant.get('/reports/summary', async (c) => {
+    const from = c.req.query('from') || '';
+    const to = c.req.query('to') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return c.json({ error: 'From and to dates are required' }, 400);
+    const start = new Date(`${from}T00:00:00.000Z`);
+    const inclusiveEnd = new Date(`${to}T00:00:00.000Z`);
+    const end = new Date(inclusiveEnd.getTime() + 86_400_000);
+    const days = (end.getTime() - start.getTime()) / 86_400_000;
+    if (!Number.isFinite(days) || days < 1 || days > 366) return c.json({ error: 'Date range must be from 1 to 366 days' }, 400);
+    const businessId = c.get('businessId');
+    const orders = await db.select().from(restaurantOrders).where(and(eq(restaurantOrders.businessId, businessId), gte(restaurantOrders.createdAt, start), lt(restaurantOrders.createdAt, end))).orderBy(desc(restaurantOrders.createdAt));
+    const orderIds = orders.map(order => order.id);
+    const items = orderIds.length ? await db.select().from(restaurantOrderItems).where(inArray(restaurantOrderItems.orderId, orderIds)) : [];
+    const payments = orderIds.length ? await db.select().from(restaurantPayments).where(and(eq(restaurantPayments.businessId, businessId), inArray(restaurantPayments.orderId, orderIds), eq(restaurantPayments.status, 'completed'))) : [];
+    const paidOrderIds = new Set(payments.map(payment => payment.orderId));
+    const paidRevenueCents = Math.round(payments.reduce((sum, payment) => sum + payment.amount * 100, 0));
+    const serviceBreakdown = { dineIn: 0, takeaway: 0 };
+    const statusBreakdown: Record<string, number> = {};
+    const dailySales: Record<string, { date: string; orders: number; revenueCents: number }> = {};
+    for (const order of orders) {
+        const orderType = orderTypeFor(order); serviceBreakdown[orderType === 'dine_in' ? 'dineIn' : 'takeaway'] += 1;
+        const status = legacyStatusFor(orderType, serviceStatusFor(order), paymentStatusFor(order)); statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+        const date = order.createdAt.toISOString().slice(0, 10); dailySales[date] ||= { date, orders: 0, revenueCents: 0 }; dailySales[date].orders += 1;
+        if (paidOrderIds.has(order.id)) dailySales[date].revenueCents += order.total;
+    }
+    const paymentBreakdown: Record<string, { method: string; count: number; amountCents: number }> = {};
+    for (const payment of payments) { paymentBreakdown[payment.method] ||= { method: payment.method, count: 0, amountCents: 0 }; paymentBreakdown[payment.method].count += 1; paymentBreakdown[payment.method].amountCents += Math.round(payment.amount * 100); }
+    const topItems: Record<string, { name: string; quantity: number; revenueCents: number }> = {};
+    for (const item of items) { topItems[item.name] ||= { name: item.name, quantity: 0, revenueCents: 0 }; topItems[item.name].quantity += item.quantity; topItems[item.name].revenueCents += item.quantity * item.unitPrice; }
+    return c.json({
+        from, to,
+        summary: { totalOrders: orders.length, paidOrders: paidOrderIds.size, openOrders: orders.filter(order => paymentStatusFor(order) !== 'paid' && serviceStatusFor(order) !== 'cancelled').length, cancelledOrders: orders.filter(order => serviceStatusFor(order) === 'cancelled').length, paidRevenueCents, averagePaidOrderCents: paidOrderIds.size ? Math.round(paidRevenueCents / paidOrderIds.size) : 0 },
+        serviceBreakdown, statusBreakdown, paymentBreakdown: Object.values(paymentBreakdown), topItems: Object.values(topItems).sort((a,b)=>b.quantity-a.quantity).slice(0,10), dailySales: Object.values(dailySales).sort((a,b)=>a.date.localeCompare(b.date)),
+        recentOrders: orders.slice(0,50).map(order => ({ id: order.id, displayOrderNumber: displayOrderNumberFor(order), orderType: orderTypeFor(order), status: legacyStatusFor(orderTypeFor(order), serviceStatusFor(order), paymentStatusFor(order)), paymentStatus: paymentStatusFor(order), total: order.total, createdAt: order.createdAt })),
     });
 });
 
