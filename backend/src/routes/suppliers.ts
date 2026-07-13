@@ -1,11 +1,12 @@
 import { randomUUID } from 'crypto';
 import { Hono } from 'hono';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { inventoryItems, purchaseOrders, stockMovements, suppliers } from '../db/schema.js';
+import { businesses, inventoryItems, purchaseExpenseRecords, purchaseOrders, stockMovements, suppliers } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
+import { duplicateKeysFor } from '../services/purchaseExpenses.js';
 
 const suppliersRouter = new Hono<AppEnv>();
 suppliersRouter.use('/*', authMiddleware);
@@ -88,15 +89,45 @@ suppliersRouter.patch('/procurement/orders/:id/receive', requireRole(['user', 'o
     if (order.status !== 'ordered') return c.json({ error: 'Purchase order cannot be received' }, 409);
     const item = await first(db.select().from(inventoryItems).where(and(eq(inventoryItems.id, order.inventoryItemId), eq(inventoryItems.businessId, businessId))));
     if (!item) return c.json({ error: 'Inventory item not found' }, 404);
-    const newCurrent = item.current + order.quantity;
-    const status = newCurrent <= item.min / 2 ? 'critical' : newCurrent <= item.min ? 'low' : 'ok';
-    await db.transaction(async tx => {
-        await tx.update(inventoryItems).set({ current: newCurrent, status }).where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)));
-        await tx.update(purchaseOrders).set({ status: 'received', receivedAt: new Date() }).where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.businessId, businessId)));
-        await tx.insert(stockMovements).values({ id: randomUUID(), businessId, inventoryItemId: item.id, purchaseOrderId: id, delta: order.quantity, reason: 'purchase_received', createdBy: c.get('userId') });
-    });
+    const supplier = order.supplierId ? await first(db.select().from(suppliers).where(and(eq(suppliers.id, order.supplierId), eq(suppliers.businessId, businessId)))) : null;
+    const business = await first(db.select({ currency: businesses.currency }).from(businesses).where(eq(businesses.id, businessId)));
+    const receivedAt = new Date();
+    let newCurrent = item.current;
+    let financeRecordId: string | null = null;
+    try {
+        await db.transaction(async tx => {
+            const [receivedOrder] = await tx.update(purchaseOrders).set({ status: 'received', receivedAt })
+                .where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.businessId, businessId), eq(purchaseOrders.status, 'ordered')))
+                .returning({ id: purchaseOrders.id });
+            if (!receivedOrder) throw new Error('PURCHASE_ORDER_ALREADY_RECEIVED');
+
+            const [updatedItem] = await tx.update(inventoryItems)
+                .set({ current: sql`${inventoryItems.current} + ${order.quantity}` })
+                .where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)))
+                .returning({ current: inventoryItems.current, min: inventoryItems.min });
+            if (!updatedItem) throw new Error('INVENTORY_ITEM_NOT_FOUND');
+            newCurrent = updatedItem.current;
+            const status = newCurrent <= updatedItem.min / 2 ? 'critical' : newCurrent <= updatedItem.min ? 'low' : 'ok';
+            await tx.update(inventoryItems).set({ status }).where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)));
+            await tx.insert(stockMovements).values({ id: randomUUID(), businessId, inventoryItemId: item.id, purchaseOrderId: id, delta: order.quantity, reason: 'purchase_received', createdBy: c.get('userId') });
+
+            const amountMinor = Math.round(order.quantity * order.unitCost * 100);
+            if (amountMinor > 0) {
+                financeRecordId = randomUUID();
+                const recordDate = receivedAt.toISOString().slice(0, 10);
+                const reference = `PUR-${recordDate.replace(/-/g, '')}-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+                const financeInput = { recordType: 'purchase' as const, supplierName: supplier?.name || null, supplierId: supplier?.id || null, category: 'Ingredients & stock', amountMinor, currency: business?.currency || 'USD', recordDate, reference, notes: `Stock received: ${order.quantity} ${item.unit} ${item.name}` };
+                const duplicateKeys = duplicateKeysFor(financeInput);
+                await tx.insert(purchaseExpenseRecords).values({ id: financeRecordId, businessId, ...financeInput, purchaseOrderId: id, source: 'purchase_order', duplicateKeyExact: duplicateKeys.exact, duplicateFingerprint: duplicateKeys.fingerprint, createdBy: c.get('userId'), updatedBy: c.get('userId'), createdAt: receivedAt, updatedAt: receivedAt });
+            }
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === 'PURCHASE_ORDER_ALREADY_RECEIVED') return c.json({ error: 'Purchase order already received' }, 409);
+        if (error instanceof Error && error.message === 'INVENTORY_ITEM_NOT_FOUND') return c.json({ error: 'Inventory item not found' }, 404);
+        throw error;
+    }
     await logAudit(c, 'PURCHASE_ORDER_RECEIVED', 'PURCHASE_ORDER', id, { itemId: item.id, quantity: order.quantity, newCurrent });
-    return c.json({ ...order, status: 'received', receivedAt: new Date().toISOString(), newStock: newCurrent });
+    return c.json({ ...order, status: 'received', receivedAt: receivedAt.toISOString(), newStock: newCurrent, financeRecordId });
 });
 
 export default suppliersRouter;

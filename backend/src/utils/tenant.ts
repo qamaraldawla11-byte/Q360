@@ -15,11 +15,11 @@ const stableTenantId = (value: string | null | undefined) => {
 export const resolveJwtBusinessId = (user: Pick<User, 'businessId'>) =>
     stableTenantId(user.businessId) ?? DEFAULT_BUSINESS_ID;
 
-export const ensureBusinessRecord = async (businessId: string, name: string, type: string) => {
+export const ensureBusinessRecord = async (businessId: string, name: string, type: string, ownerUserId?: string) => {
     const existing = await first(db.select().from(businesses).where(eq(businesses.id, businessId)));
     if (existing) {
         await db.update(businesses)
-            .set({ name, type })
+            .set({ name, type, ...(ownerUserId && !existing.ownerUserId ? { ownerUserId } : {}) })
             .where(eq(businesses.id, businessId));
         return businessId;
     }
@@ -29,6 +29,7 @@ export const ensureBusinessRecord = async (businessId: string, name: string, typ
         name,
         type,
         status: 'active',
+        ownerUserId: ownerUserId || null,
     });
     return businessId;
 };

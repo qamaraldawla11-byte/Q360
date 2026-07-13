@@ -288,8 +288,9 @@ export const purchaseExpenseRecords = pgTable('purchase_expense_records', {
     recordDate: text('record_date').notNull(),
     reference: text('reference'),
     notes: text('notes'),
-    source: text('source').$type<'manual' | 'approved_extraction'>().notNull().default('manual'),
+    source: text('source').$type<'manual' | 'approved_extraction' | 'purchase_order'>().notNull().default('manual'),
     approvedDraftId: text('approved_draft_id'),
+    purchaseOrderId: text('purchase_order_id'),
     duplicateKeyExact: text('duplicate_key_exact'),
     duplicateFingerprint: text('duplicate_fingerprint'),
     createdBy: text('created_by').notNull(),
@@ -302,6 +303,7 @@ export const purchaseExpenseRecords = pgTable('purchase_expense_records', {
     index('purchase_expense_records_business_idx').on(table.businessId),
     index('purchase_expense_records_business_date_idx').on(table.businessId, table.recordDate),
     index('purchase_expense_records_business_exact_idx').on(table.businessId, table.duplicateKeyExact),
+    uniqueIndex('purchase_expense_records_purchase_order_uidx').on(table.purchaseOrderId),
 ]);
 
 export const stockMovements = pgTable('stock_movements', {
@@ -321,6 +323,7 @@ export const stockMovements = pgTable('stock_movements', {
 // Businesses table
 export const businesses = pgTable('businesses', {
     id: text('id').primaryKey(),
+    ownerUserId: text('owner_user_id'),
     publicCode: text('public_code').unique(),
     name: text('name').notNull(),
     type: text('type').default('retail'),

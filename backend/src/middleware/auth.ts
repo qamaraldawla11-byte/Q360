@@ -3,6 +3,7 @@ import { Context, Next } from 'hono';
 import { verify } from 'hono/jwt';
 import type { AppEnv } from '../types/app.js';
 import { DEFAULT_BUSINESS_ID, isWorkspaceRoute } from '../utils/tenant.js';
+import { resolveEffectiveBusinessRole } from '../services/businessOwnership.js';
 
 // SECURITY: JWT_SECRET must be set in environment. No fallback allowed.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -38,12 +39,17 @@ export const authMiddleware = async (c: Context<AppEnv>, next: Next) => {
         // Attach user info to context
         c.set('userId', payload.sub);
         c.set('userEmail', payload.email);
-        c.set('userRole', payload.role);
         // Default to the seeded demo tenant only for missing legacy tokens.
         if (isWorkspaceRoute(payload.businessId)) {
             return c.json({ error: 'Unauthorized: Invalid tenant identity' }, 401);
         }
-        c.set('businessId', payload.businessId || DEFAULT_BUSINESS_ID);
+        const businessId = payload.businessId || DEFAULT_BUSINESS_ID;
+        c.set('businessId', businessId);
+        c.set('userRole', await resolveEffectiveBusinessRole({
+            userId: payload.sub,
+            businessId,
+            tokenRole: payload.role,
+        }));
 
         await next();
     } catch {

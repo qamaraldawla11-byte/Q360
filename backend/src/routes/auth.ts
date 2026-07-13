@@ -7,6 +7,7 @@ import { generateToken, authMiddleware } from '../middleware/auth.js';
 import { sendOtpEmail } from '../services/email.js';
 import type { AppEnv } from '../types/app.js';
 import { ensureBusinessRecord, isWorkspaceRoute, resolveJwtBusinessId } from '../utils/tenant.js';
+import { resolveEffectiveBusinessRole } from '../services/businessOwnership.js';
 
 const auth = new Hono<AppEnv>();
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -160,13 +161,13 @@ auth.post('/verify', async (c) => {
     if (!user) {
         const newUserId = `usr_${randomUUID()}`;
         const businessId = invitation?.businessId || `biz_${randomUUID()}`;
-        if (!invitation) await ensureBusinessRecord(businessId, `${email.split('@')[0]}'s Business`, 'retail');
+        if (!invitation) await ensureBusinessRecord(businessId, `${email.split('@')[0]}'s Business`, 'retail', newUserId);
         const invitedBusiness = invitation ? await first(db.select().from(businesses).where(eq(businesses.id, businessId))) : undefined;
         await db.insert(users).values({
             id: newUserId,
             email,
             name: email.split('@')[0],
-            role: invitation?.role || 'user',
+            role: invitation?.role || 'owner',
             businessId,
             moduleAccess: invitation?.moduleAccess || null,
             userType: invitation ? 'sme' : null,
@@ -208,6 +209,13 @@ auth.post('/verify', async (c) => {
             .where(eq(users.id, user.id));
         user = { ...user, businessId };
     }
+
+    const effectiveRole = await resolveEffectiveBusinessRole({
+        userId: user.id,
+        businessId: resolveJwtBusinessId(user),
+        tokenRole: user.role,
+    });
+    if (effectiveRole !== user.role) user = { ...user, role: effectiveRole };
 
     const token = await generateToken({
         sub: user.id,

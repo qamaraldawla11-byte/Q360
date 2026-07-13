@@ -16,6 +16,11 @@ type InputBody = Partial<PurchaseExpenseInput> & { confirmDuplicate?: unknown; b
 type DuplicateSeverity = 'exact_record_match' | 'similar_supplier_amount_date' | 'similar_reference';
 type DuplicateWarning = { severity: DuplicateSeverity; recordId: string; message: string };
 
+const generatedReference = (recordType: 'purchase' | 'expense', recordDate: string) => {
+    const prefix = recordType === 'purchase' ? 'PUR' : 'EXP';
+    return `${prefix}-${recordDate.replace(/-/g, '')}-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+};
+
 const warningMessage = (severity: DuplicateSeverity) => severity === 'exact_record_match'
     ? 'A saved record has the same supplier, reference, amount, and currency.'
     : severity === 'similar_reference'
@@ -96,7 +101,12 @@ router.post('/', async c => {
         return c.json({ error: 'Potential duplicate requires confirmation', requiresConfirmation: true, warnings: duplicate.warnings }, 409);
     }
     const id = randomUUID(), now = new Date();
-    const [created] = await db.insert(purchaseExpenseRecords).values({ id, businessId, ...parsed.input, duplicateKeyExact: duplicate.keys.exact, duplicateFingerprint: duplicate.keys.fingerprint, createdBy: c.get('userId'), updatedBy: c.get('userId'), createdAt: now, updatedAt: now }).returning();
+    const finalInput = parsed.input.reference ? parsed.input : {
+        ...parsed.input,
+        reference: generatedReference(parsed.input.recordType, parsed.input.recordDate),
+    };
+    const finalKeys = duplicateKeysFor(finalInput);
+    const [created] = await db.insert(purchaseExpenseRecords).values({ id, businessId, ...finalInput, duplicateKeyExact: finalKeys.exact, duplicateFingerprint: finalKeys.fingerprint, createdBy: c.get('userId'), updatedBy: c.get('userId'), createdAt: now, updatedAt: now }).returning();
     await logAudit(c, 'PURCHASE_EXPENSE_CREATED', 'PURCHASE_EXPENSE', id, { recordType: created.recordType, amountMinor: created.amountMinor, currency: created.currency, recordDate: created.recordDate, category: created.category, duplicateWarningCount: duplicate.warnings.length });
     return c.json(created, 201);
 });

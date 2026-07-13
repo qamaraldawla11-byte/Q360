@@ -38,11 +38,12 @@ try {
     const adminA = token(userIds[0], businessIds[0]), adminB = token(userIds[1], businessIds[1]), managerA = token('manager_finance', businessIds[0], 'manager');
     const inventoryBefore = await db.select().from(inventoryItems).where(eq(inventoryItems.businessId, businessIds[0]));
     const paymentsBefore = await db.select().from(restaurantPayments).where(eq(restaurantPayments.businessId, businessIds[0]));
-    const payload = { recordType: 'expense', supplierName: 'Electric Company', category: 'Utilities', amountMinor: 1000, currency: 'USD', recordDate: new Date().toISOString().slice(0, 10), reference: 'INV-100' };
+    const payload = { recordType: 'expense', supplierName: 'Electric Company', category: 'Utilities', amountMinor: 1000, currency: 'USD', recordDate: new Date().toISOString().slice(0, 10), reference: '' };
     const create = await request(adminA, '/api/purchases-expenses', { method: 'POST', body: JSON.stringify({ ...payload, businessId: businessIds[1] }) });
     if (create.status !== 201) throw new Error(`Create failed ${create.status}: ${await create.text()}`);
-    const created = await create.json() as { id: string; businessId: string };
+    const created = await create.json() as { id: string; businessId: string; reference: string | null };
     if (created.businessId !== businessIds[0]) throw new Error('Payload businessId overrode JWT tenant');
+    if (!created.reference || !/^EXP-\d{8}-[A-F0-9]{8}$/.test(created.reference)) throw new Error('Missing automatic expense reference');
     const duplicate = await request(adminA, '/api/purchases-expenses', { method: 'POST', body: JSON.stringify(payload) });
     if (duplicate.status !== 409) throw new Error(`Duplicate was not held for confirmation: ${duplicate.status}`);
     const confirmed = await request(adminA, '/api/purchases-expenses', { method: 'POST', body: JSON.stringify({ ...payload, confirmDuplicate: true }) });
@@ -64,7 +65,7 @@ try {
     if (inventoryAfter[0]?.current !== inventoryBefore[0]?.current || paymentsAfter.length !== paymentsBefore.length) throw new Error('Finance record changed inventory or payments');
     const audits = await db.select().from(auditLogs).where(and(eq(auditLogs.businessId, businessIds[0]), eq(auditLogs.entity, 'PURCHASE_EXPENSE')));
     if (!audits.some(row => row.action === 'PURCHASE_EXPENSE_CREATED') || !audits.some(row => row.action === 'PURCHASE_EXPENSE_VOIDED')) throw new Error('Expected audit records missing');
-    console.log(JSON.stringify({ jwtTenantDerived: true, ownerAdminProtected: true, duplicateConfirmation: true, tenantIsolation: true, paidRevenueSummary: true, inventoryUnchanged: true, paymentsUnchanged: true, auditLogged: true }, null, 2));
+    console.log(JSON.stringify({ jwtTenantDerived: true, ownerAdminProtected: true, automaticReference: true, duplicateConfirmation: true, tenantIsolation: true, paidRevenueSummary: true, inventoryUnchanged: true, paymentsUnchanged: true, auditLogged: true }, null, 2));
 } catch (error) {
     console.error('Purchases/expenses verification failed:', error); process.exitCode = 1;
 } finally {

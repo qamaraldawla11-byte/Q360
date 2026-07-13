@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { businesses, staffMembers, users } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { ensureUserBusiness } from '../utils/tenant.js';
@@ -103,6 +103,18 @@ userRoutes.put('/profile', async (c) => {
         return c.json({ error: 'User not found' }, 404);
     }
 
+    const currentUser = await first(db.select().from(users).where(eq(users.id, userId)));
+    const staffMembership = await first(db.select({ id: staffMembers.id }).from(staffMembers).where(and(
+        eq(staffMembers.businessId, businessId), eq(staffMembers.userId, userId),
+    )));
+    const business = await first(db.select().from(businesses).where(eq(businesses.id, businessId)));
+    const creatorRole = currentUser?.role === 'user' || currentUser?.role === 'owner';
+    const canClaimOwnership = userType === 'sme' && creatorRole && !staffMembership && (!business?.ownerUserId || business.ownerUserId === userId);
+    if (canClaimOwnership && !business?.ownerUserId) {
+        await db.update(businesses).set({ ownerUserId: userId, updatedAt: new Date() })
+            .where(and(eq(businesses.id, businessId), isNull(businesses.ownerUserId)));
+    }
+
     const result = await db.update(users)
         .set({
             userType,
@@ -113,6 +125,7 @@ userRoutes.put('/profile', async (c) => {
             onboardingCompleted: true,
             businessId,
             primaryWorkspace: workspacePaths[segment],
+            role: canClaimOwnership ? 'owner' : currentUser?.role,
         })
         .where(eq(users.id, userId))
         .returning({ id: users.id });
