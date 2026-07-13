@@ -15,6 +15,7 @@ import {
     performanceMark,
 } from '@/utils/performanceInstrumentation';
 import { useBusinessModulesStore } from '@/store/businessModules.store';
+import { BillingView } from './BillingView';
 
 type CartItem = RestaurantMenuItem & { quantity: number; notes?: string };
 type PosPaymentMethod = Exclude<RestaurantPaymentMethod, 'mobile'>;
@@ -166,6 +167,7 @@ export const PosView = () => {
             setTables(tableData);
             setSelectedCategory((current) => current || 'All');
             setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen. ${isPayNow ? 'Payment recorded.' : 'Payment remains open.'}` });
+            window.dispatchEvent(new CustomEvent('q360:restaurant-orders-updated'));
             logPerformanceTiming('restaurant.pos.response.handled', {
                 correlationId,
                 submitDurationMs: performanceDuration(submitStartedAt),
@@ -188,6 +190,7 @@ export const PosView = () => {
     };
 
     return (
+        <>
         <div className="restaurant-pos" style={{ display: 'flex', gap: '24px', height: 'calc(100vh - 80px)' }}>
             {message && (
                 <div style={{
@@ -397,5 +400,7 @@ export const PosView = () => {
                 }
             `}</style>
         </div>
+        <BillingView embedded />
+        </>
     );
 };

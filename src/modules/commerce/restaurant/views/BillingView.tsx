@@ -65,7 +65,7 @@ const canCancel = (order: RestaurantOrder, role: string, userId?: string) => {
     return role === 'manager' || role === 'owner' || role === 'admin';
 };
 
-export const BillingView = () => {
+export const BillingView = ({ embedded = false }: { embedded?: boolean }) => {
     const user = useAuthStore((state) => state.user);
     const [orders, setOrders] = useState<RestaurantOrder[]>([]);
     const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -93,6 +93,13 @@ export const BillingView = () => {
 
     useEffect(() => {
         void load();
+        const refresh = () => void load();
+        window.addEventListener('q360:restaurant-orders-updated', refresh);
+        const interval = window.setInterval(refresh, 5_000);
+        return () => {
+            window.removeEventListener('q360:restaurant-orders-updated', refresh);
+            window.clearInterval(interval);
+        };
     }, [load]);
 
     const visibleOrders = useMemo(() => orders.filter((order) => {
@@ -169,8 +176,14 @@ export const BillingView = () => {
     };
 
     return (
-        <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 24px' }}>Orders & Payments</h1>
+        <div className={embedded ? 'cashier-queue cashier-queue--embedded' : 'cashier-queue'}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: embedded ? 16 : 24 }}>
+                <div>
+                    <h1 style={{ fontSize: embedded ? '22px' : '28px', fontWeight: 700, margin: '0 0 4px' }}>{embedded ? 'Cashier Queue' : 'Orders & Payments'}</h1>
+                    {embedded && <p style={{ margin: 0, color: 'var(--fg-secondary)', fontSize: 13 }}>Complete collection, delivery, and payment without leaving POS.</p>}
+                </div>
+                {embedded && <button type="button" onClick={() => void load()} style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', cursor: 'pointer', fontWeight: 700 }}>Refresh</button>}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                 {(['Today', 'Service', 'Payment', 'Paid'] as const).map((value) => (
                     <button
@@ -184,7 +197,7 @@ export const BillingView = () => {
             </div>
             {error && <div style={{ marginBottom: 16, color: '#b91c1c' }}>{error}</div>}
 
-            <div style={{ background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+            <div style={{ background: 'white', color: '#0f172a', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
@@ -322,6 +335,13 @@ export const BillingView = () => {
                     <span>${(runningTotal / 100).toFixed(2)}</span>
                 </div>
             </div>
+            <style>{`
+                .cashier-queue--embedded { padding: 24px; border-top: 1px solid var(--border-subtle); background: var(--surface-100); }
+                @media (max-width: 760px) {
+                    .cashier-queue--embedded { padding: 18px; }
+                    .cashier-queue table { min-width: 900px; }
+                }
+            `}</style>
         </div>
     );
 };
