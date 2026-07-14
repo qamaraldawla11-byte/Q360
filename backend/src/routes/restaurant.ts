@@ -43,6 +43,7 @@ import {
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 import { isBusinessModuleEnabled } from '../services/businessModules.js';
+import { getQProviderStatus } from '../services/qProviderConfig.js';
 
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
@@ -719,29 +720,6 @@ const recordQUsage = async (
     metadata,
 });
 
-// Provider configuration is intentionally status-only for now.  No external
-// model can be called until a later, explicit release changes this policy.
-const qProviderStatus = (estimatedSpendUsd: number) => {
-    const provider = process.env.Q_AI_PROVIDER?.trim();
-    const model = process.env.Q_AI_MODEL?.trim();
-    const configured = Boolean(provider && model && process.env.Q_AI_API_KEY?.trim());
-    const configuredBudget = Number(process.env.Q_MONTHLY_BUDGET_USD ?? '0');
-    const monthlyBudgetUsd = Number.isFinite(configuredBudget) && configuredBudget > 0 ? configuredBudget : 0;
-    return {
-        mode: configured ? 'provider_ready' as const : 'rules_only' as const,
-        provider: configured ? provider! : 'q360-rules-v1',
-        model: configured ? model! : 'structured-pulse-v1',
-        configured,
-        externalModelEnabled: false,
-        monthlyBudgetUsd,
-        estimatedSpendUsd,
-        budgetRemainingUsd: monthlyBudgetUsd ? Math.max(0, monthlyBudgetUsd - estimatedSpendUsd) : null,
-        message: configured
-            ? 'A provider is configured, but external AI remains disabled until an explicit release.'
-            : 'Rules-only Q is active. Add provider credentials only when you choose to enable external AI.',
-    };
-};
-
 const qEvidenceTypeFor = (type: EvidenceType): QEvidenceCard['type'] => ({
     kds: 'kds_ticket',
     orders: 'order',
@@ -1247,7 +1225,7 @@ restaurant.get('/q/provider-status', async (c) => {
         .from(qUsageEvents)
         .where(and(eq(qUsageEvents.businessId, actor.businessId), gte(qUsageEvents.createdAt, since)));
     const estimatedSpendUsd = events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000;
-    return c.json({ periodStart: since.toISOString(), provider: qProviderStatus(estimatedSpendUsd) });
+    return c.json({ periodStart: since.toISOString(), provider: getQProviderStatus(estimatedSpendUsd) });
 });
 
 restaurant.post('/business-pulse/drafts', async (c) => {
