@@ -3,7 +3,9 @@ import { Hono, type Context } from 'hono';
 import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import {
+    businesses,
     customers,
+    inventoryItems,
     kdsTickets,
     menuCategories,
     menuItemAssets,
@@ -151,8 +153,22 @@ interface BusinessPulseSnapshot {
     priorities: BusinessPulsePriority[];
 }
 
-const qDraftTypes = ['daily_report', 'manager_task'] as const;
+const qDraftTypes = ['daily_report', 'manager_task', 'booking_brief', 'purchase_review'] as const;
 type QDraftType = typeof qDraftTypes[number];
+type QBusinessBriefing = {
+    businessName: string;
+    country: string | null;
+    city: string | null;
+    currency: string;
+    timezone: string;
+    restaurantService: 'dine_in' | 'takeaway' | 'both';
+    tableCount: number;
+    seatCount: number;
+    activeMenuItemCount: number;
+    lowStockCount: number;
+    upcomingBookingCount: number;
+    generatedAt: string;
+};
 type QEvidenceCard = {
     id: string;
     type: 'kds_ticket' | 'order' | 'table' | 'payment' | 'menu_item' | 'daily_summary';
@@ -610,6 +626,38 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
     });
 };
 
+// This is deliberately a compact, tenant-scoped memory. It is built from saved
+// records on every request, so Q never relies on another business's data or on
+// hidden long-term model memory.
+const buildQBusinessBriefing = async (businessId: string): Promise<QBusinessBriefing> => {
+    const now = new Date();
+    const [business, tables, items, stock, bookings] = await Promise.all([
+        first(db.select().from(businesses).where(eq(businesses.id, businessId))),
+        db.select().from(restaurantTables).where(eq(restaurantTables.businessId, businessId)),
+        db.select().from(menuItems).where(and(eq(menuItems.businessId, businessId), eq(menuItems.isAvailable, true))),
+        db.select().from(inventoryItems).where(eq(inventoryItems.businessId, businessId)),
+        db.select().from(restaurantBookings).where(and(
+            eq(restaurantBookings.businessId, businessId),
+            inArray(restaurantBookings.status, ['pending', 'confirmed', 'arrived', 'seated']),
+            gte(restaurantBookings.startsAt, now),
+        )),
+    ]);
+    return {
+        businessName: business?.name ?? 'This restaurant',
+        country: business?.country ?? null,
+        city: business?.city ?? null,
+        currency: business?.currency ?? 'USD',
+        timezone: business?.timezone ?? 'UTC',
+        restaurantService: business?.restaurantType ?? 'both',
+        tableCount: tables.length,
+        seatCount: tables.reduce((total, table) => total + table.capacity, 0),
+        activeMenuItemCount: items.length,
+        lowStockCount: stock.filter(item => item.status === 'low' || item.status === 'critical' || item.current <= item.min).length,
+        upcomingBookingCount: bookings.length,
+        generatedAt: now.toISOString(),
+    };
+};
+
 const activeBookingStatuses: BookingStatus[] = ['pending', 'confirmed', 'arrived', 'seated'];
 const bookingText = (value: unknown, maximum: number) => {
     if (value === undefined || value === null) return { value: null as string | null };
@@ -671,6 +719,29 @@ const recordQUsage = async (
     metadata,
 });
 
+// Provider configuration is intentionally status-only for now.  No external
+// model can be called until a later, explicit release changes this policy.
+const qProviderStatus = (estimatedSpendUsd: number) => {
+    const provider = process.env.Q_AI_PROVIDER?.trim();
+    const model = process.env.Q_AI_MODEL?.trim();
+    const configured = Boolean(provider && model && process.env.Q_AI_API_KEY?.trim());
+    const configuredBudget = Number(process.env.Q_MONTHLY_BUDGET_USD ?? '0');
+    const monthlyBudgetUsd = Number.isFinite(configuredBudget) && configuredBudget > 0 ? configuredBudget : 0;
+    return {
+        mode: configured ? 'provider_ready' as const : 'rules_only' as const,
+        provider: configured ? provider! : 'q360-rules-v1',
+        model: configured ? model! : 'structured-pulse-v1',
+        configured,
+        externalModelEnabled: false,
+        monthlyBudgetUsd,
+        estimatedSpendUsd,
+        budgetRemainingUsd: monthlyBudgetUsd ? Math.max(0, monthlyBudgetUsd - estimatedSpendUsd) : null,
+        message: configured
+            ? 'A provider is configured, but external AI remains disabled until an explicit release.'
+            : 'Rules-only Q is active. Add provider credentials only when you choose to enable external AI.',
+    };
+};
+
 const qEvidenceTypeFor = (type: EvidenceType): QEvidenceCard['type'] => ({
     kds: 'kds_ticket',
     orders: 'order',
@@ -688,7 +759,7 @@ const qRecommendationFor = (type: PriorityType) => ({
     top_items: 'Use the top items when planning menu availability and preparation.',
 }[type]);
 
-const buildQPulseResponse = (snapshot: BusinessPulseSnapshot, prompt?: string): QPulseResponse => {
+const buildQPulseResponse = (snapshot: BusinessPulseSnapshot, prompt?: string, briefing?: QBusinessBriefing): QPulseResponse => {
     const evidenceCards = snapshot.priorities.map((priority, index): QEvidenceCard => ({
         id: `evidence-${priority.type}-${index + 1}`,
         type: qEvidenceTypeFor(priority.evidence.type),
@@ -731,6 +802,16 @@ const buildQPulseResponse = (snapshot: BusinessPulseSnapshot, prompt?: string): 
         summary = snapshot.unpaidOrderCount
             ? `${snapshot.unpaidOrderCount} order${snapshot.unpaidOrderCount === 1 ? ' remains' : 's remain'} unpaid.`
             : 'No unpaid orders are visible in today\'s snapshot.';
+    } else if ((normalizedPrompt.includes('booking') || normalizedPrompt.includes('reservation')) && briefing) {
+        summary = briefing.upcomingBookingCount
+            ? `${briefing.businessName} has ${briefing.upcomingBookingCount} upcoming booking${briefing.upcomingBookingCount === 1 ? '' : 's'} to prepare for.`
+            : 'There are no upcoming active bookings in the saved records.';
+    } else if ((normalizedPrompt.includes('stock') || normalizedPrompt.includes('inventory') || normalizedPrompt.includes('purchase')) && briefing) {
+        summary = briefing.lowStockCount
+            ? `${briefing.lowStockCount} stock item${briefing.lowStockCount === 1 ? '' : 's'} need low-stock attention.`
+            : 'No stock items currently meet the saved low-stock alert threshold.';
+    } else if ((normalizedPrompt.includes('business') || normalizedPrompt.includes('profile') || normalizedPrompt.includes('table')) && briefing) {
+        summary = `${briefing.businessName} is set up for ${briefing.restaurantService === 'both' ? 'dine-in and takeaway' : briefing.restaurantService.replace('_', '-')} with ${briefing.tableCount} table${briefing.tableCount === 1 ? '' : 's'} and ${briefing.activeMenuItemCount} available menu item${briefing.activeMenuItemCount === 1 ? '' : 's'}.`;
     } else if (normalizedPrompt.includes('sales') || normalizedPrompt.includes('revenue') || normalizedPrompt.includes('today')) {
         summary = `Today has ${snapshot.todaySalesSummary.paidOrderCount} paid orders and ${(snapshot.todaySalesSummary.grossSales / 100).toFixed(2)} in paid revenue.`;
     }
@@ -753,7 +834,19 @@ const canReviewQDraft = (actor: RestaurantActor) => (
     actor.role === 'owner' || actor.role === 'admin' || isLegacyRestaurantOwnerCompatible(actor)
 );
 
-const qDraftContent = (type: QDraftType, snapshot: BusinessPulseSnapshot) => {
+const qDraftContent = (type: QDraftType, snapshot: BusinessPulseSnapshot, briefing?: QBusinessBriefing) => {
+    if (type === 'booking_brief') {
+        return {
+            title: 'Upcoming bookings review',
+            body: [`Upcoming active bookings: ${briefing?.upcomingBookingCount ?? 0}`, `Tables configured: ${briefing?.tableCount ?? 0}`, 'Review reservations, table assignments, guest notes and deposits before service.'].join('\n'),
+        };
+    }
+    if (type === 'purchase_review') {
+        return {
+            title: 'Stock and purchase review',
+            body: [`Low-stock items: ${briefing?.lowStockCount ?? 0}`, `Available menu items: ${briefing?.activeMenuItemCount ?? 0}`, 'Review stock and suppliers. This draft does not create, send or approve a purchase.'].join('\n'),
+        };
+    }
     if (type === 'manager_task') {
         const attention = [
             snapshot.delayedKdsTicketCount ? `Review ${snapshot.delayedKdsTicketCount} delayed kitchen ticket(s).` : null,
@@ -933,12 +1026,20 @@ restaurant.get('/business-pulse/snapshot', async (c) => {
     }
 });
 
+restaurant.get('/q/briefing', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const briefing = await buildQBusinessBriefing(actor.businessId);
+    await recordQUsage(actor, 'business_briefing', 'completed', { tableCount: briefing.tableCount, bookingCount: briefing.upcomingBookingCount });
+    return c.json({ briefing });
+});
+
 restaurant.get('/business-pulse', async (c) => {
     const actor = await restaurantActorFor(c);
     if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
     try {
         const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot);
+        const response = buildQPulseResponse(snapshot, undefined, await buildQBusinessBriefing(actor.businessId));
         await logAudit(c, 'Q_PULSE_REQUESTED', 'Q_BUSINESS_PULSE', response.requestId, {
             userRole: actor.role,
             provider: 'q360-rules-v1',
@@ -969,7 +1070,7 @@ restaurant.post('/business-pulse/ask', async (c) => {
     if (prompt.length > 300) return c.json({ error: 'Question must be 300 characters or fewer' }, 400);
     try {
         const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot, prompt);
+        const response = buildQPulseResponse(snapshot, prompt, await buildQBusinessBriefing(actor.businessId));
         await logAudit(c, 'Q_PULSE_REQUESTED', 'Q_BUSINESS_PULSE', response.requestId, {
             userRole: actor.role,
             provider: 'q360-rules-v1',
@@ -1040,7 +1141,7 @@ restaurant.post('/q/conversations', async (c) => {
             userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: now,
         };
         const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot, prompt);
+        const response = buildQPulseResponse(snapshot, prompt, await buildQBusinessBriefing(actor.businessId));
         const assistantMessage = {
             id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId,
             userId: null, role: 'assistant' as const, content: response.summary,
@@ -1074,7 +1175,7 @@ restaurant.post('/q/conversations/:id/messages', async (c) => {
     try {
         const userMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: new Date() };
         const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot, prompt);
+        const response = buildQPulseResponse(snapshot, prompt, await buildQBusinessBriefing(actor.businessId));
         const assistantMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: null, role: 'assistant' as const, content: response.summary, evidenceCards: response.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })), feedback: null, createdAt: new Date() };
         await db.insert(qAssistantMessages).values([userMessage, assistantMessage]);
         await db.update(qAssistantConversations).set({ updatedAt: new Date() }).where(eq(qAssistantConversations.id, conversation.id));
@@ -1136,6 +1237,19 @@ restaurant.get('/business-pulse/usage', async (c) => {
     });
 });
 
+restaurant.get('/q/provider-status', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can view Q provider settings');
+    const since = new Date();
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+    const events = await db.select({ estimatedCostUsdMicros: qUsageEvents.estimatedCostUsdMicros })
+        .from(qUsageEvents)
+        .where(and(eq(qUsageEvents.businessId, actor.businessId), gte(qUsageEvents.createdAt, since)));
+    const estimatedSpendUsd = events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000;
+    return c.json({ periodStart: since.toISOString(), provider: qProviderStatus(estimatedSpendUsd) });
+});
+
 restaurant.post('/business-pulse/drafts', async (c) => {
     const actor = await restaurantActorFor(c);
     if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
@@ -1143,10 +1257,10 @@ restaurant.post('/business-pulse/drafts', async (c) => {
     const type = typeof body?.type === 'string' && qDraftTypes.includes(body.type as QDraftType)
         ? body.type as QDraftType
         : null;
-    if (!type) return c.json({ error: 'Draft type must be daily_report or manager_task' }, 400);
+    if (!type) return c.json({ error: 'Draft type must be daily_report, manager_task, booking_brief or purchase_review' }, 400);
     const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
     const response = buildQPulseResponse(snapshot);
-    const content = qDraftContent(type, snapshot);
+    const content = qDraftContent(type, snapshot, await buildQBusinessBriefing(actor.businessId));
     const draft = {
         id: randomUUID(),
         businessId: actor.businessId,

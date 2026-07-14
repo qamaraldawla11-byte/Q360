@@ -3,7 +3,7 @@ import { AlertTriangle, Bot, Check, ClipboardList, FileText, LockKeyhole, Messag
 import { useLocation } from 'react-router-dom';
 import { restaurantApi, type RestaurantQChatMessage, type RestaurantQConversation, type RestaurantQDraft, type RestaurantQPulse, type RestaurantQUsage } from '@/api/restaurant.api';
 
-const suggestedQuestions = ['What needs attention right now?', 'Which orders are delayed?', 'Which payments are still open?', 'What sold best today?', 'Summarize today\'s sales.'];
+const suggestedQuestions = ['What needs attention right now?', 'Which orders are delayed?', 'Which payments are still open?', 'What bookings are upcoming?', 'Which stock needs attention?', 'Summarize today\'s sales.'];
 
 export const AssistantView = () => {
     const location = useLocation();

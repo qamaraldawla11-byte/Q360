@@ -180,6 +180,33 @@ export interface RestaurantQUsage {
     byFeature: Record<string, number>;
 }
 
+export interface RestaurantQBusinessBriefing {
+    businessName: string;
+    country: string | null;
+    city: string | null;
+    currency: string;
+    timezone: string;
+    restaurantService: 'dine_in' | 'takeaway' | 'both';
+    tableCount: number;
+    seatCount: number;
+    activeMenuItemCount: number;
+    lowStockCount: number;
+    upcomingBookingCount: number;
+    generatedAt: string;
+}
+
+export interface RestaurantQProviderStatus {
+    mode: 'rules_only' | 'provider_ready';
+    provider: string;
+    model: string;
+    configured: boolean;
+    externalModelEnabled: false;
+    monthlyBudgetUsd: number;
+    estimatedSpendUsd: number;
+    budgetRemainingUsd: number | null;
+    message: string;
+}
+
 export interface RestaurantQPulse {
     requestId: string;
     summary: string;
@@ -198,7 +225,7 @@ export interface RestaurantQPulse {
 
 export interface RestaurantQDraft {
     id: string;
-    type: 'daily_report' | 'manager_task';
+    type: 'daily_report' | 'manager_task' | 'booking_brief' | 'purchase_review';
     title: string;
     body: string;
     evidenceIds: string[];
@@ -261,6 +288,8 @@ export const restaurantApi = {
 
     getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
     askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
+    getQBusinessBriefing: () => http.get<{ briefing: RestaurantQBusinessBriefing }>('/restaurant/q/briefing'),
+    getQProviderStatus: () => http.get<{ periodStart: string; provider: RestaurantQProviderStatus }>('/restaurant/q/provider-status'),
     getQConversations: () => http.get<{ conversations: RestaurantQConversation[] }>('/restaurant/q/conversations'),
     getQConversation: (id: string) => http.get<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}`),
     createQConversation: (prompt: string) => http.post<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>('/restaurant/q/conversations', { prompt }),
