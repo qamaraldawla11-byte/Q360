@@ -190,6 +190,31 @@ export const restaurantTables = pgTable('restaurant_tables', {
     status: text('status').$type<'available' | 'occupied' | 'reserved' | 'cleaning'>().default('available').notNull(),
 });
 
+// Reservations stay separate from a table's current floor status: a table can
+// be available now and still be reserved for a future booking.
+export const restaurantBookings = pgTable('restaurant_bookings', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    customerId: text('customer_id'),
+    customerName: text('customer_name').notNull(),
+    customerPhone: text('customer_phone'),
+    partySize: integer('party_size').notNull(),
+    startsAt: timestamp('starts_at').notNull(),
+    endsAt: timestamp('ends_at').notNull(),
+    tableIds: jsonb('table_ids').$type<string[]>().notNull().default([]),
+    status: text('status').$type<'pending' | 'confirmed' | 'arrived' | 'seated' | 'completed' | 'cancelled' | 'no_show'>().notNull().default('pending'),
+    occasion: text('occasion'),
+    notes: text('notes'),
+    depositAmount: doublePrecision('deposit_amount').notNull().default(0),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('restaurant_bookings_business_starts_idx').on(table.businessId, table.startsAt),
+    index('restaurant_bookings_business_status_idx').on(table.businessId, table.status),
+]);
+
 export const restaurantOrders = pgTable('restaurant_orders', {
     id: text('id').primaryKey(),
     businessId: text('business_id').default('biz_main').notNull(),
@@ -419,6 +444,29 @@ export const qAssistantDrafts = pgTable('q_assistant_drafts', {
 }, (table) => [
     index('q_assistant_drafts_business_created_idx').on(table.businessId, table.createdAt),
     index('q_assistant_drafts_business_status_idx').on(table.businessId, table.status),
+]);
+
+// Provider-neutral Q metering. Rules-only Q activity records zero model tokens;
+// future model, image, and voice calls use the same tenant-scoped ledger.
+export const qUsageEvents = pgTable('q_usage_events', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    userId: text('user_id').notNull(),
+    conversationId: text('conversation_id'),
+    feature: text('feature').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    imageTokens: integer('image_tokens').notNull().default(0),
+    audioSeconds: integer('audio_seconds').notNull().default(0),
+    estimatedCostUsdMicros: integer('estimated_cost_usd_micros').notNull().default(0),
+    requestStatus: text('request_status').$type<'completed' | 'failed' | 'blocked'>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, string | number | boolean>>().notNull().default({}),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+    index('q_usage_events_business_created_idx').on(table.businessId, table.createdAt),
+    index('q_usage_events_user_created_idx').on(table.userId, table.createdAt),
 ]);
 
 // Type exports for use in services

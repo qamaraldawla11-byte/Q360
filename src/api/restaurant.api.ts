@@ -151,6 +151,35 @@ export interface RestaurantQEvidenceCard {
     freshness: { generatedAt: string; dataWindowStart: string | null; dataWindowEnd: string | null };
 }
 
+export type RestaurantBookingStatus = 'pending' | 'confirmed' | 'arrived' | 'seated' | 'completed' | 'cancelled' | 'no_show';
+export interface RestaurantBooking {
+    id: string;
+    businessId: string;
+    customerId: string | null;
+    customerName: string;
+    customerPhone: string | null;
+    partySize: number;
+    startsAt: string;
+    endsAt: string;
+    tableIds: string[];
+    status: RestaurantBookingStatus;
+    occasion: string | null;
+    notes: string | null;
+    depositAmount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RestaurantQUsage {
+    periodStart: string;
+    requests: number;
+    completed: number;
+    failed: number;
+    estimatedCostUsd: number;
+    tokens: number;
+    byFeature: Record<string, number>;
+}
+
 export interface RestaurantQPulse {
     requestId: string;
     summary: string;
@@ -215,6 +244,7 @@ export const restaurantApi = {
     getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
     askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
     getQDrafts: () => http.get<{ drafts: RestaurantQDraft[] }>('/restaurant/business-pulse/drafts'),
+    getQUsage: () => http.get<RestaurantQUsage>('/restaurant/business-pulse/usage'),
     createQDraft: (type: RestaurantQDraft['type']) =>
         http.post<{ draft: RestaurantQDraft }>('/restaurant/business-pulse/drafts', { type }),
     decideQDraft: (id: string, payload: { decision: 'approve' | 'reject'; ownerEditedBody?: string; approvalNote?: string }) =>
@@ -257,6 +287,22 @@ export const restaurantApi = {
     },
 
     getTables: () => http.get<RestaurantTable[]>('/restaurant/tables'),
+
+    getBookings: (from?: string, to?: string) => {
+        const query = new URLSearchParams();
+        if (from) query.set('from', from);
+        if (to) query.set('to', to);
+        const suffix = query.size ? `?${query.toString()}` : '';
+        return http.get<RestaurantBooking[]>(`/restaurant/bookings${suffix}`);
+    },
+
+    createBooking: (payload: {
+        customerName: string; customerPhone?: string; customerId?: string; partySize: number;
+        startsAt: string; endsAt: string; tableIds: string[]; occasion?: string; notes?: string; depositAmount?: number;
+    }) => http.post<RestaurantBooking>('/restaurant/bookings', payload),
+
+    updateBooking: (id: string, payload: { status?: RestaurantBookingStatus; notes?: string; occasion?: string; depositAmount?: number }) =>
+        http.patch<RestaurantBooking>(`/restaurant/bookings/${id}`, payload),
 
     createTable: (payload: { label: string; capacity: number }) =>
         http.post<RestaurantTable>('/restaurant/tables', payload),

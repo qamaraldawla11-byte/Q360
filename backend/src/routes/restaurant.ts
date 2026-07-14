@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Hono, type Context } from 'hono';
-import { and, asc, desc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import {
     customers,
@@ -9,6 +9,8 @@ import {
     menuItemAssets,
     menuItems,
     qAssistantDrafts,
+    qUsageEvents,
+    restaurantBookings,
     restaurantMenus,
     restaurantOrderItems,
     restaurantOrders,
@@ -40,12 +42,14 @@ import { isBusinessModuleEnabled } from '../services/businessModules.js';
 
 const restaurant = new Hono<AppEnv>();
 const tableStatuses = ['available', 'occupied', 'reserved', 'cleaning'] as const;
+const bookingStatuses = ['pending', 'confirmed', 'arrived', 'seated', 'completed', 'cancelled', 'no_show'] as const;
 const orderStatuses = ['pending', 'in_kitchen', 'ready', 'delivered', 'served', 'collected', 'closed', 'paid', 'cancelled'] as const;
 const ticketStatuses = ['new', 'cooking', 'done', 'cancelled'] as const;
 const paymentMethods = ['cash', 'card', 'manual', 'mobile'] as const;
 const orderTypes = ['dine_in', 'takeaway', 'delivery'] as const;
 const paymentTimings = ['pay_before_service', 'pay_after_service'] as const;
 type TableStatus = typeof tableStatuses[number];
+type BookingStatus = typeof bookingStatuses[number];
 type OrderStatus = typeof orderStatuses[number];
 type TicketStatus = typeof ticketStatuses[number];
 const delayedKdsThresholdMinutes = 15;
@@ -604,6 +608,65 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
     });
 };
 
+const activeBookingStatuses: BookingStatus[] = ['pending', 'confirmed', 'arrived', 'seated'];
+const bookingText = (value: unknown, maximum: number) => {
+    if (value === undefined || value === null) return { value: null as string | null };
+    if (typeof value !== 'string') return { error: 'Booking text fields must be text' };
+    const normalized = value.trim() || null;
+    if (normalized && normalized.length > maximum) return { error: `Booking field exceeds ${maximum} characters` };
+    return { value: normalized };
+};
+
+const bookingPublic = (booking: typeof restaurantBookings.$inferSelect) => ({
+    id: booking.id,
+    businessId: booking.businessId,
+    customerId: booking.customerId,
+    customerName: booking.customerName,
+    customerPhone: booking.customerPhone,
+    partySize: booking.partySize,
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    tableIds: booking.tableIds,
+    status: booking.status,
+    occasion: booking.occasion,
+    notes: booking.notes,
+    depositAmount: booking.depositAmount,
+    createdAt: booking.createdAt.toISOString(),
+    updatedAt: booking.updatedAt.toISOString(),
+});
+
+const bookingsConflict = async (
+    businessId: string,
+    startsAt: Date,
+    endsAt: Date,
+    tableIds: string[],
+    exceptId?: string,
+) => {
+    const candidates = await db.select().from(restaurantBookings).where(and(
+        eq(restaurantBookings.businessId, businessId),
+        inArray(restaurantBookings.status, activeBookingStatuses),
+        lt(restaurantBookings.startsAt, endsAt),
+        gt(restaurantBookings.endsAt, startsAt),
+    ));
+    return candidates.find((booking) => booking.id !== exceptId && booking.tableIds.some((tableId) => tableIds.includes(tableId))) || null;
+};
+
+const recordQUsage = async (
+    actor: RestaurantActor,
+    feature: string,
+    requestStatus: 'completed' | 'failed' | 'blocked',
+    metadata: Record<string, string | number | boolean> = {},
+) => db.insert(qUsageEvents).values({
+    id: randomUUID(),
+    businessId: actor.businessId,
+    userId: actor.userId,
+    feature,
+    provider: 'q360-rules-v1',
+    model: 'structured-pulse-v1',
+    requestStatus,
+    metadata,
+});
+
 const qEvidenceTypeFor = (type: EvidenceType): QEvidenceCard['type'] => ({
     kds: 'kds_ticket',
     orders: 'order',
@@ -861,8 +924,10 @@ restaurant.get('/business-pulse', async (c) => {
             evidenceIds: response.evidenceCards.map((card) => card.id),
             validationStatus: 'passed',
         });
+        await recordQUsage(actor, 'business_pulse', 'completed', { insightCount: response.insights.length });
         return c.json(response);
     } catch {
+        await recordQUsage(actor, 'business_pulse', 'failed', { safeReason: 'pulse_generation_failed' }).catch(() => undefined);
         await logAudit(c, 'Q_PROVIDER_ERROR', 'Q_BUSINESS_PULSE', null, { safeReason: 'pulse_generation_failed' });
         return c.json({ error: 'Q could not generate the Restaurant Pulse' }, 500);
     }
@@ -891,8 +956,13 @@ restaurant.post('/business-pulse/ask', async (c) => {
             evidenceIds: response.evidenceCards.map((card) => card.id),
             validationStatus: 'passed',
         });
+        await recordQUsage(actor, 'business_pulse_question', 'completed', {
+            promptLength: prompt.length,
+            insightCount: response.insights.length,
+        });
         return c.json(response);
     } catch {
+        await recordQUsage(actor, 'business_pulse_question', 'failed', { safeReason: 'question_generation_failed' }).catch(() => undefined);
         await logAudit(c, 'Q_PROVIDER_ERROR', 'Q_BUSINESS_PULSE', null, { safeReason: 'question_generation_failed' });
         return c.json({ error: 'Q could not answer from the current Restaurant records' }, 500);
     }
@@ -905,6 +975,31 @@ restaurant.get('/business-pulse/drafts', async (c) => {
         .where(eq(qAssistantDrafts.businessId, actor.businessId))
         .orderBy(desc(qAssistantDrafts.createdAt));
     return c.json({ drafts: drafts.map(publicQDraft) });
+});
+
+restaurant.get('/business-pulse/usage', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can view Q usage');
+    const since = new Date();
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+    const events = await db.select().from(qUsageEvents).where(and(
+        eq(qUsageEvents.businessId, actor.businessId),
+        gte(qUsageEvents.createdAt, since),
+    )).orderBy(desc(qUsageEvents.createdAt));
+    const byFeature = events.reduce<Record<string, number>>((result, event) => {
+        result[event.feature] = (result[event.feature] ?? 0) + 1;
+        return result;
+    }, {});
+    return c.json({
+        periodStart: since.toISOString(),
+        requests: events.length,
+        completed: events.filter((event) => event.requestStatus === 'completed').length,
+        failed: events.filter((event) => event.requestStatus === 'failed').length,
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000,
+        tokens: events.reduce((sum, event) => sum + event.inputTokens + event.outputTokens + event.imageTokens, 0),
+        byFeature,
+    });
 });
 
 restaurant.post('/business-pulse/drafts', async (c) => {
@@ -1265,6 +1360,106 @@ restaurant.get('/tables', async (c) => {
     return c.json(await db.select().from(restaurantTables)
         .where(eq(restaurantTables.businessId, c.get('businessId')))
         .orderBy(asc(restaurantTables.label)));
+});
+
+restaurant.get('/bookings', async (c) => {
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
+    const rawFrom = c.req.query('from');
+    const rawTo = c.req.query('to');
+    const from = rawFrom ? new Date(rawFrom) : new Date();
+    const to = rawTo ? new Date(rawTo) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) {
+        return c.json({ error: 'Use a valid booking date range' }, 400);
+    }
+    const rows = await db.select().from(restaurantBookings).where(and(
+        eq(restaurantBookings.businessId, c.get('businessId')),
+        gte(restaurantBookings.startsAt, from),
+        lt(restaurantBookings.startsAt, to),
+    )).orderBy(asc(restaurantBookings.startsAt));
+    return c.json(rows.map(bookingPublic));
+});
+
+restaurant.post('/bookings', async (c) => {
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
+    const actor = await restaurantActorFor(c);
+    if (!(canUseQ(actor) || actor.role === 'waiter')) return forbid(c, 'Restaurant management or floor staff can create bookings');
+    const body = await parseJson<{
+        customerId?: unknown; customerName?: unknown; customerPhone?: unknown; partySize?: unknown;
+        startsAt?: unknown; endsAt?: unknown; tableIds?: unknown; occasion?: unknown; notes?: unknown; depositAmount?: unknown;
+    }>(c);
+    if (!body) return c.json({ error: 'Invalid booking data' }, 400);
+    const customerName = bookingText(body.customerName, 160);
+    const customerPhone = bookingText(body.customerPhone, 60);
+    const occasion = bookingText(body.occasion, 100);
+    const notes = bookingText(body.notes, 1000);
+    if (customerName.error || customerPhone.error || occasion.error || notes.error) {
+        return c.json({ error: customerName.error || customerPhone.error || occasion.error || notes.error }, 400);
+    }
+    if (!customerName.value) return c.json({ error: 'Customer name is required' }, 400);
+    if (typeof body.partySize !== 'number' || !Number.isSafeInteger(body.partySize) || body.partySize < 1 || body.partySize > 100) {
+        return c.json({ error: 'Party size must be a whole number from 1 to 100' }, 400);
+    }
+    if (typeof body.startsAt !== 'string' || typeof body.endsAt !== 'string') return c.json({ error: 'Booking start and end time are required' }, 400);
+    const startsAt = new Date(body.startsAt);
+    const endsAt = new Date(body.endsAt);
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt || endsAt.getTime() - startsAt.getTime() > 12 * 60 * 60 * 1000) {
+        return c.json({ error: 'Use a valid booking time of up to 12 hours' }, 400);
+    }
+    if (!Array.isArray(body.tableIds) || body.tableIds.length === 0 || body.tableIds.some((id) => typeof id !== 'string')) {
+        return c.json({ error: 'Select at least one table' }, 400);
+    }
+    const tableIds = [...new Set(body.tableIds.map((id) => id.trim()).filter(Boolean))];
+    if (tableIds.length === 0 || tableIds.length > 12) return c.json({ error: 'Select between 1 and 12 tables' }, 400);
+    const businessId = actor.businessId;
+    const tables = await db.select().from(restaurantTables).where(and(
+        eq(restaurantTables.businessId, businessId), inArray(restaurantTables.id, tableIds),
+    ));
+    if (tables.length !== tableIds.length) return c.json({ error: 'One or more selected tables are unavailable' }, 400);
+    if (tables.reduce((sum, table) => sum + table.capacity, 0) < body.partySize) return c.json({ error: 'Selected tables do not have enough seats' }, 400);
+    const conflict = await bookingsConflict(businessId, startsAt, endsAt, tableIds);
+    if (conflict) return c.json({ error: `Table conflict with ${conflict.customerName}'s ${conflict.startsAt.toISOString()} booking` }, 409);
+    const depositAmount = typeof body.depositAmount === 'number' && Number.isFinite(body.depositAmount) && body.depositAmount >= 0 ? body.depositAmount : 0;
+    const booking = {
+        id: randomUUID(), businessId, customerId: typeof body.customerId === 'string' ? body.customerId : null,
+        customerName: customerName.value, customerPhone: customerPhone.value, partySize: body.partySize,
+        startsAt, endsAt, tableIds, status: 'pending' as const, occasion: occasion.value, notes: notes.value,
+        depositAmount, createdBy: actor.userId, updatedBy: actor.userId,
+    };
+    await db.insert(restaurantBookings).values(booking);
+    await logAudit(c, 'RESTAURANT_BOOKING_CREATED', 'RESTAURANT_BOOKING', booking.id, { partySize: booking.partySize, tableCount: tableIds.length, status: booking.status });
+    const saved = await first(db.select().from(restaurantBookings).where(and(eq(restaurantBookings.id, booking.id), eq(restaurantBookings.businessId, businessId))));
+    return c.json(bookingPublic(saved!), 201);
+});
+
+restaurant.patch('/bookings/:id', async (c) => {
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
+    const actor = await restaurantActorFor(c);
+    if (!(canUseQ(actor) || actor.role === 'waiter')) return forbid(c, 'Restaurant management or floor staff can update bookings');
+    const body = await parseJson<{ status?: unknown; notes?: unknown; occasion?: unknown; depositAmount?: unknown }>(c);
+    if (!body) return c.json({ error: 'Invalid booking data' }, 400);
+    const id = c.req.param('id');
+    const current = await first(db.select().from(restaurantBookings).where(and(eq(restaurantBookings.id, id), eq(restaurantBookings.businessId, actor.businessId))));
+    if (!current) return c.json({ error: 'Booking not found' }, 404);
+    const status = body.status === undefined ? current.status : typeof body.status === 'string' && bookingStatuses.includes(body.status as BookingStatus) ? body.status as BookingStatus : null;
+    if (!status) return c.json({ error: 'Invalid booking status' }, 400);
+    const notes = bookingText(body.notes, 1000);
+    const occasion = bookingText(body.occasion, 100);
+    if (notes.error || occasion.error) return c.json({ error: notes.error || occasion.error }, 400);
+    const depositAmount = body.depositAmount === undefined ? current.depositAmount : typeof body.depositAmount === 'number' && Number.isFinite(body.depositAmount) && body.depositAmount >= 0 ? body.depositAmount : null;
+    if (depositAmount === null) return c.json({ error: 'Deposit must be a positive amount' }, 400);
+    await db.update(restaurantBookings).set({
+        status, notes: body.notes === undefined ? current.notes : notes.value, occasion: body.occasion === undefined ? current.occasion : occasion.value,
+        depositAmount, updatedBy: actor.userId, updatedAt: new Date(),
+    }).where(and(eq(restaurantBookings.id, id), eq(restaurantBookings.businessId, actor.businessId)));
+    await logAudit(c, 'RESTAURANT_BOOKING_UPDATED', 'RESTAURANT_BOOKING', id, { status, updatedByRole: actor.role ?? 'legacy_owner' });
+    const saved = await first(db.select().from(restaurantBookings).where(and(eq(restaurantBookings.id, id), eq(restaurantBookings.businessId, actor.businessId))));
+    return c.json(bookingPublic(saved!));
 });
 
 restaurant.post('/tables', async (c) => {
