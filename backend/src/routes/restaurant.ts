@@ -726,28 +726,11 @@ const publicQDraft = (draft: typeof qAssistantDrafts.$inferSelect | (typeof qAss
     requiresApproval: draft.status === 'pending',
 });
 
-const orderWithItems = async (
-    businessId: string,
-    orderId: string,
-    timings?: Partial<Record<string, number>>,
+const orderResponse = (
+    order: typeof restaurantOrders.$inferSelect,
+    items: typeof restaurantOrderItems.$inferSelect[],
+    payments: typeof restaurantPayments.$inferSelect[],
 ) => {
-    const orderRefetchStartedAt = timingNow();
-    const order = await first(db.select().from(restaurantOrders)
-        .where(and(eq(restaurantOrders.id, orderId), eq(restaurantOrders.businessId, businessId)))
-    );
-    addTimingDuration(timings, 'responseOrderRefetchDurationMs', durationSince(orderRefetchStartedAt));
-    if (!order) return null;
-    const itemsRefetchStartedAt = timingNow();
-    const items = await db.select().from(restaurantOrderItems)
-        .where(eq(restaurantOrderItems.orderId, orderId))
-    addTimingDuration(timings, 'responseItemsRefetchDurationMs', durationSince(itemsRefetchStartedAt));
-    const paymentsRefetchStartedAt = timingNow();
-    const payments = await db.select().from(restaurantPayments)
-        .where(and(
-            eq(restaurantPayments.businessId, businessId),
-        eq(restaurantPayments.orderId, orderId),
-    ));
-    addTimingDuration(timings, 'responsePaymentsRefetchDurationMs', durationSince(paymentsRefetchStartedAt));
     const completedPayment = payments.find((payment) => payment.status === 'completed') ?? null;
     const orderType = orderTypeFor(order);
     const serviceStatus = serviceStatusFor(order);
@@ -764,6 +747,31 @@ const orderWithItems = async (
         items,
         payments,
     };
+};
+
+const orderWithItems = async (
+    businessId: string,
+    orderId: string,
+    timings?: Partial<Record<string, number>>,
+) => {
+    const orderRefetchStartedAt = timingNow();
+    const order = await first(db.select().from(restaurantOrders)
+        .where(and(eq(restaurantOrders.id, orderId), eq(restaurantOrders.businessId, businessId)))
+    );
+    addTimingDuration(timings, 'responseOrderRefetchDurationMs', durationSince(orderRefetchStartedAt));
+    if (!order) return null;
+    const itemsRefetchStartedAt = timingNow();
+    const items = await db.select().from(restaurantOrderItems)
+        .where(eq(restaurantOrderItems.orderId, orderId));
+    addTimingDuration(timings, 'responseItemsRefetchDurationMs', durationSince(itemsRefetchStartedAt));
+    const paymentsRefetchStartedAt = timingNow();
+    const payments = await db.select().from(restaurantPayments)
+        .where(and(
+            eq(restaurantPayments.businessId, businessId),
+            eq(restaurantPayments.orderId, orderId),
+        ));
+    addTimingDuration(timings, 'responsePaymentsRefetchDurationMs', durationSince(paymentsRefetchStartedAt));
+    return orderResponse(order, items, payments);
 };
 
 const integratedPaymentSummary = (
@@ -786,24 +794,30 @@ const payNowOrderResponse = async (
     cashReceived?: number,
     changeDue?: number,
 ) => {
-    const order = await orderWithItems(businessId, orderId);
+    const [order, payment, ticket] = await Promise.all([
+        orderWithItems(businessId, orderId),
+        first(db.select().from(restaurantPayments)
+            .where(and(
+                eq(restaurantPayments.businessId, businessId),
+                eq(restaurantPayments.orderId, orderId),
+                eq(restaurantPayments.status, 'completed'),
+            ))
+        ),
+        first(db.select().from(kdsTickets)
+            .where(and(eq(kdsTickets.businessId, businessId), eq(kdsTickets.orderId, orderId)))
+        ),
+    ]);
     if (!order) return null;
-    const payment = await first(db.select().from(restaurantPayments)
-        .where(and(
-            eq(restaurantPayments.businessId, businessId),
-            eq(restaurantPayments.orderId, orderId),
-            eq(restaurantPayments.status, 'completed'),
-        ))
-    );
-    const ticket = await first(db.select().from(kdsTickets)
-        .where(and(eq(kdsTickets.businessId, businessId), eq(kdsTickets.orderId, orderId)))
-    );
     if (!payment) return null;
     return {
         order,
         payment: integratedPaymentSummary(payment, cashReceived, changeDue),
         kitchen: {
-            ticket: ticket ? await kdsTicketWithOrder(businessId, ticket.id) : null,
+            ticket: ticket ? {
+                ...ticket,
+                order: kitchenOrderPayload(order, order.items),
+                tableLabel: null,
+            } : null,
         },
         visibleOrderNumber: order.visibleOrderNumber,
         displayOrderNumber: order.displayOrderNumber,
@@ -1413,6 +1427,11 @@ restaurant.post('/orders/pay-now', async (c) => {
     const orderId = randomUUID();
     let cashReceived: number | undefined;
     let changeDue: number | undefined;
+    let createdTotalCents = 0;
+    let createdOrderRecord: typeof restaurantOrders.$inferSelect | null = null;
+    let createdItemRecords: typeof restaurantOrderItems.$inferSelect[] = [];
+    let createdPaymentRecord: typeof restaurantPayments.$inferSelect | null = null;
+    let createdTicketRecord: typeof kdsTickets.$inferSelect | null = null;
     try {
         let created = false;
         for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
@@ -1428,10 +1447,15 @@ restaurant.post('/orders/pay-now', async (c) => {
                         });
                     }
                     const canonicalItems = [];
+                    const requestedMenuItemIds = Array.from(requests.keys());
+                    const menuItemsForOrder = await tx.select().from(menuItems)
+                        .where(and(
+                            eq(menuItems.businessId, businessId),
+                            inArray(menuItems.id, requestedMenuItemIds),
+                        ));
+                    const menuItemById = new Map(menuItemsForOrder.map((item) => [item.id, item]));
                     for (const [id, request] of requests.entries()) {
-                        const item = await first(tx.select().from(menuItems)
-                            .where(and(eq(menuItems.id, id), eq(menuItems.businessId, businessId)))
-                        );
+                        const item = menuItemById.get(id);
                         if (!item) throw new Error('ITEM_NOT_FOUND');
                         if (!item.isAvailable) throw new Error('ITEM_UNAVAILABLE');
                         canonicalItems.push({ item, ...request });
@@ -1440,6 +1464,7 @@ restaurant.post('/orders/pay-now', async (c) => {
                         (sum, entry) => sum + entry.item.price * entry.quantity,
                         0,
                     );
+                    createdTotalCents = total;
                     const amount = total / 100;
                     const cashReceivedValue = body.cashReceived ?? body.cash_received;
                     if (paymentMethodValue === 'cash') {
@@ -1470,7 +1495,7 @@ restaurant.post('/orders/pay-now', async (c) => {
                     const visibleOrderNumber = Number(sequenceRows[0]?.nextNumber ?? 1);
 
                     const orderWriteStartedAt = timingNow();
-                    await tx.insert(restaurantOrders).values({
+                    const insertedOrders = await tx.insert(restaurantOrders).values({
                         id: orderId,
                         businessId,
                         visibleOrderNumber,
@@ -1487,8 +1512,9 @@ restaurant.post('/orders/pay-now', async (c) => {
                         total,
                         createdAt: now,
                         updatedAt: now,
-                    });
-                    await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
+                    }).returning();
+                    createdOrderRecord = insertedOrders[0] ?? null;
+                    createdItemRecords = await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
                         id: randomUUID(),
                         orderId,
                         menuItemId: entry.item.id,
@@ -1497,10 +1523,10 @@ restaurant.post('/orders/pay-now', async (c) => {
                         unitPrice: entry.item.price,
                         notes: entry.notes,
                         status: 'pending' as const,
-                    })));
+                    }))).returning();
                     orderWriteDurationMs += durationSince(orderWriteStartedAt);
                     const paymentWriteStartedAt = timingNow();
-                    await tx.insert(restaurantPayments).values({
+                    const insertedPayments = await tx.insert(restaurantPayments).values({
                         id: randomUUID(),
                         businessId,
                         orderId,
@@ -1508,17 +1534,19 @@ restaurant.post('/orders/pay-now', async (c) => {
                         amount,
                         status: 'completed',
                         paidAt: now,
-                    });
+                    }).returning();
+                    createdPaymentRecord = insertedPayments[0] ?? null;
                     paymentWriteDurationMs += durationSince(paymentWriteStartedAt);
                     const kdsWriteStartedAt = timingNow();
-                    await tx.insert(kdsTickets).values({
+                    const insertedTickets = await tx.insert(kdsTickets).values({
                         id: randomUUID(),
                         orderId,
                         businessId,
                         status: 'new',
                         createdAt: now,
                         completedAt: null,
-                    });
+                    }).returning();
+                    createdTicketRecord = insertedTickets[0] ?? null;
                     kdsWriteDurationMs += durationSince(kdsWriteStartedAt);
                 });
                 created = true;
@@ -1527,20 +1555,21 @@ restaurant.post('/orders/pay-now', async (c) => {
                 throw error;
             }
         }
-        await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
-            orderType,
-            paymentTiming: 'pay_before_service',
-            tableId: null,
-            idempotencyKey: Boolean(idempotencyKey),
-        });
-        const createdOrder = await orderWithItems(businessId, orderId);
-        await logAudit(c, 'RESTAURANT_ORDER_PAYMENT_COMPLETED', 'RESTAURANT_ORDER', orderId, {
-            method: paymentMethodValue,
-            amount: createdOrder ? createdOrder.total / 100 : null,
-            orderType,
-            paymentTiming: 'pay_before_service',
-            integratedPayNow: true,
-        });
+        await Promise.all([
+            logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
+                orderType,
+                paymentTiming: 'pay_before_service',
+                tableId: null,
+                idempotencyKey: Boolean(idempotencyKey),
+            }),
+            logAudit(c, 'RESTAURANT_ORDER_PAYMENT_COMPLETED', 'RESTAURANT_ORDER', orderId, {
+                method: paymentMethodValue,
+                amount: createdTotalCents / 100,
+                orderType,
+                paymentTiming: 'pay_before_service',
+                integratedPayNow: true,
+            }),
+        ]);
     } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message === 'ITEM_NOT_FOUND') return c.json({ error: 'Menu item not found' }, 404);
@@ -1563,7 +1592,25 @@ restaurant.post('/orders/pay-now', async (c) => {
     }
 
     const responsePreparationStartedAt = timingNow();
-    const response = await payNowOrderResponse(businessId, orderId, cashReceived, changeDue);
+    if (!createdOrderRecord || !createdPaymentRecord) {
+        throw new Error('Created pay-now records were not returned by the database');
+    }
+    const ticketRecord = createdTicketRecord as typeof kdsTickets.$inferSelect | null;
+    const createdOrder = orderResponse(createdOrderRecord, createdItemRecords, [createdPaymentRecord]);
+    const response = {
+        order: createdOrder,
+        payment: integratedPaymentSummary(createdPaymentRecord, cashReceived, changeDue),
+        kitchen: {
+            ticket: ticketRecord ? {
+                ...ticketRecord,
+                order: kitchenOrderPayload(createdOrderRecord, createdItemRecords),
+                tableLabel: null,
+            } : null,
+        },
+        visibleOrderNumber: createdOrder.visibleOrderNumber,
+        displayOrderNumber: createdOrder.displayOrderNumber,
+        nextAction: 'sent_to_kitchen' as const,
+    };
     const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
     logRestaurantTiming({
         route: 'POST /restaurant/orders/pay-now',
@@ -1719,6 +1766,8 @@ restaurant.post('/orders', async (c) => {
         if (existingOrder) return c.json(await orderWithItems(businessId, existingOrder.id));
     }
     const orderId = randomUUID();
+    let createdOrderRecord: typeof restaurantOrders.$inferSelect | null = null;
+    let createdItemRecords: typeof restaurantOrderItems.$inferSelect[] = [];
     try {
         let created = false;
         for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
@@ -1790,7 +1839,7 @@ restaurant.post('/orders', async (c) => {
 
                     const orderWriteStartedAt = timingNow();
                     const orderInsertStartedAt = timingNow();
-                    await tx.insert(restaurantOrders).values({
+                    const insertedOrders = await tx.insert(restaurantOrders).values({
                         id: orderId,
                         businessId,
                         visibleOrderNumber,
@@ -1807,10 +1856,11 @@ restaurant.post('/orders', async (c) => {
                         total,
                         createdAt: now,
                         updatedAt: now,
-                    });
+                    }).returning();
+                    createdOrderRecord = insertedOrders[0] ?? null;
                     orderInsertDurationMs += durationSince(orderInsertStartedAt);
                     const orderItemInsertStartedAt = timingNow();
-                    await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
+                    createdItemRecords = await tx.insert(restaurantOrderItems).values(canonicalItems.map((entry) => ({
                         id: randomUUID(),
                         orderId,
                         menuItemId: entry.item.id,
@@ -1819,7 +1869,7 @@ restaurant.post('/orders', async (c) => {
                         unitPrice: entry.item.price,
                         notes: entry.notes,
                         status: 'pending' as const,
-                    })));
+                    }))).returning();
                     orderItemInsertDurationMs += durationSince(orderItemInsertStartedAt);
                     orderWriteDurationMs += durationSince(orderWriteStartedAt);
                     const kdsWriteStartedAt = timingNow();
@@ -1863,15 +1913,6 @@ restaurant.post('/orders', async (c) => {
                 throw error;
             }
         }
-        const auditLogInsertStartedAt = timingNow();
-        await logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
-            orderType,
-            paymentTiming,
-            tableId: typeof tableId === 'string' ? tableId : null,
-            idempotencyKey: Boolean(idempotencyKey),
-            customerLinked: Boolean(customerSnapshot.customerId),
-        });
-        auditLogInsertDurationMs += durationSince(auditLogInsertStartedAt);
     } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message === 'TABLE_NOT_FOUND') return c.json({ error: 'Table not found' }, 404);
@@ -1889,7 +1930,19 @@ restaurant.post('/orders', async (c) => {
         throw error;
     }
     const responsePreparationStartedAt = timingNow();
-    const response = await orderWithItems(businessId, orderId, responseTimings);
+    const auditLogInsertStartedAt = timingNow();
+    const auditPromise = logAudit(c, 'RESTAURANT_ORDER_CREATED', 'RESTAURANT_ORDER', orderId, {
+        orderType,
+        paymentTiming,
+        tableId: typeof tableId === 'string' ? tableId : null,
+        idempotencyKey: Boolean(idempotencyKey),
+        customerLinked: Boolean(customerSnapshot.customerId),
+    }).finally(() => {
+        auditLogInsertDurationMs += durationSince(auditLogInsertStartedAt);
+    });
+    await auditPromise;
+    if (!createdOrderRecord) throw new Error('Created order was not returned by the database');
+    const response = orderResponse(createdOrderRecord, createdItemRecords, []);
     const responsePreparationDurationMs = durationSince(responsePreparationStartedAt);
     logRestaurantTiming({
         route: 'POST /restaurant/orders',

@@ -222,18 +222,25 @@ export const PosView = () => {
             setPaymentMethod('cash');
             setCashReceived('');
             setSubmissionKey(crypto.randomUUID());
-            const [menu, tableData] = await Promise.all([
-                restaurantApi.getMenu(),
-                tablesEnabled ? restaurantApi.getTables() : Promise.resolve([]),
-            ]);
-            setCategories(menu.categories);
-            setTables(tableData);
-            setSelectedCategory((current) => current || 'All');
             setMessage({ kind: 'success', text: `${displayOrderNumber} sent to kitchen. ${isPayNow ? 'Payment recorded.' : 'Payment remains open.'}` });
             window.dispatchEvent(new CustomEvent('q360:restaurant-orders-updated'));
             logPerformanceTiming('restaurant.pos.response.handled', {
                 correlationId,
                 submitDurationMs: performanceDuration(submitStartedAt),
+            });
+            // The order is already committed. Refresh supporting data in the
+            // background so the cashier is not kept on "Sending..." while two
+            // unrelated read requests complete.
+            void Promise.all([
+                restaurantApi.getMenu(),
+                tablesEnabled ? restaurantApi.getTables() : Promise.resolve([]),
+            ]).then(([menu, tableData]) => {
+                setCategories(menu.categories);
+                setTables(tableData);
+                setSelectedCategory((current) => current || 'All');
+            }).catch(() => {
+                // Keep the successful order result visible. The next page load
+                // or manual navigation will refresh this supporting data.
             });
         } catch (error) {
             setMessage({

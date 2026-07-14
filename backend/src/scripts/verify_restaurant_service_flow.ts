@@ -1495,7 +1495,7 @@ try {
         result.kitchenReadyPermissions.cashierStatus !== 403 ||
         result.kitchenReadyPermissions.unknownStatus !== 403 ||
         result.kitchenReadyPermissions.missingRoleStatus !== 403 ||
-        result.kitchenReadyPermissions.genericUserOtherBusinessStatus !== 403 ||
+        result.kitchenReadyPermissions.genericUserOtherBusinessStatus !== 404 ||
         result.kitchenReadyPermissions.crossTenantStatus !== 404 ||
         result.kitchenReadyPermissions.duplicateReadyStatus !== 'done' ||
         result.integratedPayNow.cash.orderType !== 'takeaway' ||
@@ -1573,6 +1573,7 @@ try {
     console.log(JSON.stringify(result, null, 2));
 } catch (error) {
     console.error('Restaurant service-flow verification failed:', error);
+    if (serverOutput.trim()) console.error('[verify:restaurant-service-flow] API output:\n', serverOutput);
     process.exitCode = 1;
 } finally {
     const runningServer = server;

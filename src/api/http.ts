@@ -49,8 +49,9 @@ class HttpClient {
             (error) => {
                 // Handle 401 Unauthorized
                 if (error.response?.status === 401) {
-                    useAuthStore.getState().logout();
-                    // Optionally redirect to login via window.location if outside React context
+                    // Clear locally without calling /logout again. Calling logout from this
+                    // interceptor can recursively trigger another 401 on the logout request.
+                    useAuthStore.getState().expireSession();
                 }
                 return Promise.reject(error);
             }
