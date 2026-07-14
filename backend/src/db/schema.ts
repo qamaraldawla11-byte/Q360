@@ -469,6 +469,35 @@ export const qUsageEvents = pgTable('q_usage_events', {
     index('q_usage_events_user_created_idx').on(table.userId, table.createdAt),
 ]);
 
+// Conversation records are tenant-scoped. Q's rules-only replies can be
+// replaced by a model provider later without changing ownership or feedback.
+export const qAssistantConversations = pgTable('q_assistant_conversations', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    createdBy: text('created_by').notNull(),
+    title: text('title').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('q_assistant_conversations_business_updated_idx').on(table.businessId, table.updatedAt),
+    index('q_assistant_conversations_creator_updated_idx').on(table.createdBy, table.updatedAt),
+]);
+
+export const qAssistantMessages = pgTable('q_assistant_messages', {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id').notNull(),
+    businessId: text('business_id').notNull(),
+    userId: text('user_id'),
+    role: text('role').$type<'user' | 'assistant'>().notNull(),
+    content: text('content').notNull(),
+    evidenceCards: jsonb('evidence_cards').$type<Array<{ id: string; label: string; facts: string[] }>>().notNull().default([]),
+    feedback: text('feedback').$type<'helpful' | 'not_helpful'>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+    index('q_assistant_messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+    index('q_assistant_messages_business_created_idx').on(table.businessId, table.createdAt),
+]);
+
 // Type exports for use in services
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

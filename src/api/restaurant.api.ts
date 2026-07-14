@@ -210,6 +210,24 @@ export interface RestaurantQDraft {
     requiresApproval?: boolean;
 }
 
+export interface RestaurantQConversation {
+    id: string;
+    title: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RestaurantQChatMessage {
+    id: string;
+    conversationId: string;
+    role: 'user' | 'assistant';
+    content: string;
+    evidenceCards: Array<Pick<RestaurantQEvidenceCard, 'id' | 'label' | 'facts'>>;
+    feedback: 'helpful' | 'not_helpful' | null;
+    createdAt: string;
+}
+
 export interface RestaurantDailyReportOrder {
     id: string;
     displayOrderNumber: string;
@@ -243,6 +261,11 @@ export const restaurantApi = {
 
     getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
     askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
+    getQConversations: () => http.get<{ conversations: RestaurantQConversation[] }>('/restaurant/q/conversations'),
+    getQConversation: (id: string) => http.get<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}`),
+    createQConversation: (prompt: string) => http.post<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>('/restaurant/q/conversations', { prompt }),
+    sendQMessage: (id: string, prompt: string) => http.post<{ messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}/messages`, { prompt }),
+    giveQMessageFeedback: (id: string, feedback: 'helpful' | 'not_helpful') => http.patch<{ message: RestaurantQChatMessage }>(`/restaurant/q/messages/${id}/feedback`, { feedback }),
     getQDrafts: () => http.get<{ drafts: RestaurantQDraft[] }>('/restaurant/business-pulse/drafts'),
     getQUsage: () => http.get<RestaurantQUsage>('/restaurant/business-pulse/usage'),
     createQDraft: (type: RestaurantQDraft['type']) =>

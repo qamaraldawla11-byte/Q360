@@ -8,7 +8,9 @@ import {
     menuCategories,
     menuItemAssets,
     menuItems,
+    qAssistantConversations,
     qAssistantDrafts,
+    qAssistantMessages,
     qUsageEvents,
     restaurantBookings,
     restaurantMenus,
@@ -656,11 +658,13 @@ const recordQUsage = async (
     feature: string,
     requestStatus: 'completed' | 'failed' | 'blocked',
     metadata: Record<string, string | number | boolean> = {},
+    conversationId?: string,
 ) => db.insert(qUsageEvents).values({
     id: randomUUID(),
     businessId: actor.businessId,
     userId: actor.userId,
     feature,
+    conversationId,
     provider: 'q360-rules-v1',
     model: 'structured-pulse-v1',
     requestStatus,
@@ -788,6 +792,29 @@ const publicQDraft = (draft: typeof qAssistantDrafts.$inferSelect | (typeof qAss
     reviewedAt: draft.reviewedAt ?? null,
     requiresApproval: draft.status === 'pending',
 });
+
+const publicQConversation = (conversation: typeof qAssistantConversations.$inferSelect) => ({
+    id: conversation.id,
+    title: conversation.title,
+    createdBy: conversation.createdBy,
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+});
+
+const publicQMessage = (message: typeof qAssistantMessages.$inferSelect) => ({
+    id: message.id,
+    conversationId: message.conversationId,
+    role: message.role,
+    content: message.content,
+    evidenceCards: message.evidenceCards,
+    feedback: message.feedback,
+    createdAt: message.createdAt.toISOString(),
+});
+
+const conversationTitleFor = (prompt: string) => {
+    const clean = prompt.replace(/\s+/g, ' ').trim();
+    return clean.length <= 60 ? clean : `${clean.slice(0, 57).trimEnd()}...`;
+};
 
 const orderResponse = (
     order: typeof restaurantOrders.$inferSelect,
@@ -966,6 +993,113 @@ restaurant.post('/business-pulse/ask', async (c) => {
         await logAudit(c, 'Q_PROVIDER_ERROR', 'Q_BUSINESS_PULSE', null, { safeReason: 'question_generation_failed' });
         return c.json({ error: 'Q could not answer from the current Restaurant records' }, 500);
     }
+});
+
+// Q Chat deliberately uses the same verified, business-scoped rules response as
+// Pulse in this release. This gives every conversation evidence and a full audit
+// trail before a paid external model is enabled.
+restaurant.get('/q/conversations', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const conversations = await db.select().from(qAssistantConversations)
+        .where(eq(qAssistantConversations.businessId, actor.businessId))
+        .orderBy(desc(qAssistantConversations.updatedAt));
+    return c.json({ conversations: conversations.map(publicQConversation) });
+});
+
+restaurant.get('/q/conversations/:id', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const conversation = await first(db.select().from(qAssistantConversations).where(and(
+        eq(qAssistantConversations.id, c.req.param('id')),
+        eq(qAssistantConversations.businessId, actor.businessId),
+    )));
+    if (!conversation) return c.json({ error: 'Q conversation not found' }, 404);
+    const messages = await db.select().from(qAssistantMessages).where(and(
+        eq(qAssistantMessages.conversationId, conversation.id),
+        eq(qAssistantMessages.businessId, actor.businessId),
+    )).orderBy(asc(qAssistantMessages.createdAt));
+    return c.json({ conversation: publicQConversation(conversation), messages: messages.map(publicQMessage) });
+});
+
+restaurant.post('/q/conversations', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const body = await parseJson<{ prompt?: unknown }>(c);
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt) return c.json({ error: 'A question is required' }, 400);
+    if (prompt.length > 500) return c.json({ error: 'Question must be 500 characters or fewer' }, 400);
+    try {
+        const now = new Date();
+        const conversation = {
+            id: randomUUID(), businessId: actor.businessId, createdBy: actor.userId,
+            title: conversationTitleFor(prompt), createdAt: now, updatedAt: now,
+        };
+        const userMessage = {
+            id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId,
+            userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: now,
+        };
+        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
+        const response = buildQPulseResponse(snapshot, prompt);
+        const assistantMessage = {
+            id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId,
+            userId: null, role: 'assistant' as const, content: response.summary,
+            evidenceCards: response.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })), feedback: null, createdAt: new Date(),
+        };
+        await db.insert(qAssistantConversations).values(conversation);
+        await db.insert(qAssistantMessages).values([userMessage, assistantMessage]);
+        await recordQUsage(actor, 'business_chat', 'completed', { promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length }, conversation.id);
+        await logAudit(c, 'Q_CHAT_CONVERSATION_CREATED', 'Q_ASSISTANT_CONVERSATION', conversation.id, {
+            userRole: actor.role, provider: 'q360-rules-v1', model: 'structured-pulse-v1', validationStatus: 'passed',
+        });
+        return c.json({ conversation: publicQConversation(conversation), messages: [publicQMessage(userMessage), publicQMessage(assistantMessage)] }, 201);
+    } catch {
+        await recordQUsage(actor, 'business_chat', 'failed', { safeReason: 'conversation_creation_failed' }).catch(() => undefined);
+        return c.json({ error: 'Q could not answer from the current Restaurant records' }, 500);
+    }
+});
+
+restaurant.post('/q/conversations/:id/messages', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const body = await parseJson<{ prompt?: unknown }>(c);
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt) return c.json({ error: 'A question is required' }, 400);
+    if (prompt.length > 500) return c.json({ error: 'Question must be 500 characters or fewer' }, 400);
+    const conversation = await first(db.select().from(qAssistantConversations).where(and(
+        eq(qAssistantConversations.id, c.req.param('id')),
+        eq(qAssistantConversations.businessId, actor.businessId),
+    )));
+    if (!conversation) return c.json({ error: 'Q conversation not found' }, 404);
+    try {
+        const userMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: new Date() };
+        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
+        const response = buildQPulseResponse(snapshot, prompt);
+        const assistantMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: null, role: 'assistant' as const, content: response.summary, evidenceCards: response.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })), feedback: null, createdAt: new Date() };
+        await db.insert(qAssistantMessages).values([userMessage, assistantMessage]);
+        await db.update(qAssistantConversations).set({ updatedAt: new Date() }).where(eq(qAssistantConversations.id, conversation.id));
+        await recordQUsage(actor, 'business_chat', 'completed', { promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length }, conversation.id);
+        await logAudit(c, 'Q_CHAT_MESSAGE_CREATED', 'Q_ASSISTANT_CONVERSATION', conversation.id, { userRole: actor.role, validationStatus: 'passed' });
+        return c.json({ messages: [publicQMessage(userMessage), publicQMessage(assistantMessage)] }, 201);
+    } catch {
+        await recordQUsage(actor, 'business_chat', 'failed', { safeReason: 'message_generation_failed' }, conversation.id).catch(() => undefined);
+        return c.json({ error: 'Q could not answer from the current Restaurant records' }, 500);
+    }
+});
+
+restaurant.patch('/q/messages/:id/feedback', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
+    const body = await parseJson<{ feedback?: unknown }>(c);
+    const feedback = body?.feedback === 'helpful' || body?.feedback === 'not_helpful' ? body.feedback : null;
+    if (!feedback) return c.json({ error: 'Feedback must be helpful or not_helpful' }, 400);
+    const message = await first(db.select().from(qAssistantMessages).where(and(
+        eq(qAssistantMessages.id, c.req.param('id')), eq(qAssistantMessages.businessId, actor.businessId), eq(qAssistantMessages.role, 'assistant'),
+    )));
+    if (!message) return c.json({ error: 'Q response not found' }, 404);
+    await db.update(qAssistantMessages).set({ feedback }).where(eq(qAssistantMessages.id, message.id));
+    await logAudit(c, 'Q_CHAT_FEEDBACK_RECORDED', 'Q_ASSISTANT_MESSAGE', message.id, { feedback, conversationId: message.conversationId });
+    return c.json({ message: { ...publicQMessage(message), feedback } });
 });
 
 restaurant.get('/business-pulse/drafts', async (c) => {

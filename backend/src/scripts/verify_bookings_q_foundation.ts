@@ -12,6 +12,8 @@ const { closeDatabase, db } = await import('../db/client.js');
 const {
     auditLogs,
     businesses,
+    qAssistantConversations,
+    qAssistantMessages,
     qUsageEvents,
     restaurantBookings,
     restaurantTables,
@@ -49,6 +51,8 @@ const expect = (condition: unknown, message: string) => { if (!condition) throw 
 
 const reset = async () => {
     await db.delete(restaurantBookings).where(inArray(restaurantBookings.businessId, businessesUnderTest));
+    await db.delete(qAssistantMessages).where(inArray(qAssistantMessages.businessId, businessesUnderTest));
+    await db.delete(qAssistantConversations).where(inArray(qAssistantConversations.businessId, businessesUnderTest));
     await db.delete(qUsageEvents).where(inArray(qUsageEvents.businessId, businessesUnderTest));
     await db.delete(auditLogs).where(inArray(auditLogs.businessId, businessesUnderTest));
     await db.delete(restaurantTables).where(inArray(restaurantTables.businessId, businessesUnderTest));
@@ -101,11 +105,20 @@ try {
     expect(pulse.status === 200, `Expected Q pulse 200, received ${pulse.status}`);
     const usage = await request(businessA, userA, '/api/restaurant/business-pulse/usage');
     expect(usage.status === 200 && usage.body.requests >= 1, 'Expected Q usage ledger entry');
+    const conversation = await request(businessA, userA, '/api/restaurant/q/conversations', 'POST', { prompt: 'Which payments are still open?' });
+    expect(conversation.status === 201 && conversation.body.messages.length === 2, `Expected Q chat creation 201, received ${conversation.status}`);
+    const conversationId = conversation.body.conversation.id;
+    const chatMessage = await request(businessA, userA, `/api/restaurant/q/conversations/${conversationId}/messages`, 'POST', { prompt: 'What sold best today?' });
+    expect(chatMessage.status === 201 && chatMessage.body.messages[1].role === 'assistant', 'Expected Q chat reply');
+    const feedback = await request(businessA, userA, `/api/restaurant/q/messages/${chatMessage.body.messages[1].id}/feedback`, 'PATCH', { feedback: 'helpful' });
+    expect(feedback.status === 200 && feedback.body.message.feedback === 'helpful', 'Expected Q chat feedback');
+    const foreignConversation = await request(businessB, userB, `/api/restaurant/q/conversations/${conversationId}`);
+    expect(foreignConversation.status === 404, `Expected Q chat tenant isolation, received ${foreignConversation.status}`);
     const staffUsage = await request(businessA, userA, '/api/restaurant/business-pulse/usage', 'GET', undefined, 'staff');
     expect(staffUsage.status === 403, `Expected usage permissions denial, received ${staffUsage.status}`);
     const audit = await db.select().from(auditLogs).where(and(eq(auditLogs.businessId, businessA), eq(auditLogs.action, 'RESTAURANT_BOOKING_CREATED')));
     expect(audit.length === 2, `Expected two booking audit records, received ${audit.length}`);
-    console.log(JSON.stringify({ bookingStatuses: [create.body.status, updated.body.status], overlapStatus: overlap.status, adjacentStatus: adjacent.status, usage: usage.body, staffUsageStatus: staffUsage.status }, null, 2));
+    console.log(JSON.stringify({ bookingStatuses: [create.body.status, updated.body.status], overlapStatus: overlap.status, adjacentStatus: adjacent.status, qChat: { conversationId, messageCount: chatMessage.body.messages.length, feedback: feedback.body.message.feedback, foreignConversationStatus: foreignConversation.status }, usage: usage.body, staffUsageStatus: staffUsage.status }, null, 2));
 } catch (error) {
     console.error('Bookings and Q foundation verification failed:', error);
     process.exitCode = 1;
