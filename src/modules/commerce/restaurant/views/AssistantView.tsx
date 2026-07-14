@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Bot, Check, ClipboardList, FileText, LockKeyhole, MessageCircle, RefreshCw, Send, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { restaurantApi, type RestaurantQChatMessage, type RestaurantQConversation, type RestaurantQDraft, type RestaurantQPulse, type RestaurantQUsage } from '@/api/restaurant.api';
 
 const suggestedQuestions = ['What needs attention right now?', 'Which orders are delayed?', 'Which payments are still open?', 'What sold best today?', 'Summarize today\'s sales.'];
 
 export const AssistantView = () => {
+    const location = useLocation();
     const [pulse, setPulse] = useState<RestaurantQPulse | null>(null);
     const [drafts, setDrafts] = useState<RestaurantQDraft[]>([]);
     const [usage, setUsage] = useState<RestaurantQUsage | null>(null);
     const [conversations, setConversations] = useState<RestaurantQConversation[]>([]);
     const [messages, setMessages] = useState<RestaurantQChatMessage[]>([]);
     const [activeConversation, setActiveConversation] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'pulse' | 'chat'>('pulse');
+    const [activeTab, setActiveTab] = useState<'pulse' | 'chat'>(() => new URLSearchParams(location.search).get('tab') === 'chat' ? 'chat' : 'pulse');
     const [prompt, setPrompt] = useState('');
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState('');
@@ -30,6 +32,9 @@ export const AssistantView = () => {
     }, []);
 
     useEffect(() => { void load(); }, [load]);
+    useEffect(() => {
+        if (new URLSearchParams(location.search).get('tab') === 'chat') setActiveTab('chat');
+    }, [location.search]);
 
     const askPulse = async (question: string) => {
         const value = question.trim(); if (!value) return;

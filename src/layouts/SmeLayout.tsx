@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Bot, ChevronDown, LogOut, Menu, Settings, UserRound, X } from 'lucide-react';
+import { Bell, Bot, ChevronDown, LogOut, Menu, MessageCircle, Settings, UserRound, X } from 'lucide-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { pharmacyManifest } from '@/modules/commerce/pharmacy/manifest';
 import { restaurantManifest } from '@/modules/commerce/restaurant/manifest';
@@ -251,6 +251,25 @@ export const SmeLayout = () => {
                     </div>
                 </header>
                 <main className="sme-content" style={styles.content}><Outlet /></main>
+                {manifest.id === 'restaurant' && canManageRestaurant && !location.pathname.startsWith('/app/restaurant/assistant') && (
+                    <button
+                        type="button"
+                        className="q-global-launcher"
+                        aria-label="Open Q chat"
+                        title="Chat with Q"
+                        onClick={() => navigate('/app/restaurant/assistant?tab=chat')}
+                        style={{
+                            ...styles.qGlobalLauncher,
+                            background: isDark ? 'linear-gradient(145deg, #172554, #0369a1)' : 'linear-gradient(145deg, #075985, #0284c7)',
+                            borderColor: isDark ? '#38bdf8' : '#0369a1',
+                            boxShadow: isDark ? '0 14px 34px rgba(2,132,199,.3)' : '0 14px 34px rgba(3,105,161,.25)',
+                        }}
+                    >
+                        <img src="/brand/q360-mark.svg" alt="" style={styles.qGlobalMark} />
+                        <span className="q-global-launcher-label">Ask Q</span>
+                        <MessageCircle size={17} aria-hidden="true" />
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -292,5 +311,7 @@ const styles: Record<string, React.CSSProperties> = {
     menu: { position: 'absolute', top: 42, right: 0, width: 160, padding: 6, border: '1px solid', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,.28)' },
     menuItem: { width: '100%', padding: '9px 10px', display: 'flex', alignItems: 'center', gap: 9, border: 0, borderRadius: 7, background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', fontSize: 12, textAlign: 'left' },
     content: { flex: 1, minWidth: 0, overflow: 'auto' },
+    qGlobalLauncher: { position: 'fixed', right: 24, bottom: 24, zIndex: 220, minHeight: 52, padding: '8px 14px 8px 8px', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid', borderRadius: 999, color: '#fff', cursor: 'pointer', font: 'inherit', fontSize: 14, fontWeight: 800 },
+    qGlobalMark: { width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', background: '#0b1220' },
     unsupported: { minHeight: '100vh', padding: 32, display: 'grid', placeItems: 'center', background: '#090b10', color: '#a7b0bf', fontFamily: 'var(--font-sans)', textAlign: 'center' },
 };

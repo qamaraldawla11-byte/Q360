@@ -170,6 +170,21 @@ body {
     overflow-x: hidden !important;
   }
 
+  .q-global-launcher {
+    right: 16px !important;
+    bottom: 16px !important;
+    width: 52px;
+    height: 52px;
+    min-height: 52px !important;
+    padding: 8px !important;
+    justify-content: center;
+  }
+
+  .q-global-launcher-label,
+  .q-global-launcher > svg {
+    display: none;
+  }
+
   .restaurant-pos {
     height: auto !important;
     min-height: calc(100vh - 56px);
