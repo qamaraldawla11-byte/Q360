@@ -13,6 +13,7 @@ import {
     qAssistantConversations,
     qAssistantDrafts,
     qAssistantMessages,
+    qBusinessMemories,
     qUsageEvents,
     restaurantBookings,
     restaurantMenus,
@@ -155,7 +156,9 @@ interface BusinessPulseSnapshot {
 }
 
 const qDraftTypes = ['daily_report', 'manager_task', 'booking_brief', 'purchase_review'] as const;
+const qOperatingPriorities = ['service_speed', 'guest_experience', 'cost_control', 'sales_growth', 'waste_reduction', 'team_development'] as const;
 type QDraftType = typeof qDraftTypes[number];
+type QOperatingPriority = typeof qOperatingPriorities[number];
 type QBusinessBriefing = {
     businessName: string;
     country: string | null;
@@ -168,6 +171,10 @@ type QBusinessBriefing = {
     activeMenuItemCount: number;
     lowStockCount: number;
     upcomingBookingCount: number;
+    ownerSummary: string | null;
+    businessGoals: string | null;
+    operatingPriorities: QOperatingPriority[];
+    memoryUpdatedAt: string | null;
     generatedAt: string;
 };
 type QEvidenceCard = {
@@ -632,7 +639,7 @@ const buildBusinessPulseSnapshot = async (businessId: string): Promise<BusinessP
 // hidden long-term model memory.
 const buildQBusinessBriefing = async (businessId: string): Promise<QBusinessBriefing> => {
     const now = new Date();
-    const [business, tables, items, stock, bookings] = await Promise.all([
+    const [business, tables, items, stock, bookings, memory] = await Promise.all([
         first(db.select().from(businesses).where(eq(businesses.id, businessId))),
         db.select().from(restaurantTables).where(eq(restaurantTables.businessId, businessId)),
         db.select().from(menuItems).where(and(eq(menuItems.businessId, businessId), eq(menuItems.isAvailable, true))),
@@ -642,6 +649,7 @@ const buildQBusinessBriefing = async (businessId: string): Promise<QBusinessBrie
             inArray(restaurantBookings.status, ['pending', 'confirmed', 'arrived', 'seated']),
             gte(restaurantBookings.startsAt, now),
         )),
+        first(db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, businessId))),
     ]);
     return {
         businessName: business?.name ?? 'This restaurant',
@@ -655,9 +663,28 @@ const buildQBusinessBriefing = async (businessId: string): Promise<QBusinessBrie
         activeMenuItemCount: items.length,
         lowStockCount: stock.filter(item => item.status === 'low' || item.status === 'critical' || item.current <= item.min).length,
         upcomingBookingCount: bookings.length,
+        ownerSummary: memory?.ownerSummary ?? null,
+        businessGoals: memory?.businessGoals ?? null,
+        operatingPriorities: (memory?.operatingPriorities ?? []).filter((priority): priority is QOperatingPriority => qOperatingPriorities.includes(priority as QOperatingPriority)),
+        memoryUpdatedAt: memory?.updatedAt?.toISOString() ?? null,
         generatedAt: now.toISOString(),
     };
 };
+
+const qMemoryText = (value: unknown, maximum: number, label: string) => {
+    if (value === undefined || value === null) return { value: null as string | null };
+    if (typeof value !== 'string') return { error: `${label} must be text` };
+    const normalized = value.trim() || null;
+    if (normalized && normalized.length > maximum) return { error: `${label} must be ${maximum} characters or fewer` };
+    return { value: normalized };
+};
+
+const publicQBusinessMemory = (memory: typeof qBusinessMemories.$inferSelect | null) => ({
+    ownerSummary: memory?.ownerSummary ?? null,
+    businessGoals: memory?.businessGoals ?? null,
+    operatingPriorities: (memory?.operatingPriorities ?? []).filter((priority): priority is QOperatingPriority => qOperatingPriorities.includes(priority as QOperatingPriority)),
+    updatedAt: memory?.updatedAt?.toISOString() ?? null,
+});
 
 const activeBookingStatuses: BookingStatus[] = ['pending', 'confirmed', 'arrived', 'seated'];
 const bookingText = (value: unknown, maximum: number) => {
@@ -792,6 +819,11 @@ const buildQPulseResponse = (snapshot: BusinessPulseSnapshot, prompt?: string, b
         summary = `${briefing.businessName} is set up for ${briefing.restaurantService === 'both' ? 'dine-in and takeaway' : briefing.restaurantService.replace('_', '-')} with ${briefing.tableCount} table${briefing.tableCount === 1 ? '' : 's'} and ${briefing.activeMenuItemCount} available menu item${briefing.activeMenuItemCount === 1 ? '' : 's'}.`;
     } else if (normalizedPrompt.includes('sales') || normalizedPrompt.includes('revenue') || normalizedPrompt.includes('today')) {
         summary = `Today has ${snapshot.todaySalesSummary.paidOrderCount} paid orders and ${(snapshot.todaySalesSummary.grossSales / 100).toFixed(2)} in paid revenue.`;
+    }
+
+    if (briefing?.operatingPriorities.length && (normalizedPrompt.includes('goal') || normalizedPrompt.includes('focus') || normalizedPrompt.includes('priority'))) {
+        const focus = briefing.operatingPriorities.map(priority => priority.replace(/_/g, ' ')).join(', ');
+        summary = `Your saved operating priorities are ${focus}.${briefing.businessGoals ? ` Your stated goal is: ${briefing.businessGoals}` : ''}`;
     }
 
     return {
@@ -1010,6 +1042,42 @@ restaurant.get('/q/briefing', async (c) => {
     const briefing = await buildQBusinessBriefing(actor.businessId);
     await recordQUsage(actor, 'business_briefing', 'completed', { tableCount: briefing.tableCount, bookingCount: briefing.upcomingBookingCount });
     return c.json({ briefing });
+});
+
+// Explicit, owner-managed context Q uses only alongside this business's saved
+// records. Managers may ask Q, but only owners/admins may define its context.
+restaurant.get('/q/memory', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can view Q business context');
+    const memory = await first(db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, actor.businessId)));
+    return c.json({ memory: publicQBusinessMemory(memory ?? null) });
+});
+
+restaurant.put('/q/memory', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can update Q business context');
+    const body = await parseJson<{ ownerSummary?: unknown; businessGoals?: unknown; operatingPriorities?: unknown }>(c);
+    const ownerSummary = qMemoryText(body?.ownerSummary, 1200, 'Business summary');
+    const businessGoals = qMemoryText(body?.businessGoals, 1200, 'Business goals');
+    if ('error' in ownerSummary) return c.json({ error: ownerSummary.error }, 400);
+    if ('error' in businessGoals) return c.json({ error: businessGoals.error }, 400);
+    if (body?.operatingPriorities !== undefined && !Array.isArray(body.operatingPriorities)) return c.json({ error: 'Operating priorities must be a list' }, 400);
+    const requestedPriorities = body?.operatingPriorities ?? [];
+    const priorities = [...new Set(requestedPriorities.filter((priority): priority is QOperatingPriority => typeof priority === 'string' && qOperatingPriorities.includes(priority as QOperatingPriority)))];
+    if (requestedPriorities.length !== priorities.length) return c.json({ error: 'Operating priorities include an unsupported or duplicate value' }, 400);
+    const existing = await first(db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, actor.businessId)));
+    const now = new Date();
+    const record = {
+        id: existing?.id ?? randomUUID(), businessId: actor.businessId,
+        ownerSummary: ownerSummary.value, businessGoals: businessGoals.value, operatingPriorities: priorities,
+        updatedBy: actor.userId, updatedAt: now,
+    };
+    if (existing) await db.update(qBusinessMemories).set(record).where(eq(qBusinessMemories.id, existing.id));
+    else await db.insert(qBusinessMemories).values({ ...record, createdAt: now });
+    const saved = await first(db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, actor.businessId)));
+    await recordQUsage(actor, 'business_memory_update', 'completed', { priorityCount: priorities.length, hasSummary: Boolean(ownerSummary.value), hasGoals: Boolean(businessGoals.value) });
+    await logAudit(c, 'Q_BUSINESS_MEMORY_UPDATED', 'Q_BUSINESS_MEMORY', record.id, { userRole: actor.role, priorityCount: priorities.length, hasSummary: Boolean(ownerSummary.value), hasGoals: Boolean(businessGoals.value), validationStatus: 'passed' });
+    return c.json({ memory: publicQBusinessMemory(saved ?? null), message: 'Q business context saved. Q will use it only with this restaurant\'s records.' });
 });
 
 restaurant.get('/business-pulse', async (c) => {

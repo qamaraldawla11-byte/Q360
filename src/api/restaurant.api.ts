@@ -192,7 +192,20 @@ export interface RestaurantQBusinessBriefing {
     activeMenuItemCount: number;
     lowStockCount: number;
     upcomingBookingCount: number;
+    ownerSummary: string | null;
+    businessGoals: string | null;
+    operatingPriorities: RestaurantQOperatingPriority[];
+    memoryUpdatedAt: string | null;
     generatedAt: string;
+}
+
+export type RestaurantQOperatingPriority = 'service_speed' | 'guest_experience' | 'cost_control' | 'sales_growth' | 'waste_reduction' | 'team_development';
+
+export interface RestaurantQBusinessMemory {
+    ownerSummary: string | null;
+    businessGoals: string | null;
+    operatingPriorities: RestaurantQOperatingPriority[];
+    updatedAt: string | null;
 }
 
 export interface RestaurantQProviderStatus {
@@ -289,6 +302,8 @@ export const restaurantApi = {
     getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
     askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
     getQBusinessBriefing: () => http.get<{ briefing: RestaurantQBusinessBriefing }>('/restaurant/q/briefing'),
+    getQBusinessMemory: () => http.get<{ memory: RestaurantQBusinessMemory }>('/restaurant/q/memory'),
+    updateQBusinessMemory: (payload: Omit<RestaurantQBusinessMemory, 'updatedAt'>) => http.put<{ memory: RestaurantQBusinessMemory; message: string }>('/restaurant/q/memory', payload),
     getQProviderStatus: () => http.get<{ periodStart: string; provider: RestaurantQProviderStatus }>('/restaurant/q/provider-status'),
     getQConversations: () => http.get<{ conversations: RestaurantQConversation[] }>('/restaurant/q/conversations'),
     getQConversation: (id: string) => http.get<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}`),

@@ -446,6 +446,21 @@ export const qAssistantDrafts = pgTable('q_assistant_drafts', {
     index('q_assistant_drafts_business_status_idx').on(table.businessId, table.status),
 ]);
 
+// Owner-managed context for Q. It stores only information the owner explicitly
+// saves for this business; it is never shared across businesses.
+export const qBusinessMemories = pgTable('q_business_memories', {
+    id: text('id').primaryKey(),
+    businessId: text('business_id').notNull(),
+    ownerSummary: text('owner_summary'),
+    businessGoals: text('business_goals'),
+    operatingPriorities: jsonb('operating_priorities').$type<string[]>().notNull().default([]),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    uniqueIndex('q_business_memories_business_unique').on(table.businessId),
+]);
+
 // Provider-neutral Q metering. Rules-only Q activity records zero model tokens;
 // future model, image, and voice calls use the same tenant-scoped ledger.
 export const qUsageEvents = pgTable('q_usage_events', {
