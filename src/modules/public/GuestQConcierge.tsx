@@ -79,7 +79,12 @@ export const GuestQConcierge = ({
     ]);
     const messagesEnd = useRef<HTMLDivElement>(null);
 
-    useEffect(() => messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }), [messages]);
+    useEffect(() => {
+        const messageEnd = messagesEnd.current;
+        if (messageEnd && typeof messageEnd.scrollIntoView === 'function') {
+            messageEnd.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+    }, [messages]);
 
     const modules = useMemo(() => {
         const result = ['Dashboard', 'Sales', 'Customers', 'Reports', 'Finance', 'Q Assistant'];
