@@ -2,11 +2,12 @@
 import { Hono } from 'hono';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { users, businesses, auditLogs, systemSettings, NewUser, NewBusiness } from '../db/schema.js';
+import { users, businesses, auditLogs, systemSettings, qUsageEvents, NewUser, NewBusiness } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppEnv } from '../types/app.js';
 import { getErrorMessage } from '../types/app.js';
+import { getQProviderStatus } from '../services/qProviderConfig.js';
 
 const admin = new Hono<AppEnv>();
 
@@ -59,6 +60,115 @@ admin.get('/stats', async (c) => {
     } catch (error) {
         console.error('Stats error:', error);
         return c.json({ error: 'Failed to fetch stats' }, 500);
+    }
+});
+
+// --- Q Usage & Cost Control ---
+
+admin.get('/q-usage', async (c) => {
+    try {
+        const requestedDays = Number(c.req.query('days') || 30);
+        const days = Math.min(90, Math.max(1, Number.isFinite(requestedDays) ? Math.floor(requestedDays) : 30));
+        const now = new Date();
+        const periodStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const queryStart = periodStart < monthStart ? periodStart : monthStart;
+
+        const [usageRows, businessRows, userRows] = await Promise.all([
+            db.select().from(qUsageEvents).where(gte(qUsageEvents.createdAt, queryStart)).orderBy(desc(qUsageEvents.createdAt)),
+            db.select({ id: businesses.id, name: businesses.name, status: businesses.status }).from(businesses),
+            db.select({ id: users.id, name: users.name, email: users.email, businessId: users.businessId }).from(users),
+        ]);
+
+        type UsageRow = typeof usageRows[number];
+        const periodRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= periodStart.getTime());
+        const monthRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= monthStart.getTime());
+        const isModelRequest = (row: UsageRow) => row.provider === 'openai';
+        const costUsd = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.estimatedCostUsdMicros || 0), 0) / 1_000_000;
+        const totalTokens = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.inputTokens || 0) + (row.outputTokens || 0), 0);
+
+        const activeBusinessIds = new Set(periodRows.map((row) => row.businessId));
+        const activeUserIds = new Set(periodRows.map((row) => row.userId));
+        const modelRequests = periodRows.filter(isModelRequest).length;
+        const fallbackRequests = periodRows.length - modelRequests;
+
+        const businessUsage = businessRows
+            .map((business) => {
+                const rows = periodRows.filter((row) => row.businessId === business.id);
+                const businessMonthRows = monthRows.filter((row) => row.businessId === business.id);
+                const monthCostUsd = costUsd(businessMonthRows);
+                const provider = getQProviderStatus(monthCostUsd);
+                return {
+                    id: business.id,
+                    name: business.name,
+                    status: business.status,
+                    requests: rows.length,
+                    modelRequests: rows.filter(isModelRequest).length,
+                    fallbackRequests: rows.filter((row) => !isModelRequest(row)).length,
+                    totalTokens: totalTokens(rows),
+                    periodCostUsd: costUsd(rows),
+                    monthCostUsd,
+                    monthlyBudgetUsd: provider.monthlyBudgetUsd,
+                    budgetRemainingUsd: provider.budgetRemainingUsd,
+                    providerMode: provider.mode,
+                };
+            })
+            .filter((business) => business.requests > 0 || business.monthCostUsd > 0)
+            .sort((a, b) => b.periodCostUsd - a.periodCostUsd);
+
+        const userUsage = userRows
+            .map((user) => {
+                const rows = periodRows.filter((row) => row.userId === user.id);
+                return {
+                    id: user.id,
+                    name: user.name || user.email,
+                    email: user.email,
+                    businessId: user.businessId,
+                    requests: rows.length,
+                    modelRequests: rows.filter(isModelRequest).length,
+                    totalTokens: totalTokens(rows),
+                    estimatedCostUsd: costUsd(rows),
+                };
+            })
+            .filter((user) => user.requests > 0)
+            .sort((a, b) => b.requests - a.requests);
+
+        const fallbackCounts = new Map<string, number>();
+        periodRows.filter((row) => !isModelRequest(row)).forEach((row) => {
+            const metadata = row.metadata || {};
+            const reasonValue = metadata.fallbackReason ?? metadata.reason ?? metadata.safeReason;
+            const reason = typeof reasonValue === 'string' && reasonValue.trim()
+                ? reasonValue
+                : row.requestStatus === 'blocked' ? 'Budget or policy guard' : 'Rules-only response';
+            fallbackCounts.set(reason, (fallbackCounts.get(reason) || 0) + 1);
+        });
+
+        return c.json({
+            period: { days, from: periodStart.toISOString(), to: now.toISOString() },
+            provider: getQProviderStatus(0),
+            summary: {
+                requests: periodRows.length,
+                completedRequests: periodRows.filter((row) => row.requestStatus === 'completed').length,
+                modelRequests,
+                fallbackRequests,
+                failedRequests: periodRows.filter((row) => row.requestStatus === 'failed').length,
+                inputTokens: periodRows.reduce((sum, row) => sum + (row.inputTokens || 0), 0),
+                outputTokens: periodRows.reduce((sum, row) => sum + (row.outputTokens || 0), 0),
+                totalTokens: totalTokens(periodRows),
+                estimatedCostUsd: costUsd(periodRows),
+                activeBusinesses: activeBusinessIds.size,
+                activeUsers: activeUserIds.size,
+                fallbackRate: periodRows.length ? fallbackRequests / periodRows.length : 0,
+            },
+            businesses: businessUsage,
+            users: userUsage,
+            fallbackReasons: Array.from(fallbackCounts.entries())
+                .map(([reason, count]) => ({ reason, count }))
+                .sort((a, b) => b.count - a.count),
+        });
+    } catch (error) {
+        console.error('Q usage admin error:', getErrorMessage(error));
+        return c.json({ error: 'Failed to load Q usage controls' }, 500);
     }
 });
 

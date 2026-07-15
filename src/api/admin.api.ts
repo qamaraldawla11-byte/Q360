@@ -58,9 +58,65 @@ export interface AuditLogFilters {
     endDate?: string;
 }
 
+export interface QProviderStatus {
+    mode: 'rules_only' | 'model_active' | 'budget_reached';
+    provider: 'openai' | 'q360-rules-v1';
+    model: string;
+    configured: boolean;
+    externalModelEnabled: boolean;
+    monthlyBudgetUsd: number;
+    budgetRemainingUsd: number;
+    message: string;
+}
+
+export interface QUsageResponse {
+    period: { days: number; from: string; to: string };
+    provider: QProviderStatus;
+    summary: {
+        requests: number;
+        completedRequests: number;
+        modelRequests: number;
+        fallbackRequests: number;
+        failedRequests: number;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+        activeBusinesses: number;
+        activeUsers: number;
+        fallbackRate: number;
+    };
+    businesses: Array<{
+        id: string;
+        name: string;
+        status: string;
+        requests: number;
+        modelRequests: number;
+        fallbackRequests: number;
+        totalTokens: number;
+        periodCostUsd: number;
+        monthCostUsd: number;
+        monthlyBudgetUsd: number;
+        budgetRemainingUsd: number;
+        providerMode: QProviderStatus['mode'];
+    }>;
+    users: Array<{
+        id: string;
+        name: string;
+        email: string;
+        businessId?: string | null;
+        requests: number;
+        modelRequests: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+    }>;
+    fallbackReasons: Array<{ reason: string; count: number }>;
+}
+
 export const adminApi = {
     // Dashboard
     getStats: () => http.get<DashboardStats>('/admin/stats'),
+    getQUsage: (days = 30) => http.get<QUsageResponse>(`/admin/q-usage?days=${days}`),
 
     // Users
     getUsers: () => http.get<AdminUser[]>('/admin/users'),

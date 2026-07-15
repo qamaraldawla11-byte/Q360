@@ -6,7 +6,8 @@ import {
     Settings,
     LogOut,
     ArrowLeft,
-    ShieldAlert
+    ShieldAlert,
+    Bot
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
@@ -19,6 +20,7 @@ export const AdminSidebar = () => {
         { icon: Users, label: 'Users', path: '/admin/users' },
         { icon: Building2, label: 'Businesses', path: '/admin/businesses' },
         { icon: FileText, label: 'Audit Logs', path: '/admin/audit-logs' },
+        { icon: Bot, label: 'Q Usage', path: '/admin/q-usage' },
         { icon: Settings, label: 'System Settings', path: '/admin/settings' },
     ];
 

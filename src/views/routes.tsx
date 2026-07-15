@@ -13,6 +13,7 @@ const UsersPage = lazy(() => import('@/views/admin/UsersPage').then(m => ({ defa
 const BusinessesPage = lazy(() => import('@/views/admin/BusinessesPage').then(m => ({ default: m.BusinessesPage })));
 const AuditLogsPage = lazy(() => import('@/views/admin/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
 const SettingsPage = lazy(() => import('@/views/admin/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const QUsagePage = lazy(() => import('@/views/admin/QUsagePage').then(m => ({ default: m.QUsagePage })));
 
 
 
@@ -369,6 +370,7 @@ export const appRoutes: RouteObject[] = [
             { path: 'users', element: <UsersPage /> },
             { path: 'businesses', element: <BusinessesPage /> },
             { path: 'audit-logs', element: <AuditLogsPage /> },
+            { path: 'q-usage', element: <QUsagePage /> },
             { path: 'settings', element: <SettingsPage /> },
         ]
     },
