@@ -13,10 +13,8 @@ import {
     Sparkles,
     Sun,
 } from 'lucide-react';
-import { QGuidedStart } from './QGuidedStart';
 
 type WorkspaceKey = 'restaurant' | 'retail' | 'supermarket' | 'autoParts' | 'services' | 'clinic' | 'pharmacy' | 'other';
-type ActiveHeroWorkspace = Exclude<WorkspaceKey, 'clinic' | 'pharmacy' | 'other'>;
 
 type WorkspaceImage = {
     src: string;
@@ -187,7 +185,6 @@ const workspaceSummaries: Record<WorkspaceKey, WorkspaceSummary> = {
     },
 };
 
-const heroWorkspaces: ActiveHeroWorkspace[] = ['restaurant', 'retail', 'supermarket', 'autoParts', 'services'];
 const workspaceOrder: WorkspaceKey[] = ['restaurant', 'retail', 'supermarket', 'autoParts', 'services', 'clinic', 'pharmacy', 'other'];
 
 const workspaceIcons: Record<WorkspaceKey, typeof ChefHat> = {
@@ -204,10 +201,8 @@ const workspaceIcons: Record<WorkspaceKey, typeof ChefHat> = {
 export const LandingView = () => {
     const navigate = useNavigate();
     const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('restaurant');
-    const [heroWorkspace, setHeroWorkspace] = useState<ActiveHeroWorkspace>('restaurant');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('q360-landing-theme') === 'dark' ? 'dark' : 'light');
     const activeSummary = workspaceSummaries[activeWorkspace];
-    const heroSummary = workspaceSummaries[heroWorkspace];
 
     const scrollToSection = (id: string) => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -254,109 +249,58 @@ export const LandingView = () => {
                         <div className="hero-content">
                             <span className="hero-badge">
                                 <Sparkles size={14} />
-                                <span>Q-guided setup for growing businesses</span>
+                                <span>Q360 · your calm business workspace</span>
                             </span>
 
                             <h1>
-                                Tell Q about your business.
-                                <span className="highlight-text">Start with clarity.</span>
+                                Hello, I&apos;m <span className="hero-q-name">Q.</span>
+                                <span className="highlight-text">Run your business with clarity.</span>
                             </h1>
 
                             <p className="hero-subtitle">
-                                Describe the way you work in your own words. Q asks the useful questions, recommends the right setup, and keeps you in control.
+                                Tell Q how your business works. Q asks the useful questions, recommends the right setup, and keeps you in control of every decision.
                             </p>
 
-                            <p className="hero-local-note">Built for local businesses, with your country, currency, time zone, and team in mind.</p>
+                            <p className="hero-local-note">Built for local businesses — operations, customers, team, country, currency, and time zone included.</p>
 
                             <div className="hero-actions">
                                 <button type="button" onClick={() => navigate('/login')} className="btn-primary">
-                                    Start with Q
+                                    Start with Q <ArrowRight size={16} />
                                 </button>
                                 <button type="button" onClick={() => scrollToSection('workspaces')} className="btn-secondary">
                                     Explore workspaces
                                 </button>
                             </div>
 
-                            <QGuidedStart
-                                onStart={() => navigate('/login')}
-                                onExplore={() => scrollToSection('workspaces')}
-                            />
+                            <div className="hero-value-list" aria-label="What Q360 helps you manage">
+                                <div className="hero-value-card">
+                                    <span><ClipboardList size={17} /></span>
+                                    <div><strong>Business insights</strong><small>See what needs attention.</small></div>
+                                </div>
+                                <div className="hero-value-card">
+                                    <span><BriefcaseBusiness size={17} /></span>
+                                    <div><strong>Daily operations</strong><small>Keep the work moving.</small></div>
+                                </div>
+                                <div className="hero-value-card">
+                                    <span><Receipt size={17} /></span>
+                                    <div><strong>Payments and people</strong><small>One clear workspace.</small></div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="hero-preview" aria-label="Q360 workspace concept preview">
-                            <div className="preview-topbar">
-                                <div className="browser-dots" aria-hidden="true">
-                                    <span className="dot"></span>
-                                    <span className="dot"></span>
-                                    <span className="dot"></span>
-                                </div>
-                                <div className="preview-title">
-                                    <BrandMark size={14} />
-                                    <span>Q360 Workspace</span>
-                                </div>
-                                <span className="preview-chip">Concept visual</span>
-                            </div>
-
-                            <div className="preview-body">
-                                <aside className="preview-sidenav">
-                                    <span className="side-label">Workspaces</span>
-                                    {heroWorkspaces.map((key) => {
-                                        const Icon = workspaceIcons[key];
-                                        return (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                className={`sidebar-tab ${heroWorkspace === key ? 'active' : ''}`}
-                                                onClick={() => setHeroWorkspace(key)}
-                                            >
-                                                <Icon size={14} />
-                                                <span>{workspaceSummaries[key].label}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </aside>
-
-                                <div className="preview-main">
-                                    <div className="preview-header-row">
-                                        <div>
-                                            <span className="panel-label">{heroSummary.label}</span>
-                                            <h2>{heroSummary.title}</h2>
-                                        </div>
-                                        <span className="label-screenshot">Example workflow</span>
-                                    </div>
-
-                                    <div className="stat-row" aria-hidden="true">
-                                        <div className="stat-block">
-                                            <span>Activity</span>
-                                            <div className="stat-bar"><i style={{ width: '68%' }}></i></div>
-                                        </div>
-                                        <div className="stat-block">
-                                            <span>Team</span>
-                                            <div className="stat-bar"><i style={{ width: '54%' }}></i></div>
-                                        </div>
-                                        <div className="stat-block">
-                                            <span>Review</span>
-                                            <div className="stat-bar"><i style={{ width: '42%' }}></i></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="abstract-table">
-                                        {heroSummary.rows.slice(0, 3).map((row) => (
-                                            <div className="abstract-row" key={`${heroWorkspace}-${row.label}`}>
-                                                <span className={`row-dot ${row.tone}`}></span>
-                                                <span>{row.label}</span>
-                                                <em>{row.meta}</em>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="q-strip">
-                                        <strong>Q</strong>
-                                        <span>{heroSummary.qNote}</span>
-                                        <em>Review</em>
-                                    </div>
+                        <div className="hero-cafe-visual">
+                            <img src="/landing/q360-cafe-hero.png" alt="A welcoming cafe team and guests during service" />
+                            <div className="hero-cafe-overlay" aria-hidden="true"></div>
+                            <div className="hero-q-orbit" aria-hidden="true"><BrandMark size={68} /></div>
+                            <div className="hero-agent-card">
+                                <span className="hero-q-mark"><BrandMark size={20} /></span>
+                                <div>
+                                    <small>Q AGENT</small>
+                                    <strong>Good morning. Your workspace is ready.</strong>
+                                    <p>Ask for guidance, then decide what happens next.</p>
                                 </div>
                             </div>
+                            <span className="hero-cafe-caption">Built for the people behind every service.</span>
                         </div>
                     </div>
                 </section>
@@ -794,17 +738,21 @@ const landingStyles = `
         min-height: calc(100vh - 56px);
         display: flex;
         align-items: center;
-        padding: 92px 48px 96px;
+        padding: 66px 48px 80px;
     }
 
     .hero-inner {
         width: 100%;
         max-width: var(--max-w);
         margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, .84fr) minmax(440px, 1.16fr);
+        align-items: center;
+        gap: clamp(40px, 7vw, 108px);
     }
 
     .hero-content {
-        max-width: 820px;
+        max-width: 560px;
         animation: fade-up 520ms ease both;
     }
 
@@ -823,10 +771,10 @@ const landingStyles = `
     }
 
     .hero-section h1 {
-        max-width: 880px;
+        max-width: 660px;
         margin: 0;
         color: var(--txt-primary);
-        font-size: clamp(42px, 6vw, 76px);
+        font-size: clamp(42px, 5.8vw, 72px);
         font-weight: 650;
         letter-spacing: -1.8px;
         line-height: 1.06;
@@ -836,6 +784,10 @@ const landingStyles = `
     .highlight-text {
         display: block;
         color: var(--blue-bright);
+    }
+
+    .hero-q-name {
+        color: var(--amber);
     }
 
     .hero-subtitle {
@@ -874,6 +826,9 @@ const landingStyles = `
     }
 
     .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         border: 1px solid var(--blue);
         background: var(--blue);
         color: #fff;
@@ -900,6 +855,44 @@ const landingStyles = `
         transform: translateY(-1px);
     }
 
+    .hero-value-list {
+        display: grid;
+        gap: 9px;
+        margin-top: 34px;
+    }
+
+    .hero-value-card {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        width: min(100%, 335px);
+        padding: 9px 12px;
+        background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+        border: 1px solid var(--border-1);
+        border-radius: 13px;
+        box-shadow: 0 10px 22px rgba(44, 70, 110, .05);
+    }
+
+    .hero-value-card > span {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 auto;
+        place-items: center;
+        color: var(--blue);
+        background: var(--blue-ghost);
+        border-radius: 9px;
+    }
+
+    .hero-value-card strong,
+    .hero-value-card small {
+        display: block;
+        line-height: 1.25;
+    }
+
+    .hero-value-card strong { font-size: 12px; }
+    .hero-value-card small { margin-top: 2px; color: var(--txt-muted); font-size: 11px; }
+
     .hero-preview {
         margin-top: 78px;
         overflow: hidden;
@@ -908,6 +901,105 @@ const landingStyles = `
         border-radius: 8px;
         box-shadow: 0 38px 84px rgba(32, 63, 100, 0.17), 0 0 80px rgba(59, 130, 246, 0.08);
         animation: float-in 700ms ease 120ms both, drift 8s ease-in-out 1s infinite;
+    }
+
+    .hero-cafe-visual {
+        position: relative;
+        min-height: 560px;
+        overflow: hidden;
+        isolation: isolate;
+        border: 1px solid rgba(52, 111, 188, .18);
+        border-radius: 32px;
+        background: #122340;
+        box-shadow: 0 34px 82px rgba(26, 71, 137, .20), 0 0 100px rgba(59, 130, 246, .12);
+        animation: float-in 700ms ease 120ms both, drift 8s ease-in-out 1s infinite;
+    }
+
+    .hero-cafe-visual img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 560px;
+        object-fit: cover;
+        object-position: center;
+        transform: scale(1.015);
+        transition: transform 700ms ease;
+    }
+
+    .hero-cafe-visual:hover img { transform: scale(1.045); }
+
+    .hero-cafe-overlay {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(7, 20, 42, .18), transparent 48%), linear-gradient(0deg, rgba(7, 20, 42, .76), transparent 52%);
+        pointer-events: none;
+    }
+
+    .hero-q-orbit {
+        position: absolute;
+        z-index: 2;
+        top: 38px;
+        right: 36px;
+        display: grid;
+        width: 124px;
+        height: 124px;
+        place-items: center;
+        color: #fff;
+        background: rgba(255, 255, 255, .12);
+        border: 1px solid rgba(255, 255, 255, .32);
+        border-radius: 50%;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 20px 50px rgba(6, 19, 43, .23), inset 0 0 0 17px rgba(255, 255, 255, .07);
+        animation: orbit-pulse 4s ease-in-out infinite;
+    }
+
+    .hero-agent-card {
+        position: absolute;
+        z-index: 2;
+        right: 24px;
+        bottom: 58px;
+        left: 24px;
+        display: flex;
+        align-items: flex-start;
+        gap: 13px;
+        padding: 17px 18px;
+        color: #f8fbff;
+        background: rgba(11, 29, 58, .80);
+        border: 1px solid rgba(184, 221, 255, .3);
+        border-radius: 16px;
+        backdrop-filter: blur(14px);
+        box-shadow: 0 14px 28px rgba(3, 11, 25, .22);
+    }
+
+    .hero-q-mark {
+        display: grid;
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        background: rgba(127, 212, 255, .17);
+        border: 1px solid rgba(159, 224, 255, .32);
+        border-radius: 12px;
+    }
+
+    .hero-agent-card strong,
+    .hero-agent-card p,
+    .hero-agent-card small { display: block; margin: 0; }
+    .hero-agent-card small { color: #81caff; font-size: 10px; font-weight: 800; letter-spacing: .09em; }
+    .hero-agent-card strong { margin-top: 4px; font-size: 14px; font-weight: 700; }
+    .hero-agent-card p { margin-top: 5px; color: #c9ddf5; font-size: 12px; line-height: 1.45; }
+
+    .hero-cafe-caption {
+        position: absolute;
+        z-index: 2;
+        right: 24px;
+        bottom: 24px;
+        color: rgba(236, 246, 255, .86);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .05em;
+        text-transform: uppercase;
     }
 
     .preview-topbar,
@@ -1558,6 +1650,11 @@ const landingStyles = `
         50% { transform: translateY(-9px); }
     }
 
+    @keyframes orbit-pulse {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-6px) scale(1.025); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
         .landing-page *, .landing-page *::before, .landing-page *::after {
             animation-duration: .01ms !important;
@@ -1585,9 +1682,12 @@ const landingStyles = `
         .preview-body,
         .workspace-shell,
         .workspace-panel-body,
-        .q-inner {
+        .q-inner,
+        .hero-inner {
             grid-template-columns: 1fr;
         }
+
+        .hero-inner { gap: 46px; }
 
         .preview-sidenav,
         .workspace-menu,
@@ -1698,6 +1798,46 @@ const landingStyles = `
         .hero-preview {
             margin-top: 52px;
         }
+
+        .hero-cafe-visual,
+        .hero-cafe-visual img {
+            min-height: 360px;
+        }
+
+        .hero-cafe-visual { border-radius: 20px; }
+
+        .hero-q-orbit {
+            top: 20px;
+            right: 18px;
+            width: 84px;
+            height: 84px;
+        }
+
+        .hero-q-orbit svg {
+            width: 46px;
+            height: 46px;
+        }
+
+        .hero-agent-card {
+            right: 14px;
+            bottom: 50px;
+            left: 14px;
+            gap: 10px;
+            padding: 13px 14px;
+        }
+
+        .hero-agent-card strong { font-size: 13px; }
+        .hero-agent-card p { font-size: 12px; }
+
+        .hero-cafe-caption {
+            right: auto;
+            bottom: 18px;
+            left: 16px;
+            font-size: 10px;
+        }
+
+        .hero-value-list { margin-top: 26px; }
+        .hero-value-card { width: 100%; }
 
         .preview-topbar,
         .workspace-panel-topbar,
