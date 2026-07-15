@@ -1,52 +1,247 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight,
-    Table2,
-    ChefHat,
-    PackageCheck,
-    Receipt,
-    CalendarDays,
-    Sparkles,
-    Users,
     BriefcaseBusiness,
+    ChefHat,
+    ClipboardList,
     FileText,
-    Pill,
-    CheckCircle2,
-    Lock,
-    Activity,
     Info,
+    Moon,
+    Pill,
+    Receipt,
+    Sparkles,
+    Sun,
 } from 'lucide-react';
-import { LogoFull, LogoMark } from '@/components/ui/Logo';
+import { QGuidedStart } from './QGuidedStart';
 
-type WorkspaceKey = 'restaurant' | 'commerce' | 'services' | 'projects' | 'pharmacy';
+type WorkspaceKey = 'restaurant' | 'retail' | 'supermarket' | 'autoParts' | 'services' | 'clinic' | 'pharmacy' | 'other';
+type ActiveHeroWorkspace = Exclude<WorkspaceKey, 'clinic' | 'pharmacy' | 'other'>;
+
+type WorkspaceImage = {
+    src: string;
+    alt: string;
+    available: boolean;
+};
+
+type WorkspaceSummary = {
+    key: WorkspaceKey;
+    label: string;
+    title: string;
+    description: string;
+    sections: string[];
+    futureDirection?: boolean;
+    image?: WorkspaceImage;
+    rows: Array<{
+        label: string;
+        meta: string;
+        tone: 'blue' | 'green' | 'amber' | 'muted';
+    }>;
+    qNote: string;
+};
+
+const workspaceSummaries: Record<WorkspaceKey, WorkspaceSummary> = {
+    restaurant: {
+        key: 'restaurant',
+        label: 'Restaurant',
+        title: 'Run every service with confidence.',
+        description: 'Keep tables, orders, kitchen activity, and daily service clear from opening to close.',
+        sections: ['Tables', 'Orders', 'Kitchen', 'Close of day'],
+        image: {
+            src: '/landing/workspaces/restaurant-counter.webp',
+            alt: 'Restaurant counter and service area',
+            available: false,
+        },
+        rows: [
+            { label: 'Tables', meta: 'Active', tone: 'blue' },
+            { label: 'Orders', meta: 'Moving', tone: 'green' },
+            { label: 'Kitchen', meta: 'Updated', tone: 'amber' },
+            { label: 'Close of day', meta: 'Review', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    retail: {
+        key: 'retail',
+        label: 'Retail',
+        title: 'Keep every sale and customer interaction in view.',
+        description: 'Bring products, customers, sales activity, and follow-up into one daily workspace.',
+        sections: ['Products', 'Sales', 'Customers', 'Follow-up'],
+        image: {
+            src: '/landing/workspaces/retail-shelves.webp',
+            alt: 'Retail shelves and product display',
+            available: false,
+        },
+        rows: [
+            { label: 'Products', meta: 'Organized', tone: 'green' },
+            { label: 'Sales', meta: 'Visible', tone: 'blue' },
+            { label: 'Customers', meta: 'Clear', tone: 'amber' },
+            { label: 'Follow-up', meta: 'Queued', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    supermarket: {
+        key: 'supermarket',
+        label: 'Supermarket',
+        title: 'Stay on top of stock and daily movement.',
+        description: 'See products, inventory activity, sales, and team tasks in one place.',
+        sections: ['Stock', 'Products', 'Sales', 'Team tasks'],
+        image: {
+            src: '/landing/workspaces/supermarket-stock.webp',
+            alt: 'Supermarket stock shelves and daily inventory area',
+            available: false,
+        },
+        rows: [
+            { label: 'Stock', meta: 'Current', tone: 'blue' },
+            { label: 'Products', meta: 'Tracked', tone: 'green' },
+            { label: 'Sales', meta: 'Daily', tone: 'amber' },
+            { label: 'Team tasks', meta: 'Assigned', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    autoParts: {
+        key: 'autoParts',
+        label: 'Auto Parts',
+        title: 'Keep parts, customers, and orders moving.',
+        description: 'Organize products, customer requests, sales activity, and supplier follow-up.',
+        sections: ['Parts', 'Customer requests', 'Orders', 'Suppliers'],
+        image: {
+            src: '/landing/workspaces/auto-parts-tools.webp',
+            alt: 'Organized auto parts shelves and workshop tools',
+            available: false,
+        },
+        rows: [
+            { label: 'Parts', meta: 'Organized', tone: 'blue' },
+            { label: 'Customer requests', meta: 'Open', tone: 'amber' },
+            { label: 'Orders', meta: 'Moving', tone: 'green' },
+            { label: 'Suppliers', meta: 'Follow-up', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    services: {
+        key: 'services',
+        label: 'Services',
+        title: 'Keep every request moving toward completion.',
+        description: 'Give your team a clear place for requests, jobs, tasks, and customer follow-up.',
+        sections: ['Requests', 'Jobs', 'Tasks', 'Follow-up'],
+        image: {
+            src: '/landing/workspaces/services-workspace.webp',
+            alt: 'Service desk and technician work environment',
+            available: false,
+        },
+        rows: [
+            { label: 'Requests', meta: 'Open', tone: 'blue' },
+            { label: 'Jobs', meta: 'Active', tone: 'green' },
+            { label: 'Tasks', meta: 'Assigned', tone: 'amber' },
+            { label: 'Follow-up', meta: 'Queued', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    clinic: {
+        key: 'clinic',
+        label: 'Clinic',
+        title: 'A future workspace for organized appointments and daily operations.',
+        description: 'Q360 is exploring how its workspace model can support clinics responsibly.',
+        sections: ['Future direction', 'Appointments', 'Daily operations', 'Owner review'],
+        futureDirection: true,
+        rows: [
+            { label: 'Future direction', meta: 'Exploring', tone: 'blue' },
+            { label: 'Appointments', meta: 'Concept', tone: 'green' },
+            { label: 'Daily operations', meta: 'Concept', tone: 'amber' },
+            { label: 'Owner review', meta: 'Required', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    pharmacy: {
+        key: 'pharmacy',
+        label: 'Pharmacy',
+        title: 'A future workspace for controlled daily operations.',
+        description: 'Q360 is exploring how its workspace model can support pharmacy operations responsibly.',
+        sections: ['Future direction', 'Daily operations', 'Team activity', 'Owner review'],
+        futureDirection: true,
+        rows: [
+            { label: 'Future direction', meta: 'Exploring', tone: 'blue' },
+            { label: 'Daily operations', meta: 'Concept', tone: 'green' },
+            { label: 'Team activity', meta: 'Concept', tone: 'amber' },
+            { label: 'Owner review', meta: 'Required', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+    other: {
+        key: 'other',
+        label: 'Other',
+        title: 'Start with the work your business does every day.',
+        description: 'Use a flexible workspace for customers, requests, tasks, follow-up, and team activity.',
+        sections: ['Customers', 'Requests', 'Tasks', 'Team activity'],
+        image: {
+            src: '/landing/workspaces/other-small-business.webp',
+            alt: 'Neutral small business workspace',
+            available: false,
+        },
+        rows: [
+            { label: 'Customers', meta: 'Organized', tone: 'blue' },
+            { label: 'Requests', meta: 'Open', tone: 'green' },
+            { label: 'Tasks', meta: 'Assigned', tone: 'amber' },
+            { label: 'Team activity', meta: 'Visible', tone: 'muted' },
+        ],
+        qNote: 'Q prepares insights and suggested next steps. You approve important actions.',
+    },
+};
+
+const heroWorkspaces: ActiveHeroWorkspace[] = ['restaurant', 'retail', 'supermarket', 'autoParts', 'services'];
+const workspaceOrder: WorkspaceKey[] = ['restaurant', 'retail', 'supermarket', 'autoParts', 'services', 'clinic', 'pharmacy', 'other'];
+
+const workspaceIcons: Record<WorkspaceKey, typeof ChefHat> = {
+    restaurant: ChefHat,
+    retail: Receipt,
+    supermarket: Receipt,
+    autoParts: BriefcaseBusiness,
+    services: BriefcaseBusiness,
+    clinic: ClipboardList,
+    pharmacy: Pill,
+    other: FileText,
+};
 
 export const LandingView = () => {
     const navigate = useNavigate();
     const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('restaurant');
-    const [heroWorkspace, setHeroWorkspace] = useState<Exclude<WorkspaceKey, 'pharmacy'>>('restaurant');
-    const [qApproved, setQApproved] = useState(false);
+    const [heroWorkspace, setHeroWorkspace] = useState<ActiveHeroWorkspace>('restaurant');
+    const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('q360-landing-theme') === 'dark' ? 'dark' : 'light');
+    const activeSummary = workspaceSummaries[activeWorkspace];
+    const heroSummary = workspaceSummaries[heroWorkspace];
 
     const scrollToSection = (id: string) => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     };
 
+    useEffect(() => {
+        localStorage.setItem('q360-landing-theme', theme);
+    }, [theme]);
+
     return (
-        <div className="landing-page">
-            {/* Header / Navigation */}
+        <div className="landing-page" data-theme={theme}>
             <header className="landing-header">
                 <button
                     type="button"
                     onClick={() => navigate('/')}
-                    className="brand-lockup logo-white"
+                    className="brand-lockup"
                     aria-label="Q360 Home"
                 >
-                    <LogoMark size={28} />
+                    <BrandMark size={28} />
+                    <span>Q360</span>
                 </button>
 
                 <nav className="landing-nav" aria-label="Main Navigation">
                     <button type="button" onClick={() => scrollToSection('workspaces')} className="nav-btn">Workspaces</button>
                     <button type="button" onClick={() => scrollToSection('meet-q')} className="nav-btn">Q</button>
+                    <button
+                        type="button"
+                        className="theme-toggle"
+                        onClick={() => setTheme(current => current === 'light' ? 'dark' : 'light')}
+                        aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+                        title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+                    >
+                        {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                    </button>
                     <button type="button" onClick={() => navigate('/login')} className="nav-cta">
                         Sign In <ArrowRight size={14} />
                     </button>
@@ -54,529 +249,268 @@ export const LandingView = () => {
             </header>
 
             <main>
-                {/* 1. Hero Section */}
                 <section className="hero-section">
-                    <div className="hero-grid">
+                    <div className="hero-inner">
                         <div className="hero-content">
                             <span className="hero-badge">
-                                <Sparkles size={12} />
-                                <span>Quiet operations workspace for SMEs</span>
+                                <Sparkles size={14} />
+                                <span>Q-guided setup for growing businesses</span>
                             </span>
+
                             <h1>
-                                One place for your business.
-                                <span className="highlight-text">Nothing falls through.</span>
+                                Tell Q about your business.
+                                <span className="highlight-text">Start with clarity.</span>
                             </h1>
+
                             <p className="hero-subtitle">
-                                A clearer way to manage the work behind your business.
+                                Describe the way you work in your own words. Q asks the useful questions, recommends the right setup, and keeps you in control.
                             </p>
+
+                            <p className="hero-local-note">Built for local businesses, with your country, currency, time zone, and team in mind.</p>
+
                             <div className="hero-actions">
-                                <button type="button" onClick={() => scrollToSection('meet-q')} className="btn-primary">
-                                    See Q360 in action
+                                <button type="button" onClick={() => navigate('/login')} className="btn-primary">
+                                    Start with Q
+                                </button>
+                                <button type="button" onClick={() => scrollToSection('workspaces')} className="btn-secondary">
+                                    Explore workspaces
+                                </button>
+                            </div>
+
+                            <QGuidedStart
+                                onStart={() => navigate('/login')}
+                                onExplore={() => scrollToSection('workspaces')}
+                            />
+                        </div>
+
+                        <div className="hero-preview" aria-label="Q360 workspace concept preview">
+                            <div className="preview-topbar">
+                                <div className="browser-dots" aria-hidden="true">
+                                    <span className="dot"></span>
+                                    <span className="dot"></span>
+                                    <span className="dot"></span>
+                                </div>
+                                <div className="preview-title">
+                                    <BrandMark size={14} />
+                                    <span>Q360 Workspace</span>
+                                </div>
+                                <span className="preview-chip">Concept visual</span>
+                            </div>
+
+                            <div className="preview-body">
+                                <aside className="preview-sidenav">
+                                    <span className="side-label">Workspaces</span>
+                                    {heroWorkspaces.map((key) => {
+                                        const Icon = workspaceIcons[key];
+                                        return (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                className={`sidebar-tab ${heroWorkspace === key ? 'active' : ''}`}
+                                                onClick={() => setHeroWorkspace(key)}
+                                            >
+                                                <Icon size={14} />
+                                                <span>{workspaceSummaries[key].label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </aside>
+
+                                <div className="preview-main">
+                                    <div className="preview-header-row">
+                                        <div>
+                                            <span className="panel-label">{heroSummary.label}</span>
+                                            <h2>{heroSummary.title}</h2>
+                                        </div>
+                                        <span className="label-screenshot">Example workflow</span>
+                                    </div>
+
+                                    <div className="stat-row" aria-hidden="true">
+                                        <div className="stat-block">
+                                            <span>Activity</span>
+                                            <div className="stat-bar"><i style={{ width: '68%' }}></i></div>
+                                        </div>
+                                        <div className="stat-block">
+                                            <span>Team</span>
+                                            <div className="stat-bar"><i style={{ width: '54%' }}></i></div>
+                                        </div>
+                                        <div className="stat-block">
+                                            <span>Review</span>
+                                            <div className="stat-bar"><i style={{ width: '42%' }}></i></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="abstract-table">
+                                        {heroSummary.rows.slice(0, 3).map((row) => (
+                                            <div className="abstract-row" key={`${heroWorkspace}-${row.label}`}>
+                                                <span className={`row-dot ${row.tone}`}></span>
+                                                <span>{row.label}</span>
+                                                <em>{row.meta}</em>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="q-strip">
+                                        <strong>Q</strong>
+                                        <span>{heroSummary.qNote}</span>
+                                        <em>Review</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="section-separator" aria-hidden="true"></div>
+
+                <section className="benefit-strip-section">
+                    <div className="section-container">
+                        <div className="benefit-grid">
+                            <div className="benefit-card">
+                                <h3>See what matters today</h3>
+                                <p>Start each day with the work that needs attention.</p>
+                            </div>
+                            <div className="benefit-card">
+                                <h3>Keep your team aligned</h3>
+                                <p>Give everyone one clear place to follow daily work.</p>
+                            </div>
+                            <div className="benefit-card">
+                                <h3>Keep work moving</h3>
+                                <p>Track requests, tasks, and follow-up without losing the thread.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="section-separator" aria-hidden="true"></div>
+
+                <section id="workspaces" className="workspaces-section">
+                    <div className="section-container">
+                        <div className="section-header">
+                            <span className="section-kicker">YOUR BUSINESS, IN ONE PLACE</span>
+                            <h2>Built around the way your business works.</h2>
+                            <p>Choose your business type to see how Q360 can organize the work your team handles every day.</p>
+                        </div>
+
+                        <div className="mobile-tabs-bar" aria-label="Business type selector">
+                            {workspaceOrder.map((key) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setActiveWorkspace(key)}
+                                    className={`mobile-tab ${activeWorkspace === key ? 'active' : ''}`}
+                                >
+                                    {workspaceSummaries[key].label}
+                                    {workspaceSummaries[key].futureDirection && <span>Future direction</span>}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="workspace-shell">
+                            <aside className="workspace-menu" aria-label="Business type selector">
+                                <span className="side-label">Business type</span>
+                                {workspaceOrder.map((key) => {
+                                    const Icon = workspaceIcons[key];
+                                    return (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() => setActiveWorkspace(key)}
+                                            className={`workspace-menu-btn ${activeWorkspace === key ? 'active' : ''} ${workspaceSummaries[key].futureDirection ? 'future-tab' : ''}`}
+                                        >
+                                            <Icon size={16} />
+                                            <span>{workspaceSummaries[key].label}</span>
+                                            {workspaceSummaries[key].futureDirection && <em>Future direction</em>}
+                                        </button>
+                                    );
+                                })}
+                            </aside>
+
+                            <WorkspacePanel summary={activeSummary} />
+                        </div>
+                    </div>
+                </section>
+
+                <div className="section-separator" aria-hidden="true"></div>
+
+                <section id="meet-q" className="q-section">
+                    <div className="section-container q-inner">
+                        <div className="q-copy-block">
+                            <span className="section-kicker">Q</span>
+                            <h2>Meet Q, your business assistant.</h2>
+                            <p className="q-desc-text">
+                                Q helps you understand what may need attention next, using the activity already recorded in your workspace and the priorities you choose for your business.
+                            </p>
+                            <div className="trust-callout">
+                                <Info size={16} />
+                                <span>Q prepares insights and suggested next steps. You approve important actions.</span>
+                            </div>
+                        </div>
+
+                        <div className="q-output-panel">
+                            <div className="q-output-header">
+                                <div className="q-output-title">
+                                    <BrandMark size={20} />
+                                    <span>Q insights</span>
+                                </div>
+                            </div>
+
+                            <div className="q-output-body">
+                                <div className="q-insight">
+                                    <div className="q-insight-header">
+                                        <span className="badge badge-blue">Needs attention</span>
+                                    </div>
+                                    <p>Several recorded updates may need a closer look. Q has prepared a short summary for review.</p>
+                                </div>
+
+                                <div className="q-insight">
+                                    <div className="q-insight-header">
+                                        <span className="badge badge-amber">Ready for review</span>
+                                    </div>
+                                    <p>Q can suggest what to check next, but important actions stay with the owner.</p>
+                                </div>
+
+                                <div className="q-insight quiet">
+                                    <div className="q-insight-header">
+                                        <span className="badge badge-muted">Today's summary</span>
+                                    </div>
+                                    <p>Q prepares insights and suggested next steps. You approve important actions.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="section-separator" aria-hidden="true"></div>
+
+                <section className="final-cta-section">
+                    <div className="section-container">
+                        <div className="cta-box">
+                            <span className="section-kicker">Q360</span>
+                            <h2>See how Q360 can fit your business.</h2>
+                            <p>Start with the workspace that matters most.</p>
+                            <div className="cta-actions">
+                                <button type="button" onClick={() => navigate('/support')} className="btn-primary">
+                                    Talk to the Q360 team
                                 </button>
                                 <button type="button" onClick={() => scrollToSection('workspaces')} className="btn-secondary">
                                     Explore workspaces
                                 </button>
                             </div>
                         </div>
-
-                        {/* Interactive Hero Visual */}
-                        <div className="hero-visual">
-                            <div className="mock-browser">
-                                <div className="browser-header">
-                                    <div className="browser-dots">
-                                        <span className="dot"></span>
-                                        <span className="dot"></span>
-                                        <span className="dot"></span>
-                                    </div>
-                                    <div className="browser-title">
-                                        <span className="logo-white"><LogoMark size={14} /></span>
-                                        <span>Q360 Workspace</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="mock-app-layout">
-                                    {/* Sidebar */}
-                                    <div className="mock-sidebar">
-                                        <div className="sidebar-group">
-                                            <span className="group-label">Workspaces</span>
-                                            <button 
-                                                type="button" 
-                                                className={`sidebar-tab ${heroWorkspace === 'restaurant' ? 'active' : ''}`}
-                                                onClick={() => setHeroWorkspace('restaurant')}
-                                            >
-                                                <ChefHat size={14} />
-                                                <span>Restaurant</span>
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                className={`sidebar-tab ${heroWorkspace === 'commerce' ? 'active' : ''}`}
-                                                onClick={() => setHeroWorkspace('commerce')}
-                                            >
-                                                <Receipt size={14} />
-                                                <span>Commerce</span>
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                className={`sidebar-tab ${heroWorkspace === 'services' ? 'active' : ''}`}
-                                                onClick={() => setHeroWorkspace('services')}
-                                            >
-                                                <BriefcaseBusiness size={14} />
-                                                <span>Services</span>
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                className={`sidebar-tab ${heroWorkspace === 'projects' ? 'active' : ''}`}
-                                                onClick={() => setHeroWorkspace('projects')}
-                                            >
-                                                <FileText size={14} />
-                                                <span>Projects</span>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Main View Area */}
-                                    <div className="mock-main-view">
-                                        <div className="view-header">
-                                            <h3>{heroWorkspace.toUpperCase()} WORKSPACE</h3>
-                                            <span className="label-screenshot">Concept visual — example workflow</span>
-                                        </div>
-
-                                        <div className="view-body">
-                                            {heroWorkspace === 'restaurant' && (
-                                                <div className="restaurant-mock">
-                                                    <div className="stats-row">
-                                                        <div className="stat-pill">Active tables</div>
-                                                        <div className="stat-pill warning-pill">Review needed</div>
-                                                    </div>
-                                                    <div className="order-ticket">
-                                                        <div className="ticket-header">
-                                                            <strong>Customer request</strong>
-                                                            <span className="status-badge success-badge">Completed</span>
-                                                        </div>
-                                                        <div className="ticket-items">
-                                                            <div className="ticket-item"><span>○</span> Example item</div>
-                                                            <div className="ticket-item"><span>○</span> Example item</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {heroWorkspace === 'commerce' && (
-                                                <div className="commerce-mock">
-                                                    <div className="stats-row">
-                                                        <div className="stat-pill">Quotes awaiting review</div>
-                                                        <div className="stat-pill success-pill">Status sync</div>
-                                                    </div>
-                                                    <div className="quote-card">
-                                                        <div className="card-top">
-                                                            <strong>Quote awaiting review</strong>
-                                                            <span className="status-badge progress-badge">Awaiting review</span>
-                                                        </div>
-                                                        <p className="card-desc">Example workflow</p>
-                                                        <div className="card-value">Awaiting confirmation</div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {heroWorkspace === 'services' && (
-                                                <div className="services-mock">
-                                                    <div className="stats-row">
-                                                        <div className="stat-pill">Jobs scheduled</div>
-                                                        <div className="stat-pill warning-pill">Unassigned jobs</div>
-                                                    </div>
-                                                    <div className="job-card">
-                                                        <div className="card-top">
-                                                            <strong>Customer request</strong>
-                                                            <span className="status-badge success-badge">Scheduled</span>
-                                                        </div>
-                                                        <p className="card-desc">Service task details</p>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {heroWorkspace === 'projects' && (
-                                                <div className="projects-mock">
-                                                    <div className="stats-row">
-                                                        <div className="stat-pill">Milestones open</div>
-                                                        <div className="stat-pill success-pill">Tasks completed</div>
-                                                    </div>
-                                                    <div className="project-card">
-                                                        <div className="card-top">
-                                                            <strong>Milestone status</strong>
-                                                            <span className="status-badge success-badge">Approved</span>
-                                                        </div>
-                                                        <div className="milestone-steps">
-                                                            <div className="step done">✓ Task completed</div>
-                                                            <div className="step done">✓ Task completed</div>
-                                                            <div className="step progress">○ Task in progress</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 2. Owner Problem Section */}
-                <section className="problem-section">
-                    <div className="spotlight-glow" aria-hidden="true"></div>
-                    <div className="section-container">
-                        <div className="problem-header">
-                            <h2>Stop carrying your business in your head.</h2>
-                            <p>Running a business shouldn’t mean chasing details across five different apps and disconnected messaging threads.</p>
-                        </div>
-                        <div className="problem-grid">
-                            <div className="problem-card">
-                                <div className="card-indicator warning-border"></div>
-                                <h3>Chasing updates</h3>
-                                <p>Checking status levels to verify if a task is completed, a customer is served, or an invoice was received.</p>
-                            </div>
-                            <div className="problem-card">
-                                <div className="card-indicator warning-border"></div>
-                                <h3>Missing follow-up</h3>
-                                <p>Quotes that sit unanswered, invoice reminders that get forgotten, and clients waiting for simple callbacks.</p>
-                            </div>
-                            <div className="problem-card">
-                                <div className="card-indicator warning-border"></div>
-                                <h3>Work without a clear status</h3>
-                                <p>Operational tasks that drop through the cracks because they live only on slips of paper or temporary messaging chats.</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 3. Workspace Selector Section */}
-                <section id="workspaces" className="workspaces-section">
-                    <div className="section-container">
-                        <div className="workspaces-header">
-                            <h2>Built around the way your business works.</h2>
-                            <p>Select a workspace module to see how Q360 can illustrate workflow structures designed for your operations.</p>
-                        </div>
-
-                        <div className="workspace-tabs-container">
-                            {/* Mobile Tabs Header */}
-                            <div className="mobile-tabs-bar">
-                                <button type="button" onClick={() => setActiveWorkspace('restaurant')} className={`mobile-tab ${activeWorkspace === 'restaurant' ? 'active' : ''}`}>Restaurant</button>
-                                <button type="button" onClick={() => setActiveWorkspace('commerce')} className={`mobile-tab ${activeWorkspace === 'commerce' ? 'active' : ''}`}>Commerce</button>
-                                <button type="button" onClick={() => setActiveWorkspace('services')} className={`mobile-tab ${activeWorkspace === 'services' ? 'active' : ''}`}>Services</button>
-                                <button type="button" onClick={() => setActiveWorkspace('projects')} className={`mobile-tab ${activeWorkspace === 'projects' ? 'active' : ''}`}>Projects</button>
-                                <button type="button" onClick={() => setActiveWorkspace('pharmacy')} className={`mobile-tab ${activeWorkspace === 'pharmacy' ? 'active' : ''}`}>Pharmacy</button>
-                            </div>
-
-                            <div className="workspace-interactive-layout">
-                                {/* Desktop Sidebar Workspace Selector */}
-                                <div className="desktop-workspace-menu">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setActiveWorkspace('restaurant')}
-                                        className={`workspace-menu-btn ${activeWorkspace === 'restaurant' ? 'active' : ''}`}
-                                    >
-                                        <ChefHat size={18} />
-                                        <span>Restaurant</span>
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setActiveWorkspace('commerce')}
-                                        className={`workspace-menu-btn ${activeWorkspace === 'commerce' ? 'active' : ''}`}
-                                    >
-                                        <Receipt size={18} />
-                                        <span>Commerce</span>
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setActiveWorkspace('services')}
-                                        className={`workspace-menu-btn ${activeWorkspace === 'services' ? 'active' : ''}`}
-                                    >
-                                        <BriefcaseBusiness size={18} />
-                                        <span>Services</span>
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setActiveWorkspace('projects')}
-                                        className={`workspace-menu-btn ${activeWorkspace === 'projects' ? 'active' : ''}`}
-                                    >
-                                        <FileText size={18} />
-                                        <span>Projects</span>
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setActiveWorkspace('pharmacy')}
-                                        className={`workspace-menu-btn future-tab ${activeWorkspace === 'pharmacy' ? 'active' : ''}`}
-                                    >
-                                        <Lock size={16} />
-                                        <span>Pharmacy</span>
-                                        <span className="future-pill">Future direction</span>
-                                    </button>
-                                </div>
-
-                                {/* Active Workspace Details Panel */}
-                                <div className="workspace-preview-canvas">
-                                    {activeWorkspace === 'restaurant' && (
-                                        <div className="canvas-wrapper">
-                                            <div className="canvas-info">
-                                                <h3>Q360 Restaurant</h3>
-                                                <p>Built specifically for hospitality operations, keeping your front-of-house tables, point of sale, and back-of-house kitchen workflows in sync.</p>
-                                                <div className="module-specs">
-                                                    <span className="spec-item"><Table2 size={14} /> Floor Plan Management</span>
-                                                    <span className="spec-item"><ChefHat size={14} /> Kitchen Tickets</span>
-                                                </div>
-                                            </div>
-                                            <div className="canvas-visual">
-                                                <span className="label-visual">Concept visual — example workflow</span>
-                                                <div className="mock-interface-pane">
-                                                    <div className="pane-header">Floor Plan View</div>
-                                                    <div className="table-grid">
-                                                        <div className="table-node occupied"><span>T1</span><strong>Active</strong></div>
-                                                        <div className="table-node paying"><span>T2</span><strong>Needs attention</strong></div>
-                                                        <div className="table-node available"><span>T3</span><strong>Ready</strong></div>
-                                                        <div className="table-node occupied"><span>T4</span><strong>Active</strong></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeWorkspace === 'commerce' && (
-                                        <div className="canvas-wrapper">
-                                            <div className="canvas-info">
-                                                <h3>Q360 Commerce</h3>
-                                                <p>Manage physical goods, stock balances, draft quotes, customer order flows, invoices, and payment tracking without losing control of inventory numbers.</p>
-                                                <div className="module-specs">
-                                                    <span className="spec-item"><PackageCheck size={14} /> Catalog & Inventory Sync</span>
-                                                    <span className="spec-item"><Receipt size={14} /> Quote-to-Invoice Pipelines</span>
-                                                </div>
-                                            </div>
-                                            <div className="canvas-visual">
-                                                <span className="label-visual">Concept visual — example workflow</span>
-                                                <div className="mock-interface-pane">
-                                                    <div className="pane-header">Active Inventory Balances</div>
-                                                    <div className="list-view">
-                                                        <div className="list-item">
-                                                            <span>Example item A</span>
-                                                            <strong className="amber-text">Stock low</strong>
-                                                        </div>
-                                                        <div className="list-item">
-                                                            <span>Example item B</span>
-                                                            <strong className="green-text">Stock verified</strong>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeWorkspace === 'services' && (
-                                        <div className="canvas-wrapper">
-                                            <div className="canvas-info">
-                                                <h3>Q360 Services</h3>
-                                                <p>Ideal for field service operators, contractors, and agency teams. Log customer requests, schedule service times, track tasks on site, and invoice immediately upon completion.</p>
-                                                <div className="module-specs">
-                                                    <span className="spec-item"><CalendarDays size={14} /> Job Dispatch & Schedules</span>
-                                                    <span className="spec-item"><Users size={14} /> Team Task Tracking</span>
-                                                </div>
-                                            </div>
-                                            <div className="canvas-visual">
-                                                <span className="label-visual-concept">Concept visual — example workflow</span>
-                                                <div className="mock-interface-pane">
-                                                    <div className="pane-header">Work Scheduler</div>
-                                                    <div className="list-view">
-                                                        <div className="list-item">
-                                                            <span>Customer request A</span>
-                                                            <span className="badge-outline">Assigned</span>
-                                                        </div>
-                                                        <div className="list-item">
-                                                            <span>Customer request B</span>
-                                                            <span className="badge-outline">Assigned</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeWorkspace === 'projects' && (
-                                        <div className="canvas-wrapper">
-                                            <div className="canvas-info">
-                                                <h3>Projects & Milestones</h3>
-                                                <p>Keep longer, multi-step contracts structured. Track project tasks, record milestones, share logs with clients, and link deliverables directly to progress billings.</p>
-                                                <div className="module-specs">
-                                                    <span className="spec-item"><FileText size={14} /> Structured Milestones</span>
-                                                    <span className="spec-item"><CheckCircle2 size={14} /> Client Progress Reports</span>
-                                                </div>
-                                            </div>
-                                            <div className="canvas-visual">
-                                                <span className="label-visual-concept">Concept visual — example workflow</span>
-                                                <div className="mock-interface-pane">
-                                                    <div className="pane-header">Project Roadmap</div>
-                                                    <div className="list-view">
-                                                        <div className="list-item">
-                                                            <span>Milestone A</span>
-                                                            <strong className="green-text">Completed</strong>
-                                                        </div>
-                                                        <div className="list-item">
-                                                            <span>Milestone B</span>
-                                                            <strong className="amber-text">Review needed</strong>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeWorkspace === 'pharmacy' && (
-                                        <div className="canvas-wrapper locked-canvas">
-                                            <div className="canvas-info">
-                                                <span className="locked-badge"><Lock size={12} /> Future Direction</span>
-                                                <h3>Q360 Pharmacy</h3>
-                                                <p>In-planning extension for medicine retail operations. This module is focused on future direction and is not currently sold or supported for clinical or prescription compliance.</p>
-                                            </div>
-                                            <div className="canvas-visual locked-visual">
-                                                <span className="label-visual-concept">Concept visual — example workflow</span>
-                                                <div className="mock-interface-pane locked-pane">
-                                                    <Pill size={48} className="locked-icon" />
-                                                    <p>Pharmacy Operations Concept</p>
-                                                    <span className="lock-sub">Module in planning stages</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 4. Operational Clarity Section */}
-                <section className="clarity-section">
-                    <div className="section-container">
-                        <div className="clarity-header">
-                            <h2>What Q360 helps you stay on top of.</h2>
-                            <p>Keep your business running cleanly with a focused set of operational foundations.</p>
-                        </div>
-                        
-                        <div className="clarity-grid">
-                            <div className="clarity-card">
-                                <div className="clarity-icon"><Users size={20} /></div>
-                                <h3>Customers and follow-up</h3>
-                                <p>Store client contact histories, track sent quotes, and note diagnostic details in one central database.</p>
-                            </div>
-                            <div className="clarity-card">
-                                <div className="clarity-icon"><Activity size={20} /></div>
-                                <h3>Orders and jobs</h3>
-                                <p>Manage active dining tables, coordinate field technician dispatches, or monitor open product sales.</p>
-                            </div>
-                            <div className="clarity-card">
-                                <div className="clarity-icon"><CheckCircle2 size={20} /></div>
-                                <h3>Tasks and team activity</h3>
-                                <p>Assign check-sheets to teams, set milestones on projects, and view status changes as they are logged.</p>
-                            </div>
-                            <div className="clarity-card">
-                                <div className="clarity-icon"><Receipt size={20} /></div>
-                                <h3>Invoices and payments</h3>
-                                <p>Generate invoices from order records, track outstanding debts, and note payment transactions.</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 5. Meet Q Section */}
-                <section id="meet-q" className="q-section">
-                    <div className="section-container">
-                        <div className="q-split-layout">
-                            <div className="q-copy-block">
-                                <div className="q-badge">
-                                    <span className="logo-white"><LogoMark size={16} /></span>
-                                    <span>Workspace Assistant</span>
-                                </div>
-                                <h2>Keeps track, so you do not have to.</h2>
-                                <p className="q-desc-text">
-                                    Q is your business assistant inside Q360. It helps you spot what may need attention next using the activity already recorded in your workspace.
-                                </p>
-                                <div className="trust-callout">
-                                    <Info size={16} />
-                                    <span>Q prepares insights and suggested next steps. You approve important actions.</span>
-                                </div>
-                            </div>
-
-                            <div className="q-timeline-block">
-                                <span className="label-visual-concept">Concept visual — example workflow</span>
-                                <div className="mock-timeline-card">
-                                    <div className="timeline-header">
-                                        <div className="header-info">
-                                            <h3>Activity Feed</h3>
-                                            <p>System Logs & Suggestions</p>
-                                        </div>
-                                        <div className="active-glow-q"></div>
-                                    </div>
-
-                                    <div className="timeline-events">
-                                        <div className="timeline-event">
-                                            <div className="event-marker green-bg">✓</div>
-                                            <div className="event-content">
-                                                <strong>Payment Confirmed</strong>
-                                                <p>Invoice payment received.</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="timeline-event suggestion-event">
-                                            <div className="event-marker q-marker">Q</div>
-                                            <div className="event-content">
-                                                <div className="suggestion-badge">Insight Prepared</div>
-                                                <strong>Suggested Next Step</strong>
-                                                <p>Q highlights an item that may need attention.</p>
-                                                
-                                                <div className="suggestion-action-box">
-                                                    {!qApproved ? (
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => setQApproved(true)} 
-                                                            className="btn-approve"
-                                                        >
-                                                            Mark Suggestion Reviewed
-                                                        </button>
-                                                    ) : (
-                                                        <div className="approved-indicator">
-                                                            <CheckCircle2 size={14} />
-                                                            <span>Suggestion Marked Reviewed</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* 6. Final CTA Section */}
-                <section className="final-cta-section">
-                    <div className="section-container">
-                        <div className="cta-box">
-                            <h2>See how Q360 can fit your business.</h2>
-                            <p>Less chasing. More clarity.</p>
-                            <button type="button" onClick={() => navigate('/support')} className="btn-primary-cta">
-                                Talk to the Q360 team
-                            </button>
-                        </div>
                     </div>
                 </section>
             </main>
 
-            {/* Footer */}
             <footer className="landing-footer">
                 <div className="footer-container">
                     <div className="footer-brand">
-                        <div className="footer-logo logo-white">
-                            <LogoFull height={24} />
+                        <div className="footer-logo-lockup">
+                            <BrandMark size={24} />
+                            <span>Q360</span>
                         </div>
                         <p className="copyright-text">
-                            © 2026 Qamar Technologies Ltd. All rights reserved.
+                            (c) 2026 Qamar Technologies Ltd. All rights reserved.
                         </p>
                     </div>
 
@@ -588,8 +522,8 @@ export const LandingView = () => {
                             <button type="button" onClick={() => navigate('/login')} className="footer-link">Sign In</button>
                         </div>
                         <div className="footer-nav-col">
-                            <strong>Support & Contact</strong>
-                            <button type="button" onClick={() => navigate('/support')} className="footer-link">Contact Sales</button>
+                            <strong>Support</strong>
+                            <button type="button" onClick={() => navigate('/support')} className="footer-link">Contact</button>
                             <span className="footer-link inactive">Privacy Policy</span>
                             <span className="footer-link inactive">Terms of Service</span>
                         </div>
@@ -602,1150 +536,945 @@ export const LandingView = () => {
     );
 };
 
+const BrandMark = ({ size }: { size: number }) => (
+    <img
+        src="/brand/q360-icon-v2-512.png"
+        alt="Q360"
+        width={size}
+        height={size}
+        style={{ display: 'block', objectFit: 'contain' }}
+    />
+);
+
+const WorkspacePanel = ({ summary }: { summary: WorkspaceSummary }) => {
+    const Icon = workspaceIcons[summary.key];
+
+    return (
+        <div className={`workspace-panel ${summary.futureDirection ? 'future-panel' : ''}`}>
+            <div className="workspace-panel-topbar">
+                <div className="workspace-panel-name">
+                    <Icon size={16} />
+                    <span>{summary.title}</span>
+                </div>
+                <div className="workspace-panel-meta">
+                    {summary.futureDirection ? 'Future direction' : 'Example workspace structure'}
+                </div>
+            </div>
+
+            <div className="workspace-panel-body">
+                <aside className="workspace-panel-nav">
+                    {summary.sections.map((section, index) => (
+                        <span key={section} className={index === 0 ? 'active' : ''}>{section}</span>
+                    ))}
+                </aside>
+
+                <div className="workspace-panel-content">
+                    {summary.image?.available && (
+                        <div className="workspace-context-image">
+                            <img src={summary.image.src} alt={summary.image.alt} />
+                        </div>
+                    )}
+
+                    <div className="workspace-content-copy">
+                        <span className="panel-label">{summary.label}</span>
+                        <h3>{summary.title}</h3>
+                        <p>{summary.description}</p>
+                    </div>
+
+                    <div className="fragment-rows">
+                        {summary.rows.map((row) => (
+                            <div className="fragment-row" key={row.label}>
+                                <span className={`row-dot ${row.tone}`}></span>
+                                <span>{row.label}</span>
+                                <em>{row.meta}</em>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="q-strip">
+                        <strong>Q</strong>
+                        <span>{summary.qNote}</span>
+                        <em>Review</em>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const landingStyles = `
     .landing-page {
+        --bg-zero: #f6f9ff;
+        --bg-surface: #ffffff;
+        --bg-raised: #f1f5fb;
+        --bg-well: #e8eff9;
+        --txt-primary: #10213c;
+        --txt-secondary: #526782;
+        --txt-muted: #71829a;
+        --txt-tertiary: #8898ad;
+        --blue: #1769e0;
+        --blue-bright: #2782ff;
+        --blue-ghost: rgba(23, 105, 224, 0.09);
+        --green: #10b981;
+        --green-ghost: rgba(16, 185, 129, 0.12);
+        --amber: #f59e0b;
+        --amber-ghost: rgba(245, 158, 11, 0.1);
+        --border-1: rgba(35, 69, 109, 0.1);
+        --border-2: rgba(35, 69, 109, 0.16);
+        --border-3: rgba(35, 69, 109, 0.26);
+        --max-w: 1100px;
         min-height: 100vh;
-        background-color: #0A0B0D;
-        background-image: 
-            linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
-        background-size: 40px 40px;
-        color: #F8FAFC;
-        font-family: var(--font-sans);
+        background:
+            radial-gradient(circle at 88% 10%, rgba(51, 133, 255, 0.13), transparent 30%),
+            radial-gradient(circle at 8% 42%, rgba(19, 190, 163, 0.08), transparent 24%),
+            var(--bg-zero);
+        color: var(--txt-primary);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         overflow-x: hidden;
         position: relative;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    .landing-page[data-theme='dark'] {
+        --bg-zero: #080d17;
+        --bg-surface: #101827;
+        --bg-raised: #172235;
+        --bg-well: #202e44;
+        --txt-primary: #f7fbff;
+        --txt-secondary: #afbdd0;
+        --txt-muted: #8493a8;
+        --txt-tertiary: #64748b;
+        --blue: #3b82f6;
+        --blue-bright: #75b2ff;
+        --blue-ghost: rgba(59, 130, 246, 0.14);
+        --border-1: rgba(226, 232, 240, 0.09);
+        --border-2: rgba(226, 232, 240, 0.15);
+        --border-3: rgba(226, 232, 240, 0.24);
+    }
+
+    .landing-page::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background-image:
+            linear-gradient(rgba(88, 118, 153, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(88, 118, 153, 0.1) 1px, transparent 1px);
+        background-size: 80px 80px;
+        mask-image: radial-gradient(ellipse 120% 80% at 50% 0%, black 28%, transparent 100%);
+        -webkit-mask-image: radial-gradient(ellipse 120% 80% at 50% 0%, black 28%, transparent 100%);
+    }
+
+    .landing-page::after {
+        content: '';
+        position: fixed;
+        top: -280px;
+        left: 50%;
+        width: 900px;
+        height: 600px;
+        transform: translateX(-50%);
+        background: radial-gradient(ellipse, rgba(59, 130, 246, 0.11) 0%, transparent 65%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .landing-page * {
+        box-sizing: border-box;
+    }
+
+    .landing-page button {
+        font: inherit;
     }
 
     .landing-header {
-        padding: 20px 40px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        backdrop-filter: blur(20px);
-        background-color: rgba(10, 11, 13, 0.85);
         position: sticky;
         top: 0;
         z-index: 100;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .brand-lockup {
-        background: transparent;
-        border: 0;
-        cursor: pointer;
-        padding: 0;
+        height: 56px;
+        padding: 0 max(24px, calc((100vw - var(--max-w)) / 2 + 48px));
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        background: rgba(246, 249, 255, 0.82);
+        border-bottom: 1px solid var(--border-1);
+        backdrop-filter: blur(24px);
     }
 
-    .logo-white img {
-        filter: brightness(0) invert(1);
+    .landing-page[data-theme='dark'] .landing-header { background: rgba(8, 13, 23, 0.86); }
+
+    .brand-lockup {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--txt-primary);
+        cursor: pointer;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
     }
 
     .landing-nav {
         display: flex;
-        gap: 28px;
         align-items: center;
+        gap: 28px;
+    }
+
+    .theme-toggle {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        padding: 0;
+        color: var(--txt-secondary);
+        background: var(--bg-raised);
+        border: 1px solid var(--border-2);
+        border-radius: 50%;
+        cursor: pointer;
+        transition: transform 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .theme-toggle:hover { color: var(--blue); border-color: var(--blue); transform: rotate(12deg); }
+
+    .nav-btn,
+    .footer-link {
+        background: transparent;
+        border: 0;
+        color: var(--txt-secondary);
+        cursor: pointer;
+        padding: 0;
+        transition: color 160ms ease;
     }
 
     .nav-btn {
-        background: transparent;
-        border: none;
-        color: #94A3B8;
-        font-weight: 500;
-        font-size: 14px;
-        cursor: pointer;
-        padding: 8px 12px;
-        transition: color 150ms ease;
+        font-size: 13px;
     }
 
-    .nav-btn:hover {
-        color: #3B82F6;
+    .nav-btn:hover,
+    .footer-link:hover {
+        color: var(--txt-primary);
     }
 
     .nav-cta {
-        background: #F8FAFC;
-        color: #0A0B0D;
-        border: none;
-        padding: 8px 20px;
-        border-radius: 999px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 14px;
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 6px;
-        transition: background 150ms ease, transform 150ms ease;
+        gap: 7px;
+        color: var(--txt-primary);
+        background: transparent;
+        border: 1px solid var(--border-2);
+        border-radius: 4px;
+        padding: 7px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
     }
 
     .nav-cta:hover {
-        background: #E2E8F0;
+        background: var(--bg-raised);
+        border-color: var(--border-3);
         transform: translateY(-1px);
     }
 
-    /* Accessibility Focus Styles */
-    button:focus-visible,
-    a:focus-visible,
-    .nav-btn:focus-visible,
-    .nav-cta:focus-visible,
-    .btn-primary:focus-visible,
-    .btn-secondary:focus-visible,
-    .sidebar-tab:focus-visible,
-    .workspace-menu-btn:focus-visible,
-    .mobile-tab:focus-visible,
-    .btn-approve:focus-visible,
-    .btn-primary-cta:focus-visible,
-    .footer-link:focus-visible {
-        outline: 2px solid #D97706 !important;
-        outline-offset: 4px !important;
-        box-shadow: 0 0 8px rgba(217, 119, 6, 0.4) !important;
-    }
-
-    /* 1. Hero Section */
-    .hero-section {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 80px 20px 100px;
+    .hero-section,
+    .benefit-strip-section,
+    .workspaces-section,
+    .q-section,
+    .final-cta-section,
+    .landing-footer {
         position: relative;
         z-index: 1;
     }
 
-    .hero-grid {
-        display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
-        gap: 60px;
+    .hero-section {
+        min-height: calc(100vh - 56px);
+        display: flex;
         align-items: center;
+        padding: 92px 48px 96px;
+    }
+
+    .hero-inner {
+        width: 100%;
+        max-width: var(--max-w);
+        margin: 0 auto;
     }
 
     .hero-content {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
+        max-width: 820px;
+        animation: fade-up 520ms ease both;
     }
 
     .hero-badge {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 14px;
+        gap: 10px;
+        padding: 8px 18px;
+        margin-bottom: 38px;
+        color: var(--blue-bright);
+        background: var(--blue-ghost);
+        border: 1px solid rgba(59, 130, 246, 0.24);
         border-radius: 999px;
-        background: rgba(59, 130, 246, 0.08);
-        border: 1px solid rgba(59, 130, 246, 0.2);
-        color: #3B82F6;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 600;
-        margin-bottom: 24px;
     }
 
     .hero-section h1 {
-        font-size: 52px;
-        font-weight: 900;
-        line-height: 1.15;
-        margin: 0 0 20px;
-        letter-spacing: -0.02em;
+        max-width: 880px;
+        margin: 0;
+        color: var(--txt-primary);
+        font-size: clamp(42px, 6vw, 76px);
+        font-weight: 650;
+        letter-spacing: -1.8px;
+        line-height: 1.06;
+        overflow-wrap: break-word;
     }
 
     .highlight-text {
-        background: linear-gradient(135deg, #60A5FA, #3B82F6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
         display: block;
-        padding: 4px 0;
+        color: var(--blue-bright);
     }
 
     .hero-subtitle {
+        max-width: 620px;
+        margin: 28px 0 44px;
+        color: var(--txt-secondary);
         font-size: 18px;
-        color: #94A3B8;
-        line-height: 1.5;
-        margin: 0 0 36px;
-        max-width: 520px;
+        font-weight: 300;
+        line-height: 1.65;
     }
 
-    .hero-actions {
+    .hero-local-note {
         display: flex;
-        gap: 16px;
+        align-items: center;
+        max-width: 600px;
+        margin: -24px 0 30px;
+        color: var(--txt-muted);
+        font-size: 13px;
+    }
+
+    .hero-actions,
+    .cta-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
         flex-wrap: wrap;
     }
 
-    .btn-primary {
-        background: #3B82F6;
-        color: #FFFFFF;
-        border: none;
-        padding: 14px 28px;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
+    .btn-primary,
+    .btn-secondary {
+        border-radius: 4px;
+        padding: 13px 24px;
+        font-size: 14px;
         cursor: pointer;
-        transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
-        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 140ms ease, box-shadow 160ms ease;
+    }
+
+    .btn-primary {
+        border: 1px solid var(--blue);
+        background: var(--blue);
+        color: #fff;
+        font-weight: 500;
+        box-shadow: 0 0 0 rgba(59, 130, 246, 0);
     }
 
     .btn-primary:hover {
-        background: #2563EB;
+        background: var(--blue-bright);
+        border-color: var(--blue-bright);
         transform: translateY(-1px);
-        box-shadow: 0 6px 24px rgba(59, 130, 246, 0.3);
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.25);
     }
 
     .btn-secondary {
-        background: rgba(255, 255, 255, 0.04);
-        color: #F8FAFC;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 14px 28px;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 150ms ease, border-color 150ms ease;
+        border: 1px solid var(--border-2);
+        background: transparent;
+        color: var(--txt-secondary);
     }
 
     .btn-secondary:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.2);
+        color: var(--txt-primary);
+        border-color: var(--border-3);
+        transform: translateY(-1px);
     }
 
-    .hero-visual {
-        position: relative;
-    }
-
-    .mock-browser {
-        background: #121316;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
+    .hero-preview {
+        margin-top: 78px;
         overflow: hidden;
-        box-shadow: 0 30px 60px -15px rgba(0,0,0,0.8);
+        background: var(--bg-surface);
+        border: 1px solid var(--border-2);
+        border-radius: 8px;
+        box-shadow: 0 38px 84px rgba(32, 63, 100, 0.17), 0 0 80px rgba(59, 130, 246, 0.08);
+        animation: float-in 700ms ease 120ms both, drift 8s ease-in-out 1s infinite;
     }
 
-    .browser-header {
-        background: #1A1B1F;
-        padding: 10px 16px;
+    .preview-topbar,
+    .workspace-panel-topbar,
+    .q-output-header {
         display: flex;
         align-items: center;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        justify-content: space-between;
+        min-height: 40px;
+        padding: 0 20px;
+        background: var(--bg-raised);
+        border-bottom: 1px solid var(--border-1);
     }
 
     .browser-dots {
         display: flex;
         gap: 6px;
-        margin-right: 20px;
     }
 
     .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.2);
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.18);
     }
 
-    .browser-title {
+    .preview-title,
+    .workspace-panel-name,
+    .q-output-title {
         display: flex;
         align-items: center;
         gap: 8px;
-        color: #64748B;
-        font-size: 11px;
-        font-weight: 500;
+        color: var(--txt-secondary);
+        font-size: 12px;
+        font-weight: 600;
     }
 
-    .mock-app-layout {
-        display: grid;
-        grid-template-columns: 140px minmax(0, 1fr);
-        height: 280px;
-    }
-
-    .mock-sidebar {
-        background: #15161A;
-        border-right: 1px solid rgba(255, 255, 255, 0.04);
-        padding: 16px 10px;
-    }
-
-    .sidebar-group {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .group-label {
-        font-size: 10px;
+    .preview-chip,
+    .label-screenshot,
+    .workspace-panel-meta {
+        border: 1px solid var(--border-1);
+        border-radius: 3px;
+        color: var(--txt-muted);
+        font-size: 9px;
+        letter-spacing: 1.2px;
+        padding: 2px 7px;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #475569;
-        margin-bottom: 6px;
-        padding-left: 6px;
     }
 
-    .sidebar-tab {
-        background: transparent;
-        border: none;
-        color: #64748B;
+    .preview-body {
+        display: grid;
+        grid-template-columns: 200px minmax(0, 1fr);
+        min-height: 378px;
+    }
+
+    .preview-sidenav,
+    .workspace-menu,
+    .workspace-panel-nav {
+        border-right: 1px solid var(--border-1);
+    }
+
+    .preview-sidenav,
+    .workspace-menu {
         display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        border-radius: 6px;
-        font-size: 12px;
+        flex-direction: column;
+        gap: 4px;
+        padding: 18px 8px;
+    }
+
+    .side-label,
+    .section-kicker,
+    .panel-label {
+        color: var(--txt-tertiary);
+        font-size: 10px;
         font-weight: 500;
-        cursor: pointer;
-        text-align: left;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    }
+
+    .side-label {
+        padding: 0 12px 8px;
+    }
+
+    .section-kicker {
+        color: var(--blue);
+    }
+
+    .sidebar-tab,
+    .workspace-menu-btn,
+    .mobile-tab,
+    .workspace-panel-nav span {
+        display: flex;
+        align-items: center;
+        gap: 9px;
         width: 100%;
-        transition: background 150ms ease, color 150ms ease;
-    }
-
-    .sidebar-tab:hover {
-        color: #94A3B8;
-        background: rgba(255, 255, 255, 0.02);
-    }
-
-    .sidebar-tab.active {
-        color: #F8FAFC;
-        background: rgba(217, 119, 6, 0.15);
-        border-left: 2px solid #D97706;
-    }
-
-    .mock-main-view {
-        background: #111215;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .view-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-        padding-bottom: 12px;
-        margin-bottom: 16px;
-    }
-
-    .view-header h3 {
-        margin: 0;
-        font-size: 11px;
-        font-weight: 700;
-        color: #94A3B8;
-        letter-spacing: 0.05em;
-    }
-
-    .label-screenshot {
-        font-size: 9px;
-        background: rgba(217, 119, 6, 0.05);
-        color: #D97706;
-        padding: 2px 6px;
+        min-height: 36px;
+        padding: 8px 12px;
+        background: transparent;
+        border: 1px solid transparent;
         border-radius: 4px;
-        border: 1px solid rgba(217, 119, 6, 0.2);
-    }
-
-    .view-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-
-    .stats-row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 16px;
-    }
-
-    .stat-pill {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        padding: 4px 10px;
-        border-radius: 99px;
-        font-size: 11px;
-        color: #94A3B8;
-    }
-
-    .stat-pill strong {
-        color: #F8FAFC;
-    }
-
-    .warning-pill {
-        border-color: rgba(217, 119, 6, 0.2);
-        background: rgba(217, 119, 6, 0.05);
-    }
-
-    .warning-pill strong {
-        color: #D97706;
-    }
-
-    .success-pill {
-        border-color: rgba(16, 185, 129, 0.2);
-        background: rgba(16, 185, 129, 0.05);
-    }
-
-    .success-pill strong {
-        color: #10B981;
-    }
-
-    .order-ticket,
-    .quote-card,
-    .job-card,
-    .project-card {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        padding: 14px;
-    }
-
-    .ticket-header,
-    .card-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
+        color: var(--txt-muted);
+        cursor: pointer;
         font-size: 12px;
+        text-align: left;
+        transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
     }
 
-    .status-badge {
+    .workspace-menu-btn {
+        min-height: 44px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .sidebar-tab:hover,
+    .workspace-menu-btn:hover,
+    .mobile-tab:hover {
+        background: var(--bg-well);
+        color: var(--txt-secondary);
+    }
+
+    .sidebar-tab.active,
+    .workspace-menu-btn.active,
+    .mobile-tab.active,
+    .workspace-panel-nav span.active {
+        background: var(--blue-ghost);
+        border-color: rgba(59, 130, 246, 0.18);
+        color: var(--blue-bright);
+    }
+
+    .workspace-menu-btn em,
+    .mobile-tab span {
+        margin-left: auto;
+        color: var(--txt-tertiary);
         font-size: 9px;
-        font-weight: 700;
-        padding: 2px 6px;
-        border-radius: 99px;
+        font-style: normal;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
     }
 
-    .success-badge {
-        background: rgba(16, 185, 129, 0.1);
-        color: #10B981;
-        border: 1px solid rgba(16, 185, 129, 0.2);
-    }
-
-    .progress-badge {
-        background: rgba(59, 130, 246, 0.1);
-        color: #3B82F6;
-        border: 1px solid rgba(59, 130, 246, 0.2);
-    }
-
-    .ticket-items {
+    .preview-main {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        font-size: 11px;
-        color: #94A3B8;
+        gap: 16px;
+        padding: 24px;
     }
 
-    .ticket-item span {
-        color: #D97706;
-        font-weight: bold;
-        margin-right: 4px;
+    .preview-header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
     }
 
-    .card-desc {
-        margin: 0 0 8px;
-        font-size: 11px;
-        color: #64748B;
+    .preview-header-row h2,
+    .workspace-content-copy h3 {
+        margin: 3px 0 0;
+        color: var(--txt-primary);
+        font-size: 16px;
+        line-height: 1.25;
     }
 
-    .card-value {
+    .stat-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .stat-block {
+        padding: 14px 16px;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-1);
+        border-radius: 4px;
+    }
+
+    .stat-block span {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--txt-tertiary);
+        font-size: 9px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+    }
+
+    .stat-bar {
+        height: 3px;
+        overflow: hidden;
+        border-radius: 3px;
+        background: var(--bg-well);
+    }
+
+    .stat-bar i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--blue);
+        opacity: 0.75;
+    }
+
+    .abstract-table,
+    .fragment-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .abstract-row,
+    .fragment-row {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 36px;
+        padding: 8px 10px;
+        color: var(--txt-secondary);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
         font-size: 12px;
-        font-weight: bold;
-        color: #94A3B8;
     }
 
-    .milestone-steps {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        font-size: 11px;
+    .fragment-row {
+        min-height: 42px;
+        background: rgba(255, 255, 255, 0.01);
+        border-color: var(--border-1);
     }
 
-    .step.done {
-        color: #10B981;
+    .abstract-row:hover,
+    .fragment-row:hover {
+        background: var(--bg-raised);
     }
 
-    .step.progress {
-        color: #D97706;
+    .abstract-row em,
+    .fragment-row em,
+    .q-strip em {
+        color: var(--txt-tertiary);
+        font-size: 10px;
+        font-style: normal;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        white-space: nowrap;
     }
 
-    /* 2. Owner Problem Section */
-    .problem-section {
+    .row-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--txt-tertiary);
+    }
+
+    .row-dot.blue { background: var(--blue); }
+    .row-dot.green { background: var(--green); }
+    .row-dot.amber { background: var(--amber); }
+    .row-dot.muted { background: var(--txt-tertiary); }
+
+    .q-strip {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 9px 10px;
+        background: rgba(59, 130, 246, 0.045);
+        border: 1px solid rgba(59, 130, 246, 0.14);
+        border-radius: 4px;
+    }
+
+    .q-strip strong {
+        color: var(--blue);
+        font-size: 10px;
+        letter-spacing: 1.5px;
+    }
+
+    .q-strip span {
+        color: var(--txt-secondary);
+        font-size: 12px;
+    }
+
+    .section-separator {
         position: relative;
-        padding: 100px 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.03);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    }
-
-    .spotlight-glow {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 600px;
-        height: 300px;
-        background: radial-gradient(circle, rgba(59, 130, 246, 0.04) 0%, transparent 70%);
-        pointer-events: none;
+        z-index: 1;
+        height: 1px;
+        background: var(--border-1);
     }
 
     .section-container {
-        max-width: 1200px;
+        max-width: var(--max-w);
         margin: 0 auto;
-        position: relative;
-        z-index: 1;
+        padding: 0 48px;
     }
 
-    .problem-header,
-    .workspaces-header,
-    .clarity-header {
-        text-align: center;
-        margin-bottom: 60px;
+    .workspaces-section,
+    .q-section,
+    .final-cta-section {
+        padding: 126px 0;
     }
 
-    .problem-header h2,
-    .workspaces-header h2,
-    .clarity-header h2 {
-        font-size: 36px;
-        font-weight: 800;
-        margin: 0 0 16px;
-        letter-spacing: -0.01em;
+    .benefit-strip-section {
+        padding: 54px 0;
     }
 
-    .problem-header p,
-    .workspaces-header p,
-    .clarity-header p {
+    .section-header {
+        max-width: 620px;
+        margin-bottom: 48px;
+    }
+
+    .section-header.compact {
+        max-width: 760px;
+    }
+
+    .section-header h2,
+    .q-copy-block h2,
+    .cta-box h2 {
+        margin: 14px 0 0;
+        color: var(--txt-primary);
+        font-size: clamp(30px, 3.8vw, 44px);
+        font-weight: 620;
+        letter-spacing: -1.1px;
+        line-height: 1.15;
+    }
+
+    .section-header p,
+    .q-desc-text,
+    .cta-box p {
+        max-width: 620px;
+        margin: 18px 0 0;
+        color: var(--txt-secondary);
         font-size: 16px;
-        color: #94A3B8;
-        max-width: 600px;
-        margin: 0 auto;
-        line-height: 1.5;
+        font-weight: 300;
+        line-height: 1.65;
     }
 
-    .problem-grid {
+    .benefit-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
     }
 
-    .problem-card {
-        background: rgba(255, 255, 255, 0.01);
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        border-radius: 12px;
-        padding: 32px;
-        position: relative;
-        overflow: hidden;
+    .benefit-card,
+    .cta-box,
+    .trust-callout {
+        background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+        border: 1px solid var(--border-1);
+        border-radius: 8px;
     }
 
-    .card-indicator {
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 3px;
+    .benefit-card {
+        padding: 22px;
     }
 
-    .warning-border {
-        background: #D97706;
+    .benefit-card h3 {
+        margin: 0 0 10px;
+        color: var(--txt-primary);
+        font-size: 16px;
     }
 
-    .problem-card h3 {
-        margin: 0 0 12px;
-        font-size: 18px;
-        font-weight: 700;
-    }
-
-    .problem-card p {
+    .benefit-card p {
         margin: 0;
-        font-size: 14px;
-        color: #94A3B8;
-        line-height: 1.5;
+        color: var(--txt-secondary);
+        font-size: 13px;
+        line-height: 1.55;
     }
 
-    /* 3. Workspace Selector Section */
-    .workspaces-section {
-        padding: 100px 20px;
-        background: rgba(0,0,0,0.1);
-    }
-
-    .workspace-tabs-container {
-        margin-top: 40px;
+    .workspace-shell {
+        display: grid;
+        grid-template-columns: 230px minmax(0, 1fr);
+        border: 1px solid var(--border-2);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg-surface);
+        box-shadow: 0 32px 72px rgba(32, 63, 100, 0.16);
     }
 
     .mobile-tabs-bar {
         display: none;
     }
 
-    .workspace-interactive-layout {
+    .workspace-panel {
+        min-width: 0;
+    }
+
+    .workspace-panel-body {
         display: grid;
-        grid-template-columns: 240px minmax(0, 1fr);
-        gap: 40px;
-        align-items: flex-start;
+        grid-template-columns: 190px minmax(0, 1fr);
+        min-height: 390px;
     }
 
-    .desktop-workspace-menu {
+    .workspace-panel-nav {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-    }
-
-    .workspace-menu-btn {
-        background: transparent;
-        border: 1px solid transparent;
-        color: #64748B;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        text-align: left;
-        width: 100%;
-        transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-    }
-
-    .workspace-menu-btn:hover {
-        color: #94A3B8;
-        background: rgba(255, 255, 255, 0.02);
-    }
-
-    .workspace-menu-btn.active {
-        color: #F8FAFC;
-        background: rgba(217, 119, 6, 0.12);
-        border: 1px solid rgba(217, 119, 6, 0.25);
-    }
-
-    .future-tab {
-        opacity: 0.7;
-    }
-
-    .future-tab.active {
-        background: rgba(255, 255, 255, 0.03);
-        border-color: rgba(255, 255, 255, 0.08);
-    }
-
-    .future-pill {
-        font-size: 9px;
-        background: rgba(255,255,255,0.05);
-        color: #64748B;
-        padding: 1px 6px;
-        border-radius: 4px;
-        margin-left: auto;
-    }
-
-    .workspace-preview-canvas {
-        background: #111215;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        min-height: 380px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-        overflow: hidden;
-    }
-
-    .canvas-wrapper {
-        padding: 40px;
-        display: grid;
-        grid-template-columns: 1fr 1.2fr;
-        gap: 40px;
-        align-items: center;
-        height: 100%;
-    }
-
-    .canvas-info h3 {
-        font-size: 24px;
-        margin: 0 0 16px;
-        font-weight: 800;
-    }
-
-    .canvas-info p {
-        font-size: 15px;
-        color: #94A3B8;
-        line-height: 1.5;
-        margin: 0 0 28px;
-    }
-
-    .module-specs {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .spec-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 13px;
-        color: #F8FAFC;
-        font-weight: 500;
-    }
-
-    .spec-item svg {
-        color: #3B82F6;
-    }
-
-    .canvas-visual {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        width: 100%;
-    }
-
-    .label-visual,
-    .label-visual-concept {
-        font-size: 10px;
-        background: rgba(217, 119, 6, 0.05);
-        border: 1px solid rgba(217, 119, 6, 0.2);
-        color: #D97706;
-        padding: 4px 8px;
-        border-radius: 4px;
-        margin-bottom: 12px;
-    }
-
-    .mock-interface-pane {
-        background: #16171C;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        width: 100%;
-        min-height: 200px;
-        padding: 20px;
-    }
-
-    .pane-header {
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: #475569;
-        border-bottom: 1px solid rgba(255,255,255,0.03);
-        padding-bottom: 10px;
-        margin-bottom: 16px;
-    }
-
-    .table-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
-    }
-
-    .table-node {
-        background: rgba(255,255,255,0.02);
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 6px;
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        font-size: 12px;
-    }
-
-    .table-node span {
-        font-size: 10px;
-        color: #64748B;
-    }
-
-    .table-node.occupied {
-        border-color: rgba(59, 130, 246, 0.2);
-        background: rgba(59, 130, 246, 0.03);
-    }
-
-    .table-node.paying {
-        border-color: rgba(217, 119, 6, 0.2);
-        background: rgba(217, 119, 6, 0.03);
-    }
-
-    .table-node.paying strong {
-        color: #D97706;
-    }
-
-    .table-node.available {
-        border-color: rgba(16, 185, 129, 0.2);
-        background: rgba(16, 185, 129, 0.03);
-    }
-
-    .table-node.available strong {
-        color: #10B981;
-    }
-
-    .list-view {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .list-item {
+        gap: 5px;
+        padding: 18px 10px;
         background: rgba(255, 255, 255, 0.01);
-        border: 1px solid rgba(255, 255, 255, 0.03);
-        border-radius: 6px;
-        padding: 12px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 12px;
     }
 
-    .amber-text {
-        color: #D97706;
+    .workspace-panel-nav span {
+        cursor: default;
     }
 
-    .green-text {
-        color: #10B981;
-    }
-
-    .badge-outline {
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(255,255,255,0.02);
-        padding: 2px 8px;
-        border-radius: 99px;
-        font-size: 10px;
-        color: #94A3B8;
-    }
-
-    .locked-canvas {
-        background: rgba(10, 11, 13, 0.5);
-    }
-
-    .locked-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255,255,255,0.05);
-        color: #64748B;
-        font-size: 10px;
-        padding: 4px 8px;
-        border-radius: 4px;
-        margin-bottom: 12px;
-    }
-
-    .locked-visual {
-        opacity: 0.5;
-    }
-
-    .locked-pane {
+    .workspace-panel-content {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-    }
-
-    .locked-icon {
-        color: #64748B;
-        margin-bottom: 12px;
-    }
-
-    .lock-sub {
-        font-size: 10px;
-        color: #475569;
-    }
-
-    /* 4. Operational Clarity Section */
-    .clarity-section {
-        padding: 100px 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.03);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    }
-
-    .clarity-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
         gap: 20px;
-    }
-
-    .clarity-card {
-        background: rgba(255, 255, 255, 0.01);
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        border-radius: 12px;
         padding: 28px;
-        transition: border-color 150ms ease;
     }
 
-    .clarity-card:hover {
-        border-color: rgba(59, 130, 246, 0.2);
+    .workspace-context-image {
+        position: relative;
+        height: 190px;
+        overflow: hidden;
+        background: var(--bg-well);
+        border: 1px solid rgba(59, 130, 246, 0.16);
+        border-radius: 6px;
+        animation: fade-up 240ms ease both;
     }
 
-    .clarity-icon {
-        color: #3B82F6;
-        margin-bottom: 20px;
+    .workspace-context-image::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(8, 8, 8, 0.12), rgba(8, 8, 8, 0.58));
+        pointer-events: none;
     }
 
-    .clarity-card h3 {
-        margin: 0 0 12px;
-        font-size: 16px;
-        font-weight: 700;
+    .workspace-context-image img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
 
-    .clarity-card p {
-        margin: 0;
-        font-size: 13px;
-        color: #94A3B8;
-        line-height: 1.5;
+    .workspace-content-copy p {
+        max-width: 640px;
+        margin: 10px 0 0;
+        color: var(--txt-secondary);
+        font-size: 14px;
+        line-height: 1.65;
     }
 
-    /* 5. Meet Q Section */
-    .q-section {
-        padding: 100px 20px;
-        background: rgba(0,0,0,0.15);
+    .future-panel {
+        opacity: 0.86;
     }
 
-    .q-split-layout {
+    .q-inner {
         display: grid;
-        grid-template-columns: 0.95fr 1.05fr;
-        gap: 60px;
+        grid-template-columns: 0.92fr 1.08fr;
+        gap: 72px;
         align-items: center;
     }
 
     .q-copy-block {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .q-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 14px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        color: #F8FAFC;
-        font-size: 12px;
-        font-weight: 600;
-        margin-bottom: 24px;
-    }
-
-    .q-section h2 {
-        font-size: 40px;
-        font-weight: 800;
-        margin: 0 0 20px;
-    }
-
-    .q-desc-text {
-        font-size: 16px;
-        color: #94A3B8;
-        line-height: 1.6;
-        margin: 0 0 36px;
+        min-width: 0;
     }
 
     .trust-callout {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        padding: 16px 20px;
         display: flex;
         align-items: flex-start;
         gap: 12px;
+        margin-top: 34px;
+        padding: 16px 18px;
+        color: var(--txt-secondary);
         font-size: 13px;
-        color: #94A3B8;
-        line-height: 1.45;
+        line-height: 1.5;
     }
 
     .trust-callout svg {
-        color: #3B82F6;
-        flex-shrink: 0;
+        flex: 0 0 auto;
+        color: var(--blue);
         margin-top: 2px;
     }
 
-    .q-timeline-block {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        width: 100%;
-    }
-
-    .mock-timeline-card {
-        background: #111215;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 12px;
-        width: 100%;
+    .q-output-panel {
         overflow: hidden;
-        box-shadow: 0 20px 45px rgba(0,0,0,0.5);
+        background: var(--bg-surface);
+        border: 1px solid var(--border-2);
+        border-radius: 8px;
+        box-shadow: 0 30px 68px rgba(32, 63, 100, 0.15);
     }
 
-    .timeline-header {
-        background: rgba(255, 255, 255, 0.02);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-        padding: 16px 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .header-info h3 {
-        margin: 0 0 4px;
-        font-size: 13px;
-        font-weight: 700;
-    }
-
-    .header-info p {
-        margin: 0;
-        font-size: 11px;
-        color: #64748B;
-    }
-
-    .active-glow-q {
-        width: 8px;
-        height: 8px;
-        border-radius: 99px;
-        background: #3B82F6;
-        box-shadow: 0 0 10px #3B82F6;
-    }
-
-    .timeline-events {
-        padding: 24px;
+    .q-output-body {
         display: flex;
         flex-direction: column;
-        gap: 20px;
-        position: relative;
+        padding: 22px;
     }
 
-    .timeline-events::before {
-        content: '';
-        position: absolute;
-        left: 35px;
-        top: 40px;
-        bottom: 40px;
-        width: 1px;
-        background: rgba(255, 255, 255, 0.05);
+    .q-insight {
+        padding: 18px 0;
+        border-bottom: 1px solid var(--border-1);
     }
 
-    .timeline-event {
-        display: grid;
-        grid-template-columns: 24px minmax(0, 1fr);
-        gap: 16px;
-        position: relative;
-        z-index: 1;
+    .q-insight:first-child {
+        padding-top: 0;
     }
 
-    .event-marker {
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
-        display: grid;
-        place-items: center;
-        font-size: 11px;
-        font-weight: bold;
+    .q-insight:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
     }
 
-    .green-bg {
-        background: rgba(16, 185, 129, 0.15);
-        color: #10B981;
-        border: 1px solid rgba(16, 185, 129, 0.3);
+    .q-insight.quiet {
+        opacity: 0.9;
     }
 
-    .q-marker {
-        background: rgba(255, 255, 255, 0.05);
-        color: #F8FAFC;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
-    }
-
-    .event-content {
-        font-size: 13px;
-    }
-
-    .event-content strong {
-        color: #F8FAFC;
-        display: block;
-        margin-bottom: 4px;
-    }
-
-    .event-content p {
-        margin: 0;
-        color: #94A3B8;
-        line-height: 1.45;
-    }
-
-    .suggestion-event {
-        background: rgba(59, 130, 246, 0.02);
-        border: 1px solid rgba(59, 130, 246, 0.1);
-        border-radius: 8px;
-        padding: 16px;
-        margin-left: -8px;
-    }
-
-    .suggestion-badge {
-        display: inline-block;
-        font-size: 9px;
-        background: rgba(59, 130, 246, 0.1);
-        color: #3B82F6;
-        border: 1px solid rgba(59, 130, 246, 0.25);
-        padding: 1px 6px;
-        border-radius: 4px;
-        font-weight: bold;
-        margin-bottom: 8px;
-    }
-
-    .suggestion-action-box {
-        margin-top: 14px;
-    }
-
-    .btn-approve {
-        background: #3B82F6;
-        color: #FFFFFF;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 150ms ease;
-    }
-
-    .btn-approve:hover {
-        background: #2563EB;
-    }
-
-    .approved-indicator {
-        display: inline-flex;
+    .q-insight-header {
+        display: flex;
         align-items: center;
-        gap: 8px;
-        color: #10B981;
-        font-size: 11px;
-        font-weight: 600;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 10px;
     }
 
-    /* 6. Final CTA Section */
-    .final-cta-section {
-        padding: 100px 20px 120px;
-        border-top: 1px solid rgba(255, 255, 255, 0.03);
+    .q-insight p {
+        margin: 0;
+        color: var(--txt-secondary);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .badge {
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 3px 7px;
+    }
+
+    .badge-blue {
+        background: var(--blue-ghost);
+        color: var(--blue-bright);
+    }
+
+    .badge-amber {
+        background: var(--amber-ghost);
+        color: var(--amber);
+    }
+
+    .badge-muted {
+        background: var(--bg-well);
+        color: var(--txt-muted);
     }
 
     .cta-box {
-        max-width: 900px;
+        max-width: 860px;
         margin: 0 auto;
-        padding: 60px 40px;
-        background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.02) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
+        padding: 56px 44px;
         text-align: center;
     }
 
-    .cta-box h2 {
-        font-size: 36px;
-        font-weight: 800;
-        margin: 0 0 16px;
-    }
-
     .cta-box p {
-        font-size: 18px;
-        color: #94A3B8;
-        margin: 0 auto 36px;
+        margin-left: auto;
+        margin-right: auto;
     }
 
-    .btn-primary-cta {
-        background: #F8FAFC;
-        color: #0A0B0D;
-        border: none;
-        padding: 14px 36px;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 150ms ease, transform 150ms ease;
+    .cta-actions {
+        justify-content: center;
+        margin-top: 34px;
     }
 
-    .btn-primary-cta:hover {
-        background: #E2E8F0;
-        transform: translateY(-1px);
-    }
-
-    /* Footer */
     .landing-footer {
-        border-top: 1px solid rgba(255, 255, 255, 0.05);
-        background: #060708;
-        padding: 60px 20px 40px;
+        border-top: 1px solid var(--border-1);
+        background: rgba(241, 246, 253, 0.88);
+        padding: 52px 0 42px;
     }
+
+    .landing-page[data-theme='dark'] .landing-footer { background: rgba(8, 13, 23, 0.9); }
 
     .footer-container {
-        max-width: 1200px;
+        max-width: var(--max-w);
         margin: 0 auto;
+        padding: 0 48px;
         display: flex;
         justify-content: space-between;
         gap: 60px;
@@ -1755,197 +1484,344 @@ const landingStyles = `
         display: flex;
         flex-direction: column;
         align-items: flex-start;
-        max-width: 320px;
+        gap: 16px;
     }
 
-    .footer-logo {
-        margin-bottom: 16px;
+    .footer-logo-lockup {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--txt-primary);
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
     }
 
     .copyright-text {
-        font-size: 13px;
-        color: #475569;
         margin: 0;
+        color: var(--txt-tertiary);
+        font-size: 12px;
     }
 
     .footer-navigation {
         display: flex;
-        gap: 80px;
+        gap: 76px;
     }
 
     .footer-nav-col {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 11px;
     }
 
     .footer-nav-col strong {
-        color: #F8FAFC;
-        font-size: 14px;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
+        color: var(--txt-primary);
+        font-size: 13px;
     }
 
     .footer-link {
-        background: transparent;
-        border: none;
-        color: #64748B;
         font-size: 13px;
-        padding: 0;
-        cursor: pointer;
         text-align: left;
-        transition: color 150ms ease;
     }
 
-    .footer-link:hover {
-        color: #3B82F6;
-    }
-
-    .footer-link.inactive {
+    .footer-link.inactive,
+    .footer-link.inactive:hover {
+        color: var(--txt-tertiary);
         cursor: default;
     }
 
-    .footer-link.inactive:hover {
-        color: #64748B;
+    button:focus-visible,
+    .footer-link:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 4px;
     }
 
-    /* Responsive adjustments */
+    @keyframes fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes float-in {
+        from { opacity: 0; transform: translateY(18px) scale(.985); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes drift {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-9px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .landing-page *, .landing-page *::before, .landing-page *::after {
+            animation-duration: .01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+            transition-duration: .01ms !important;
+        }
+    }
+
     @media (max-width: 1024px) {
-        .hero-grid,
-        .workspace-interactive-layout,
-        .q-split-layout {
+        .landing-header {
+            padding: 0 28px;
+        }
+
+        .hero-section {
+            padding: 76px 28px 88px;
+        }
+
+        .section-container,
+        .footer-container {
+            padding-left: 28px;
+            padding-right: 28px;
+        }
+
+        .preview-body,
+        .workspace-shell,
+        .workspace-panel-body,
+        .q-inner {
             grid-template-columns: 1fr;
-            gap: 40px;
         }
 
-        .hero-content {
-            align-items: center;
-            text-align: center;
+        .preview-sidenav,
+        .workspace-menu,
+        .workspace-panel-nav {
+            border-right: 0;
+            border-bottom: 1px solid var(--border-1);
         }
 
-        .hero-subtitle {
-            margin-left: auto;
-            margin-right: auto;
+        .preview-sidenav {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            padding: 12px;
         }
 
-        .hero-actions {
-            justify-content: center;
+        .preview-sidenav .side-label {
+            display: none;
         }
 
-        .desktop-workspace-menu {
+        .workspace-menu {
             display: none;
         }
 
         .mobile-tabs-bar {
             display: flex;
+            gap: 10px;
             overflow-x: auto;
-            gap: 12px;
-            padding-bottom: 16px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            margin: -18px 0 24px;
+            padding-bottom: 14px;
             -webkit-overflow-scrolling: touch;
         }
 
         .mobile-tab {
-            flex-shrink: 0;
+            width: auto;
+            flex: 0 0 auto;
+            padding: 9px 12px;
         }
 
-        .mobile-tab.active {
-            color: #F8FAFC;
-            background: rgba(217, 119, 6, 0.12);
-            border-color: rgba(217, 119, 6, 0.25);
+        .workspace-panel-nav {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
-        .problem-grid,
-        .clarity-grid {
-            grid-template-columns: 1fr;
-            gap: 16px;
+        .q-inner {
+            gap: 42px;
         }
 
-        .canvas-wrapper {
-            grid-template-columns: 1fr;
-            padding: 30px;
-        }
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 720px) {
         .landing-header {
-            padding: 16px 20px;
+            height: 60px;
+            padding: 0 18px;
         }
 
-        .landing-nav {
-            gap: 16px;
-        }
-
+        .brand-lockup span,
         .nav-btn {
             display: none;
         }
 
-        .hero-section h1 {
-            font-size: 32px;
+        .landing-nav {
+            gap: 12px;
         }
 
-        .problem-header h2,
-        .workspaces-header h2,
-        .clarity-header h2,
-        .q-section h2,
+        .nav-cta {
+            padding: 8px 14px;
+        }
+
+        .hero-section {
+            min-height: auto;
+            padding: 70px 18px 74px;
+        }
+
+        .hero-badge {
+            max-width: 100%;
+            margin-bottom: 28px;
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: normal;
+        }
+
+        .hero-badge span {
+            min-width: 0;
+        }
+
+        .hero-section h1 {
+            max-width: 100%;
+            font-size: clamp(32px, 9.8vw, 40px);
+            letter-spacing: -0.6px;
+            line-height: 1.12;
+        }
+
+        .hero-subtitle {
+            font-size: 16px;
+            margin-bottom: 32px;
+        }
+
+        .hero-actions,
+        .cta-actions {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .btn-primary,
+        .btn-secondary {
+            width: 100%;
+        }
+
+        .hero-preview {
+            margin-top: 52px;
+        }
+
+        .preview-topbar,
+        .workspace-panel-topbar,
+        .q-output-header {
+            padding: 0 12px;
+        }
+
+        .preview-chip,
+        .label-screenshot,
+        .workspace-panel-meta {
+            display: none;
+        }
+
+        .preview-sidenav {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .preview-main,
+        .workspace-context-image,
+        .workspace-panel-content,
+        .q-output-body {
+            padding: 18px;
+        }
+
+        .workspace-context-image {
+            height: 160px;
+            padding: 0;
+        }
+
+        .preview-header-row {
+            flex-direction: column;
+        }
+
+        .stat-row,
+        .benefit-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .section-container,
+        .footer-container {
+            padding-left: 18px;
+            padding-right: 18px;
+        }
+
+        .benefit-strip-section,
+        .workspaces-section,
+        .q-section,
+        .final-cta-section {
+            padding: 82px 0;
+        }
+
+        .benefit-strip-section {
+            padding: 42px 0;
+        }
+
+        .section-header {
+            margin-bottom: 34px;
+        }
+
+        .section-header h2,
+        .q-copy-block h2,
         .cta-box h2 {
-            font-size: 24px;
+            font-size: 30px;
+            letter-spacing: -0.7px;
+        }
+
+        .workspace-panel-nav {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .abstract-row,
+        .fragment-row,
+        .q-strip {
+            grid-template-columns: 10px minmax(0, 1fr);
+        }
+
+        .abstract-row em,
+        .fragment-row em,
+        .q-strip em {
+            grid-column: 2;
+        }
+
+        .q-strip strong {
+            grid-row: span 2;
+        }
+
+        .cta-box {
+            padding: 34px 18px;
         }
 
         .footer-container {
             flex-direction: column;
-            gap: 40px;
+            gap: 36px;
         }
 
         .footer-navigation {
-            gap: 40px;
+            gap: 44px;
+        }
+    }
+
+    @media (max-width: 420px) {
+        .preview-title span {
+            display: none;
         }
 
-        .hero-grid, .workspace-interactive-layout, .q-split-layout {
-            display: flex;
+        .preview-sidenav,
+        .workspace-panel-nav {
+            grid-template-columns: 1fr;
+        }
+
+        .footer-navigation {
             flex-direction: column;
-            width: 100%;
-            gap: 24px;
-        }
-
-        .hero-visual, .workspace-preview-canvas, .q-timeline-block {
-            width: 100%;
-            max-width: 100%;
-            overflow: hidden;
-        }
-
-        .canvas-wrapper {
-            padding: 20px;
+            gap: 28px;
         }
     }
 
-    @media (max-width: 375px) {
-        .hero-section h1 {
-            font-size: 28px;
-        }
-        .problem-header h2,
-        .workspaces-header h2,
-        .clarity-header h2,
-        .q-section h2,
-        .cta-box h2 {
-            font-size: 22px;
-        }
-        .hero-actions .btn-primary,
-        .hero-actions .btn-secondary {
-            width: 100%;
-            text-align: center;
-        }
-    }
-
-    /* Motion respects system settings */
     @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
         *::after {
             animation-duration: 0.01ms !important;
             animation-iteration-count: 1 !important;
-            transition-duration: 0.01ms !important;
             scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
         }
     }
 `;
