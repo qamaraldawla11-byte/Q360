@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { GuestQConcierge, type GuestSetup } from './GuestQConcierge';
 import {
     ArrowRight,
     BriefcaseBusiness,
@@ -203,6 +204,7 @@ export const LandingView = () => {
     const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('restaurant');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('q360-landing-theme') === 'dark' ? 'dark' : 'light');
     const [heroPrompt, setHeroPrompt] = useState('');
+    const [guestChatOpen, setGuestChatOpen] = useState(false);
     const activeSummary = workspaceSummaries[activeWorkspace];
 
     const scrollToSection = (id: string) => {
@@ -300,7 +302,7 @@ export const LandingView = () => {
                             className="hero-chat-bar"
                             onSubmit={(event) => {
                                 event.preventDefault();
-                                navigate('/login', { state: { qPrompt: heroPrompt.trim() } });
+                                if (heroPrompt.trim()) setGuestChatOpen(true);
                             }}
                         >
                             <span className="hero-chat-mark"><BrandMark size={24} /></span>
@@ -485,6 +487,17 @@ export const LandingView = () => {
                 </div>
             </footer>
 
+            {guestChatOpen && (
+                <GuestQConcierge
+                    initialPrompt={heroPrompt.trim()}
+                    theme={theme}
+                    onClose={() => setGuestChatOpen(false)}
+                    onContinue={(setup: GuestSetup) => {
+                        sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
+                        navigate('/login', { state: { guestSetup: setup } });
+                    }}
+                />
+            )}
             <style>{landingStyles}</style>
         </div>
     );

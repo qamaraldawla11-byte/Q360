@@ -9,6 +9,7 @@ const countries = [
     { value: 'GB', label: 'United Kingdom', hint: 'GB' },
     { value: 'FR', label: 'France', hint: 'FR' },
     { value: 'AE', label: 'UAE', hint: 'AE' },
+    { value: 'EG', label: 'Egypt', hint: 'EG' },
 ];
 
 const currencies = [
@@ -16,14 +17,47 @@ const currencies = [
     { value: 'GBP', label: 'British Pound', hint: 'GBP' },
     { value: 'EUR', label: 'Euro', hint: 'EUR' },
     { value: 'AED', label: 'UAE Dirham', hint: 'AED' },
+    { value: 'EGP', label: 'Egyptian Pound', hint: 'EGP' },
 ];
+
+type GuestSetupBrief = {
+    businessName?: string;
+    country?: string;
+};
+
+const countryDefaults: Record<string, { country: string; currency: string }> = {
+    ae: { country: 'AE', currency: 'AED' },
+    egypt: { country: 'EG', currency: 'EGP' },
+    eg: { country: 'EG', currency: 'EGP' },
+    france: { country: 'FR', currency: 'EUR' },
+    fr: { country: 'FR', currency: 'EUR' },
+    gb: { country: 'GB', currency: 'GBP' },
+    uk: { country: 'GB', currency: 'GBP' },
+    'united arab emirates': { country: 'AE', currency: 'AED' },
+    'united kingdom': { country: 'GB', currency: 'GBP' },
+    'united states': { country: 'US', currency: 'USD' },
+    us: { country: 'US', currency: 'USD' },
+    usa: { country: 'US', currency: 'USD' },
+};
+
+const readGuestSetupBrief = (): GuestSetupBrief | null => {
+    try {
+        const rawBrief = sessionStorage.getItem('q360_guest_setup');
+        return rawBrief ? JSON.parse(rawBrief) as GuestSetupBrief : null;
+    } catch {
+        return null;
+    }
+};
 
 export const BusinessTypeView = () => {
     const navigate = useNavigate();
     const { user, updateUser } = useAuthStore();
-    const [businessName, setBusinessName] = useState(user?.businessName || '');
-    const [country, setCountry] = useState(user?.country || 'US');
-    const [currency, setCurrency] = useState(user?.currency || 'USD');
+    const [guestBrief] = useState(readGuestSetupBrief);
+    const guestCountry = guestBrief?.country?.trim().toLowerCase();
+    const guestDefaults = guestCountry ? countryDefaults[guestCountry] : undefined;
+    const [businessName, setBusinessName] = useState(user?.businessName || guestBrief?.businessName || '');
+    const [country, setCountry] = useState(user?.country || guestDefaults?.country || 'US');
+    const [currency, setCurrency] = useState(user?.currency || guestDefaults?.currency || 'USD');
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -45,6 +79,7 @@ export const BusinessTypeView = () => {
             });
             updateUser({ ...updatedUser, name: user.name, lastActiveWorkspace: workspacePath });
             localStorage.setItem('onboarding_complete', 'true');
+            sessionStorage.removeItem('q360_guest_setup');
             navigate(workspacePath, { replace: true });
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : 'Unable to save your profile');

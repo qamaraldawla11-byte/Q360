@@ -11,9 +11,9 @@ import { getQProviderStatus } from '../services/qProviderConfig.js';
 
 const admin = new Hono<AppEnv>();
 
-// Middleware: Protected and Admin/Owner only
+// Platform administration is separate from ordinary workspace ownership.
 admin.use('*', authMiddleware);
-admin.use('*', requireRole(['owner', 'admin']));
+admin.use('*', requireRole(['admin']));
 
 // --- Dashboard Stats ---
 

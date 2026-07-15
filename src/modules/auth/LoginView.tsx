@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { GuestSetup } from '@/modules/public/GuestQConcierge';
 import { LogoApp } from '@/components/ui/Logo';
 
 export const LoginView = () => {
@@ -13,6 +14,24 @@ export const LoginView = () => {
     const requestOtp = useAuthStore((state) => state.requestOtp);
     const verifyOtp = useAuthStore((state) => state.verifyOtp);
     const navigate = useNavigate();
+    const location = useLocation();
+    const [guestSetup, setGuestSetup] = useState<GuestSetup | null>(null);
+
+    useEffect(() => {
+        const fromNavigation = (location.state as { guestSetup?: GuestSetup } | null)?.guestSetup;
+        let saved: GuestSetup | null = null;
+        try {
+            saved = JSON.parse(sessionStorage.getItem('q360_guest_setup') || 'null') as GuestSetup | null;
+        } catch {
+            sessionStorage.removeItem('q360_guest_setup');
+        }
+        const setup = fromNavigation || saved;
+        if (setup) {
+            setGuestSetup(setup);
+            if (setup.email) setEmail(setup.email);
+            sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
+        }
+    }, [location.state]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -69,6 +88,12 @@ export const LoginView = () => {
                         {step === 'email' ? 'Sign in to your Q360 workspace' : `Enter the code sent to ${email}`}
                     </p>
                 </div>
+
+                {guestSetup && step === 'email' && (
+                    <div style={{ margin: '-12px 0 24px', padding: '12px 14px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', fontSize: '13px', lineHeight: 1.45 }}>
+                        <strong>Your Q setup brief is saved.</strong><br />Sign in securely to create the workspace and review the final quotation.
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit}>
                     {step === 'email' ? (

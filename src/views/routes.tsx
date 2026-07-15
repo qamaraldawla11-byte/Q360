@@ -176,7 +176,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
     }
-    if (user?.role !== 'admin' && user?.role !== 'owner') {
+    if (user?.role !== 'admin') {
         return <Navigate to="/app" replace />;
     }
 
