@@ -202,6 +202,7 @@ export const LandingView = () => {
     const navigate = useNavigate();
     const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('restaurant');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('q360-landing-theme') === 'dark' ? 'dark' : 'light');
+    const [heroPrompt, setHeroPrompt] = useState('');
     const activeSummary = workspaceSummaries[activeWorkspace];
 
     const scrollToSection = (id: string) => {
@@ -226,8 +227,9 @@ export const LandingView = () => {
                 </button>
 
                 <nav className="landing-nav" aria-label="Main Navigation">
-                    <button type="button" onClick={() => scrollToSection('workspaces')} className="nav-btn">Workspaces</button>
-                    <button type="button" onClick={() => scrollToSection('meet-q')} className="nav-btn">Q</button>
+                    <button type="button" onClick={() => scrollToSection('workspaces')} className="nav-btn">Platform</button>
+                    <button type="button" onClick={() => scrollToSection('workspaces')} className="nav-btn">Solutions</button>
+                    <button type="button" onClick={() => scrollToSection('meet-q')} className="nav-btn">Meet Q</button>
                     <button
                         type="button"
                         className="theme-toggle"
@@ -238,7 +240,7 @@ export const LandingView = () => {
                         {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
                     </button>
                     <button type="button" onClick={() => navigate('/login')} className="nav-cta">
-                        Sign In <ArrowRight size={14} />
+                        Start with Q360 <ArrowRight size={14} />
                     </button>
                 </nav>
             </header>
@@ -249,59 +251,67 @@ export const LandingView = () => {
                         <div className="hero-content">
                             <span className="hero-badge">
                                 <Sparkles size={14} />
-                                <span>Q360 · your calm business workspace</span>
+                                <span>AI agent workspace for small businesses</span>
                             </span>
 
                             <h1>
-                                Hello, I&apos;m <span className="hero-q-name">Q.</span>
-                                <span className="highlight-text">Run your business with clarity.</span>
+                                <span className="hero-intro">Hello, I&apos;m <span className="hero-q-name">Q.</span></span>
+                                <span className="highlight-text">One AI workspace to run your business.</span>
                             </h1>
 
                             <p className="hero-subtitle">
-                                Tell Q how your business works. Q asks the useful questions, recommends the right setup, and keeps you in control of every decision.
+                                Meet Q, your calm AI co-founder for operations, insights, and growth.
                             </p>
 
-                            <p className="hero-local-note">Built for local businesses — operations, customers, team, country, currency, and time zone included.</p>
+                            <p className="hero-local-note">Orders, customers, inventory, payments, and insights — connected in one simple workspace.</p>
 
                             <div className="hero-actions">
                                 <button type="button" onClick={() => navigate('/login')} className="btn-primary">
-                                    Start with Q <ArrowRight size={16} />
+                                    Start with Q360 <ArrowRight size={16} />
                                 </button>
-                                <button type="button" onClick={() => scrollToSection('workspaces')} className="btn-secondary">
-                                    Explore workspaces
+                                <button type="button" onClick={() => scrollToSection('meet-q')} className="btn-secondary">
+                                    Meet Q Agent
                                 </button>
-                            </div>
-
-                            <div className="hero-value-list" aria-label="What Q360 helps you manage">
-                                <div className="hero-value-card">
-                                    <span><ClipboardList size={17} /></span>
-                                    <div><strong>Business insights</strong><small>See what needs attention.</small></div>
-                                </div>
-                                <div className="hero-value-card">
-                                    <span><BriefcaseBusiness size={17} /></span>
-                                    <div><strong>Daily operations</strong><small>Keep the work moving.</small></div>
-                                </div>
-                                <div className="hero-value-card">
-                                    <span><Receipt size={17} /></span>
-                                    <div><strong>Payments and people</strong><small>One clear workspace.</small></div>
-                                </div>
                             </div>
                         </div>
 
-                        <div className="hero-cafe-visual">
-                            <img src="/landing/q360-cafe-hero.png" alt="A welcoming cafe team and guests during service" />
-                            <div className="hero-cafe-overlay" aria-hidden="true"></div>
-                            <div className="hero-q-orbit" aria-hidden="true"><BrandMark size={68} /></div>
+                        <div className="hero-q-stage" aria-label="Q360 AI workspace preview">
+                            <span className="q-orbit q-orbit-one" aria-hidden="true"></span>
+                            <span className="q-orbit q-orbit-two" aria-hidden="true"></span>
+                            <span className="q-orbit-dot q-dot-one" aria-hidden="true"></span>
+                            <span className="q-orbit-dot q-dot-two" aria-hidden="true"></span>
+                            <span className="q-orbit-dot q-dot-three" aria-hidden="true"></span>
+                            <div className="hero-q-core" aria-hidden="true">
+                                <div><BrandMark size={148} /></div>
+                            </div>
                             <div className="hero-agent-card">
-                                <span className="hero-q-mark"><BrandMark size={20} /></span>
-                                <div>
-                                    <small>Q AGENT</small>
-                                    <strong>Good morning. Your workspace is ready.</strong>
-                                    <p>Ask for guidance, then decide what happens next.</p>
+                                <div className="hero-agent-heading">
+                                    <span className="hero-q-mark"><BrandMark size={20} /></span>
+                                    <strong>Q Agent</strong>
+                                    <span className="agent-live-dot" aria-label="Online"></span>
                                 </div>
+                                <p>Good morning. Your sales are up 12% today.</p>
+                                <p>Low-stock items need attention.</p>
+                                <button type="button" onClick={() => scrollToSection('meet-q')}>Review &amp; approve <ArrowRight size={14} /></button>
                             </div>
-                            <span className="hero-cafe-caption">Built for the people behind every service.</span>
                         </div>
+
+                        <form
+                            className="hero-chat-bar"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                navigate('/login', { state: { qPrompt: heroPrompt.trim() } });
+                            }}
+                        >
+                            <span className="hero-chat-mark"><BrandMark size={24} /></span>
+                            <input
+                                value={heroPrompt}
+                                onChange={(event) => setHeroPrompt(event.target.value)}
+                                placeholder="Ask Q anything about your business..."
+                                aria-label="Ask Q about your business"
+                            />
+                            <button type="submit" aria-label="Start with Q"><ArrowRight size={19} /></button>
+                        </form>
                     </div>
                 </section>
 
@@ -1653,6 +1663,458 @@ const landingStyles = `
     @keyframes orbit-pulse {
         0%, 100% { transform: translateY(0) scale(1); }
         50% { transform: translateY(-6px) scale(1.025); }
+    }
+
+    /* Q-first landing hero: intentionally declared last to keep the public
+       first impression focused while preserving the mature sections below. */
+    .landing-page {
+        --hero-ink: #111317;
+        --hero-muted: #626875;
+        --hero-orange: #ff8a1c;
+        --hero-line: rgba(17, 19, 23, 0.08);
+        --max-w: 1260px;
+    }
+
+    .landing-header {
+        height: 72px;
+        border-bottom-color: var(--hero-line);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(20px) saturate(140%);
+    }
+
+    .landing-page[data-theme='dark'] .landing-header {
+        background: rgba(9, 12, 18, 0.9);
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .brand-lockup {
+        color: var(--hero-ink);
+        font-weight: 800;
+        letter-spacing: -0.4px;
+    }
+
+    .landing-page[data-theme='dark'] .brand-lockup { color: #fff; }
+
+    .nav-cta {
+        min-height: 42px;
+        padding: 0 18px;
+        border-radius: 11px;
+        background: #111317;
+        color: #fff;
+        box-shadow: 0 9px 26px rgba(17, 19, 23, 0.12);
+    }
+
+    .nav-cta:hover { background: #292c32; }
+
+    .hero-section {
+        min-height: calc(100vh - 72px);
+        padding: 68px 48px 44px;
+        background:
+            radial-gradient(circle at 70% 42%, rgba(255, 187, 113, 0.15), transparent 28%),
+            radial-gradient(circle at 58% 46%, rgba(255, 255, 255, 0.96), transparent 47%),
+            linear-gradient(145deg, #fff 0%, #fbfaf8 58%, #fff8f0 100%);
+    }
+
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.36;
+        background-image:
+            linear-gradient(var(--hero-line) 1px, transparent 1px),
+            linear-gradient(90deg, var(--hero-line) 1px, transparent 1px);
+        background-size: 78px 78px;
+        mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.25), transparent 78%);
+    }
+
+    .landing-page[data-theme='dark'] .hero-section {
+        background:
+            radial-gradient(circle at 68% 42%, rgba(255, 138, 28, 0.13), transparent 31%),
+            linear-gradient(145deg, #0a0d12 0%, #10141b 100%);
+    }
+
+    .hero-inner {
+        position: relative;
+        z-index: 1;
+        max-width: 1260px;
+        grid-template-columns: minmax(390px, 0.9fr) minmax(520px, 1.1fr);
+        align-items: center;
+        gap: 30px 64px;
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 3;
+        padding: 12px 0 16px;
+    }
+
+    .hero-badge {
+        margin-bottom: 27px;
+        border-color: rgba(255, 138, 28, 0.24);
+        background: rgba(255, 255, 255, 0.78);
+        color: #a34a00;
+        box-shadow: 0 10px 30px rgba(121, 71, 23, 0.06);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    .landing-page[data-theme='dark'] .hero-badge {
+        background: rgba(255, 255, 255, 0.05);
+        color: #ffae5f;
+    }
+
+    .hero-section h1 {
+        max-width: 585px;
+        color: var(--hero-ink);
+        font-size: clamp(50px, 5vw, 76px);
+        line-height: 0.99;
+        letter-spacing: -0.058em;
+    }
+
+    .landing-page[data-theme='dark'] .hero-section h1 { color: #fff; }
+
+    .hero-intro,
+    .hero-section .highlight-text {
+        display: block;
+    }
+
+    .hero-intro {
+        margin-bottom: 15px;
+        font-size: 0.58em;
+        line-height: 1.12;
+        letter-spacing: -0.035em;
+    }
+
+    .hero-q-name {
+        color: var(--hero-orange);
+        -webkit-text-fill-color: var(--hero-orange);
+    }
+
+    .hero-section .highlight-text {
+        color: inherit;
+        -webkit-text-fill-color: currentColor;
+        background: none;
+    }
+
+    .hero-subtitle {
+        max-width: 500px;
+        margin-top: 29px;
+        color: var(--hero-muted);
+        font-size: 19px;
+        line-height: 1.55;
+    }
+
+    .hero-local-note {
+        max-width: 530px;
+        margin-top: 12px;
+        color: #7b8089;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .hero-actions { margin-top: 30px; }
+
+    .hero-actions .btn-primary,
+    .hero-actions .btn-secondary {
+        min-height: 50px;
+        border-radius: 11px;
+        padding: 0 21px;
+    }
+
+    .hero-actions .btn-primary {
+        background: var(--hero-ink);
+        color: #fff;
+        box-shadow: 0 16px 32px rgba(17, 19, 23, 0.14);
+    }
+
+    .hero-actions .btn-primary:hover { background: #292c32; }
+
+    .hero-actions .btn-secondary {
+        border-color: rgba(17, 19, 23, 0.11);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--hero-ink);
+    }
+
+    .hero-q-stage {
+        position: relative;
+        min-height: 520px;
+        isolation: isolate;
+    }
+
+    .hero-q-stage::before {
+        content: '';
+        position: absolute;
+        z-index: -2;
+        top: 50%;
+        left: 50%;
+        width: 510px;
+        height: 510px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0 34%, rgba(255, 226, 193, 0.42) 52%, transparent 72%);
+        transform: translate(-50%, -50%);
+        filter: blur(2px);
+    }
+
+    .q-orbit {
+        position: absolute;
+        z-index: -1;
+        top: 49%;
+        left: 50%;
+        border: 1px solid rgba(224, 155, 85, 0.25);
+        border-radius: 50%;
+        transform: translate(-50%, -50%) rotate(-12deg);
+    }
+
+    .q-orbit-one { width: 620px; height: 315px; }
+    .q-orbit-two { width: 520px; height: 410px; transform: translate(-50%, -50%) rotate(28deg); }
+
+    .q-orbit-dot {
+        position: absolute;
+        z-index: 2;
+        width: 13px;
+        height: 13px;
+        border: 3px solid rgba(255, 255, 255, 0.92);
+        border-radius: 50%;
+        background: var(--hero-orange);
+        box-shadow: 0 0 24px rgba(255, 138, 28, 0.55);
+    }
+
+    .q-dot-one { top: 19%; left: 18%; }
+    .q-dot-two { top: 25%; right: 7%; width: 9px; height: 9px; }
+    .q-dot-three { right: 20%; bottom: 13%; width: 8px; height: 8px; }
+
+    .hero-q-core {
+        position: absolute;
+        top: 47%;
+        left: 48%;
+        width: 320px;
+        height: 320px;
+        padding: 23px;
+        border: 1px solid rgba(17, 19, 23, 0.045);
+        border-radius: 50%;
+        background: linear-gradient(145deg, #fff, #e9e6e2);
+        box-shadow:
+            -22px -22px 60px rgba(255, 255, 255, 0.95),
+            30px 36px 70px rgba(104, 87, 68, 0.19),
+            inset 8px 8px 16px rgba(255, 255, 255, 0.9),
+            inset -8px -8px 18px rgba(124, 109, 92, 0.1);
+        transform: translate(-50%, -50%);
+        animation: q-float 6s ease-in-out infinite;
+    }
+
+    .hero-q-core > div {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(17, 19, 23, 0.04);
+        border-radius: 50%;
+        background: linear-gradient(145deg, #f3f0ec, #fff);
+        box-shadow: inset 12px 12px 25px rgba(121, 102, 83, 0.08), inset -10px -10px 24px #fff;
+    }
+
+    .hero-q-core svg {
+        width: 148px;
+        height: 148px;
+        color: #111317;
+        filter: drop-shadow(0 13px 13px rgba(17, 19, 23, 0.12));
+    }
+
+    .hero-agent-card {
+        position: absolute;
+        z-index: 5;
+        right: -12px;
+        bottom: 42px;
+        width: 270px;
+        display: block;
+        padding: 21px;
+        border: 1px solid rgba(17, 19, 23, 0.07);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--hero-ink);
+        box-shadow: 0 28px 64px rgba(84, 65, 44, 0.18);
+        backdrop-filter: blur(18px);
+    }
+
+    .hero-agent-heading {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 18px;
+    }
+
+    .hero-agent-heading strong { font-size: 14px; }
+
+    .agent-live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #24b56d;
+        box-shadow: 0 0 0 3px rgba(36, 181, 109, 0.13);
+    }
+
+    .hero-q-mark {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #111317;
+        color: #fff;
+    }
+
+    .hero-agent-card p {
+        margin: 0 0 9px;
+        color: #363a41;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .hero-agent-card button {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 16px;
+        padding: 13px 0 0;
+        border: 0;
+        border-top: 1px solid rgba(17, 19, 23, 0.08);
+        background: transparent;
+        color: #d86800;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .hero-chat-bar {
+        grid-column: 1 / -1;
+        width: min(720px, 100%);
+        min-height: 68px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 13px;
+        margin: -8px auto 0;
+        padding: 8px 9px 8px 17px;
+        border: 1px solid rgba(17, 19, 23, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 22px 60px rgba(94, 72, 47, 0.14);
+        backdrop-filter: blur(18px);
+    }
+
+    .hero-chat-mark {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        color: var(--hero-ink);
+    }
+
+    .hero-chat-bar input {
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--hero-ink);
+        font: inherit;
+        font-size: 15px;
+    }
+
+    .hero-chat-bar input::placeholder { color: #8a8f98; }
+
+    .hero-chat-bar button {
+        width: 50px;
+        height: 50px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        background: var(--hero-ink);
+        color: #fff;
+        cursor: pointer;
+        transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .hero-chat-bar button:hover { transform: translateX(2px); background: #292c32; }
+
+    .landing-page[data-theme='dark'] .hero-subtitle,
+    .landing-page[data-theme='dark'] .hero-local-note { color: #a9b0bc; }
+
+    .landing-page[data-theme='dark'] .hero-q-stage::before {
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.09) 0 30%, rgba(255, 138, 28, 0.09) 52%, transparent 72%);
+    }
+
+    .landing-page[data-theme='dark'] .hero-q-core {
+        border-color: rgba(255, 255, 255, 0.1);
+        background: linear-gradient(145deg, #2a303a, #11151b);
+        box-shadow: -20px -20px 55px rgba(255, 255, 255, 0.025), 28px 34px 70px rgba(0, 0, 0, 0.48);
+    }
+
+    .landing-page[data-theme='dark'] .hero-q-core > div {
+        background: linear-gradient(145deg, #1e242c, #11151b);
+        box-shadow: inset 10px 10px 22px rgba(0, 0, 0, 0.25), inset -8px -8px 20px rgba(255, 255, 255, 0.03);
+    }
+
+    .landing-page[data-theme='dark'] .hero-q-core svg { color: #fff; }
+
+    .landing-page[data-theme='dark'] .hero-agent-card,
+    .landing-page[data-theme='dark'] .hero-chat-bar {
+        border-color: rgba(255, 255, 255, 0.1);
+        background: rgba(19, 24, 32, 0.92);
+        color: #fff;
+        box-shadow: 0 26px 65px rgba(0, 0, 0, 0.35);
+    }
+
+    .landing-page[data-theme='dark'] .hero-agent-card p { color: #c4cad4; }
+    .landing-page[data-theme='dark'] .hero-chat-bar input { color: #fff; }
+
+    @keyframes q-float {
+        0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+        50% { transform: translate(-50%, -50%) translateY(-10px); }
+    }
+
+    @media (max-width: 1024px) {
+        .hero-section { padding-top: 64px; }
+        .hero-inner { grid-template-columns: 1fr; gap: 22px; }
+        .hero-content { max-width: 690px; margin: 0 auto; text-align: center; }
+        .hero-section h1,
+        .hero-subtitle,
+        .hero-local-note { margin-right: auto; margin-left: auto; }
+        .hero-actions { justify-content: center; }
+        .hero-q-stage { width: min(680px, 100%); min-height: 475px; margin: 0 auto; }
+        .hero-chat-bar { margin-top: -14px; }
+    }
+
+    @media (max-width: 720px) {
+        .landing-header { height: 64px; padding: 0 18px; }
+        .landing-nav .nav-btn { display: none; }
+        .brand-lockup span { display: inline; }
+        .nav-cta { padding: 0 13px; font-size: 12px; }
+        .hero-section { min-height: auto; padding: 58px 18px 54px; }
+        .hero-badge { margin-bottom: 22px; }
+        .hero-section h1 { font-size: clamp(40px, 13vw, 58px); }
+        .hero-intro { font-size: 0.62em; }
+        .hero-subtitle { margin-top: 22px; font-size: 17px; }
+        .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .hero-actions .btn-primary,
+        .hero-actions .btn-secondary { min-width: 0; padding: 0 12px; font-size: 12px; }
+        .hero-q-stage { min-height: 390px; }
+        .hero-q-stage::before { width: 360px; height: 360px; }
+        .q-orbit-one { width: 390px; height: 210px; }
+        .q-orbit-two { width: 330px; height: 270px; }
+        .hero-q-core { left: 46%; width: 220px; height: 220px; padding: 17px; }
+        .hero-q-core svg { width: 100px; height: 100px; }
+        .hero-agent-card { right: 0; bottom: 25px; width: 210px; padding: 15px; border-radius: 16px; }
+        .hero-agent-heading { margin-bottom: 11px; }
+        .hero-agent-card p { font-size: 11px; }
+        .hero-chat-bar { min-height: 60px; gap: 8px; margin-top: -2px; padding-left: 12px; }
+        .hero-chat-bar input { font-size: 13px; }
+        .hero-chat-bar button { width: 44px; height: 44px; }
     }
 
     @media (prefers-reduced-motion: reduce) {
