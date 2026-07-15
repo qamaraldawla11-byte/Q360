@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Bot, Check, ClipboardList, FileText, LockKeyhole, MessageCircle, RefreshCw, Send, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-import { restaurantApi, type RestaurantQBusinessMemory, type RestaurantQChatMessage, type RestaurantQConversation, type RestaurantQDraft, type RestaurantQOperatingPriority, type RestaurantQPulse, type RestaurantQUsage } from '@/api/restaurant.api';
+import { restaurantApi, type RestaurantQBusinessMemory, type RestaurantQChatMessage, type RestaurantQConversation, type RestaurantQDraft, type RestaurantQOperatingPriority, type RestaurantQProviderStatus, type RestaurantQPulse, type RestaurantQUsage } from '@/api/restaurant.api';
 
 const suggestedQuestions = ['What needs attention right now?', 'Which orders are delayed?', 'Which payments are still open?', 'What bookings are upcoming?', 'Which stock needs attention?', 'Summarize today\'s sales.'];
 const operatingPriorities: Array<{ key: RestaurantQOperatingPriority; label: string }> = [
@@ -15,6 +15,7 @@ export const AssistantView = () => {
     const [pulse, setPulse] = useState<RestaurantQPulse | null>(null);
     const [drafts, setDrafts] = useState<RestaurantQDraft[]>([]);
     const [usage, setUsage] = useState<RestaurantQUsage | null>(null);
+    const [providerStatus, setProviderStatus] = useState<RestaurantQProviderStatus | null>(null);
     const [memory, setMemory] = useState<RestaurantQBusinessMemory>({ ownerSummary: null, businessGoals: null, operatingPriorities: [], updatedAt: null });
     const [conversations, setConversations] = useState<RestaurantQConversation[]>([]);
     const [messages, setMessages] = useState<RestaurantQChatMessage[]>([]);
@@ -29,10 +30,10 @@ export const AssistantView = () => {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [pulseResult, draftResult, usageResult, conversationsResult, memoryResult] = await Promise.all([
-                restaurantApi.getBusinessPulse(), restaurantApi.getQDrafts(), restaurantApi.getQUsage().catch(() => null), restaurantApi.getQConversations(), restaurantApi.getQBusinessMemory().catch(() => null),
+            const [pulseResult, draftResult, usageResult, conversationsResult, memoryResult, providerResult] = await Promise.all([
+                restaurantApi.getBusinessPulse(), restaurantApi.getQDrafts(), restaurantApi.getQUsage().catch(() => null), restaurantApi.getQConversations(), restaurantApi.getQBusinessMemory().catch(() => null), restaurantApi.getQProviderStatus().catch(() => null),
             ]);
-            setPulse(pulseResult); setDrafts(draftResult.drafts); setUsage(usageResult); setConversations(conversationsResult.conversations); if (memoryResult) setMemory(memoryResult.memory); setError('');
+            setPulse(pulseResult); setDrafts(draftResult.drafts); setUsage(usageResult); setConversations(conversationsResult.conversations); setProviderStatus(providerResult?.provider ?? null); if (memoryResult) setMemory(memoryResult.memory); setError('');
         } catch (reason) { setError(reason instanceof Error ? reason.message : 'Q could not read the latest Restaurant records.'); }
         finally { setLoading(false); }
     }, []);
@@ -112,6 +113,15 @@ export const AssistantView = () => {
         finally { setBusy(''); }
     };
 
+    const qChatStatusText = providerStatus?.externalModelEnabled
+        ? `Q Chat uses ${providerStatus.model} within this business’s $${providerStatus.monthlyBudgetUsd.toFixed(2)} monthly budget. It returns to free rules-only answers if the service is unavailable or the budget is reached.`
+        : providerStatus?.message ?? 'Q answers from this restaurant’s saved records. Rules-only Q is active.';
+    const qUsageStatusText = providerStatus?.externalModelEnabled
+        ? `${providerStatus.model} · $${providerStatus.budgetRemainingUsd.toFixed(2)} budget remaining`
+        : providerStatus?.mode === 'budget_reached'
+            ? 'Budget reached — rules-only Q is active'
+            : 'Rules-only Q is active';
+
     return <div className="q-assistant">
         <header className="q-hero"><div className="q-mark"><Bot size={28} /></div><div><span><Sparkles size={13} /> Q ASSISTANT</span><h1>Your calm restaurant co-founder.</h1><p>Q reads only this business&apos;s saved records, gives evidence-backed guidance, and asks for approval before any future action.</p></div><button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={16} /> Refresh</button></header>
         <section className="q-safety"><LockKeyhole size={20} /><div><strong>Advice first. Your team stays in control.</strong><p>Q can explain, recommend and prepare drafts. It cannot move money, alter orders, change stock, edit staff access, send messages or delete data.</p></div></section>
@@ -123,14 +133,14 @@ export const AssistantView = () => {
 
         {activeTab === 'chat' ? <section className="q-chat-shell">
             <aside className="q-chat-list"><div><b>Conversations</b><button type="button" onClick={() => { setActiveConversation(null); setMessages([]); setPrompt(''); }}>New chat</button></div>{conversations.length === 0 ? <p>Start a conversation with Q.</p> : conversations.map(conversation => <button type="button" className={activeConversation === conversation.id ? 'selected' : ''} key={conversation.id} onClick={() => void openConversation(conversation.id)}><b>{conversation.title}</b><small>{new Date(conversation.updatedAt).toLocaleDateString()}</small></button>)}</aside>
-            <div className="q-chat-main"><header><div><small>Q · PRIVATE BUSINESS ADVISOR</small><h2>{activeConversation ? 'Continue the conversation' : 'How can I help today?'}</h2><p>Q answers from your restaurant&apos;s saved records. Model cost is currently $0 while rules-only chat is active.</p></div></header>
+            <div className="q-chat-main"><header><div><small>Q · PRIVATE BUSINESS ADVISOR</small><h2>{activeConversation ? 'Continue the conversation' : 'How can I help today?'}</h2><p>{qChatStatusText}</p></div></header>
                 <div className="q-messages">{messages.length === 0 ? <div className="q-chat-empty"><Bot size={30} /><h3>Ask Q like a co-founder.</h3><p>Try a quick question, or ask in your own words. Q will show what business records support its answer.</p></div> : messages.map(message => <article className={message.role} key={message.id}><small>{message.role === 'assistant' ? 'Q' : 'YOU'} · {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small><p>{message.content}</p>{message.role === 'assistant' && <><div className="q-message-evidence">{message.evidenceCards.slice(0, 3).map(card => <span key={card.id}>{card.label}</span>)}</div><footer><button type="button" aria-label="Helpful" className={message.feedback === 'helpful' ? 'rated' : ''} disabled={busy === `feedback-${message.id}`} onClick={() => void rateMessage(message, 'helpful')}><ThumbsUp size={15} /> Helpful</button><button type="button" aria-label="Not helpful" className={message.feedback === 'not_helpful' ? 'rated' : ''} disabled={busy === `feedback-${message.id}`} onClick={() => void rateMessage(message, 'not_helpful')}><ThumbsDown size={15} /> Improve</button></footer></>}</article>)}</div>
                 <div className="q-suggestions">{suggestedQuestions.slice(0, 4).map(question => <button type="button" key={question} disabled={busy === 'chat'} onClick={() => void sendChat(question)}>{question}</button>)}</div>
                 <form onSubmit={event => { event.preventDefault(); void sendChat(prompt); }}><input value={prompt} maxLength={500} onChange={event => setPrompt(event.target.value)} placeholder="Ask Q about sales, Kitchen, orders or payments..." /><button type="submit" disabled={!prompt.trim() || busy === 'chat'}><Send size={17} /> Send</button></form>
             </div>
         </section> : <>
             <section className="q-question"><form onSubmit={event => { event.preventDefault(); void askPulse(prompt); }}><input value={prompt} maxLength={300} onChange={event => setPrompt(event.target.value)} placeholder="Ask Q about sales, Kitchen, orders, or payments..." /><button type="submit" disabled={!prompt.trim() || busy === 'pulse'}><Send size={17} /> Ask Q</button></form><div>{suggestedQuestions.map(question => <button type="button" key={question} onClick={() => void askPulse(question)} disabled={busy === 'pulse'}>{question}</button>)}</div></section>
-            {loading ? <div className="q-loading">Q is building a tenant-safe Restaurant Pulse...</div> : pulse && <><section className="q-usage"><div><small>THIS MONTH</small><b>{usage?.requests ?? 0}</b><span>Q requests</span></div><div><small>COMPLETED</small><b>{usage?.completed ?? 0}</b><span>safe responses</span></div><div><small>MODEL COST</small><b>${usage?.estimatedCostUsd.toFixed(2) ?? '0.00'}</b><span>rules-only Q is currently $0</span></div></section><section className="q-answer"><small>Q&apos;S ANSWER</small><h2>{pulse.summary}</h2><p>Updated {new Date(pulse.generatedAt).toLocaleString()}</p></section><div className="q-grid">{pulse.insights.map(insight => <article className={insight.severity} key={insight.id}><span>{insight.severity}</span><h3>{insight.title}</h3><p>{insight.recommendation}</p><small>{insight.evidenceIds.length} evidence reference</small></article>)}</div><details className="q-evidence"><summary>View supporting evidence ({pulse.evidenceCards.length})</summary><div>{pulse.evidenceCards.map(card => <article key={card.id}><b>{card.label}</b><span>{card.type.replace('_', ' ')}</span><ul>{card.facts.map(fact => <li key={fact}>{fact}</li>)}</ul></article>)}</div></details></>}
+            {loading ? <div className="q-loading">Q is building a tenant-safe Restaurant Pulse...</div> : pulse && <><section className="q-usage"><div><small>THIS MONTH</small><b>{usage?.requests ?? 0}</b><span>Q requests</span></div><div><small>COMPLETED</small><b>{usage?.completed ?? 0}</b><span>safe responses</span></div><div><small>MODEL COST</small><b>${usage?.estimatedCostUsd.toFixed(2) ?? '0.00'}</b><span>{qUsageStatusText}</span></div></section><section className="q-answer"><small>Q&apos;S ANSWER</small><h2>{pulse.summary}</h2><p>Updated {new Date(pulse.generatedAt).toLocaleString()}</p></section><div className="q-grid">{pulse.insights.map(insight => <article className={insight.severity} key={insight.id}><span>{insight.severity}</span><h3>{insight.title}</h3><p>{insight.recommendation}</p><small>{insight.evidenceIds.length} evidence reference</small></article>)}</div><details className="q-evidence"><summary>View supporting evidence ({pulse.evidenceCards.length})</summary><div>{pulse.evidenceCards.map(card => <article key={card.id}><b>{card.label}</b><span>{card.type.replace('_', ' ')}</span><ul>{card.facts.map(fact => <li key={fact}>{fact}</li>)}</ul></article>)}</div></details></>}
             <section className="q-draft-tools"><div><small>OWNER-REVIEWED DRAFTS</small><h2>Prepare, review, then decide.</h2><p>Q can prepare a daily summary or manager task. Approval does not send it or perform an operational action.</p></div><div><button type="button" onClick={() => void createDraft('daily_report')} disabled={Boolean(busy)}><FileText size={17} /> Daily report draft</button><button type="button" onClick={() => void createDraft('manager_task')} disabled={Boolean(busy)}><ClipboardList size={17} /> Manager task draft</button></div></section><div className="q-drafts">{drafts.length === 0 ? <p>No Q drafts yet.</p> : drafts.map(draft => <article key={draft.id}><header><div><small>{draft.type.replace('_', ' ')}</small><h3>{draft.title}</h3></div><span className={draft.status}>{draft.status}</span></header><pre>{draft.ownerEditedBody || draft.body}</pre><footer><small>{draft.evidenceIds.length} evidence references</small>{draft.status === 'pending' && <div><button type="button" className="reject" disabled={Boolean(busy)} onClick={() => void decide(draft, 'reject')}><X size={15} /> Reject</button><button type="button" className="approve" disabled={Boolean(busy)} onClick={() => void decide(draft, 'approve')}><Check size={15} /> Approve record</button></div>}</footer></article>)}</div>
         </>}
         <style>{`

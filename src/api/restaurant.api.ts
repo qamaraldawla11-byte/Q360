@@ -177,6 +177,12 @@ export interface RestaurantQUsage {
     failed: number;
     estimatedCostUsd: number;
     tokens: number;
+    modelRequests: number;
+    fallbacks: number;
+    monthlyBudgetUsd: number;
+    budgetRemainingUsd: number;
+    model: string;
+    modelEnabled: boolean;
     byFeature: Record<string, number>;
 }
 
@@ -209,14 +215,15 @@ export interface RestaurantQBusinessMemory {
 }
 
 export interface RestaurantQProviderStatus {
-    mode: 'rules_only' | 'provider_ready';
-    provider: string;
+    mode: 'rules_only' | 'model_active' | 'budget_reached';
+    provider: 'openai' | 'q360-rules-v1';
     model: string;
     configured: boolean;
-    externalModelEnabled: false;
+    externalModelEnabled: boolean;
+    externalModelRequested: boolean;
     monthlyBudgetUsd: number;
     estimatedSpendUsd: number;
-    budgetRemainingUsd: number | null;
+    budgetRemainingUsd: number;
     message: string;
 }
 

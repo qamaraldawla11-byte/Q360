@@ -44,6 +44,7 @@ import {
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 import { isBusinessModuleEnabled } from '../services/businessModules.js';
+import { answerWithQModel, type QModelConversationMessage } from '../services/qModel.js';
 import { getQProviderStatus } from '../services/qProviderConfig.js';
 
 const restaurant = new Hono<AppEnv>();
@@ -735,14 +736,18 @@ const recordQUsage = async (
     requestStatus: 'completed' | 'failed' | 'blocked',
     metadata: Record<string, string | number | boolean> = {},
     conversationId?: string,
+    modelUsage?: { provider: string; model: string; inputTokens: number; outputTokens: number; estimatedCostUsdMicros: number },
 ) => db.insert(qUsageEvents).values({
     id: randomUUID(),
     businessId: actor.businessId,
     userId: actor.userId,
     feature,
     conversationId,
-    provider: 'q360-rules-v1',
-    model: 'structured-pulse-v1',
+    provider: modelUsage?.provider ?? 'q360-rules-v1',
+    model: modelUsage?.model ?? 'structured-pulse-v1',
+    inputTokens: modelUsage?.inputTokens ?? 0,
+    outputTokens: modelUsage?.outputTokens ?? 0,
+    estimatedCostUsdMicros: modelUsage?.estimatedCostUsdMicros ?? 0,
     requestStatus,
     metadata,
 });
@@ -917,6 +922,62 @@ const publicQMessage = (message: typeof qAssistantMessages.$inferSelect) => ({
 const conversationTitleFor = (prompt: string) => {
     const clean = prompt.replace(/\s+/g, ' ').trim();
     return clean.length <= 60 ? clean : `${clean.slice(0, 57).trimEnd()}...`;
+};
+
+const startOfCurrentMonth = () => {
+    const since = new Date();
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+    return since;
+};
+
+const qMonthlySpendFor = async (businessId: string, since = startOfCurrentMonth()) => {
+    const events = await db.select({ estimatedCostUsdMicros: qUsageEvents.estimatedCostUsdMicros })
+        .from(qUsageEvents)
+        .where(and(eq(qUsageEvents.businessId, businessId), gte(qUsageEvents.createdAt, since)));
+    return events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000;
+};
+
+const qModelContextFor = (snapshot: BusinessPulseSnapshot, briefing: QBusinessBriefing) => [
+    `Business: ${briefing.businessName}; country: ${briefing.country ?? 'not set'}; city: ${briefing.city ?? 'not set'}; currency: ${briefing.currency}; timezone: ${briefing.timezone}.`,
+    `Service: ${briefing.restaurantService}; tables: ${briefing.tableCount}; seats: ${briefing.seatCount}; available menu items: ${briefing.activeMenuItemCount}; low stock: ${briefing.lowStockCount}; upcoming bookings: ${briefing.upcomingBookingCount}.`,
+    `Current operations: open orders ${snapshot.openOrderCount}; unpaid orders ${snapshot.unpaidOrderCount}; delayed kitchen tickets ${snapshot.delayedKdsTicketCount}; table-payment attention ${snapshot.tablePaymentAttentionCount}; paid revenue today ${snapshot.todaySalesSummary.grossSales} ${briefing.currency}.`,
+    snapshot.topSellingMenuItems.length
+        ? `Top-selling items today: ${snapshot.topSellingMenuItems.slice(0, 5).map(item => `${item.name} (${item.quantitySold})`).join(', ')}.`
+        : 'Top-selling items: no sales recorded today.',
+    snapshot.priorities.length
+        ? `Evidence-backed priorities: ${snapshot.priorities.slice(0, 5).map(priority => `${priority.urgency}: ${priority.title}`).join(' | ')}.`
+        : 'Evidence-backed priorities: none currently recorded.',
+    briefing.ownerSummary ? `Owner context: ${briefing.ownerSummary}` : '',
+    briefing.businessGoals ? `Business goals: ${briefing.businessGoals}` : '',
+    briefing.operatingPriorities.length ? `Operating priorities: ${briefing.operatingPriorities.join(', ')}.` : '',
+].filter(Boolean).join('\n');
+
+const buildQChatReply = async (
+    actor: RestaurantActor,
+    prompt: string,
+    recentMessages: QModelConversationMessage[] = [],
+) => {
+    const [snapshot, briefing, estimatedSpendUsd] = await Promise.all([
+        buildBusinessPulseSnapshot(actor.businessId),
+        buildQBusinessBriefing(actor.businessId),
+        qMonthlySpendFor(actor.businessId),
+    ]);
+    const rulesResponse = buildQPulseResponse(snapshot, prompt, briefing);
+    const modelAnswer = await answerWithQModel({
+        prompt,
+        businessContext: qModelContextFor(snapshot, briefing),
+        recentMessages,
+        estimatedSpendUsd,
+    });
+    return {
+        content: modelAnswer.usedModel && modelAnswer.content ? modelAnswer.content : rulesResponse.summary,
+        evidenceCards: rulesResponse.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })),
+        provider: modelAnswer.provider,
+        model: modelAnswer.model,
+        modelUsage: modelAnswer,
+        fallbackReason: modelAnswer.fallbackReason ?? null,
+    };
 };
 
 const orderResponse = (
@@ -1142,9 +1203,9 @@ restaurant.post('/business-pulse/ask', async (c) => {
     }
 });
 
-// Q Chat deliberately uses the same verified, business-scoped rules response as
-// Pulse in this release. This gives every conversation evidence and a full audit
-// trail before a paid external model is enabled.
+// Business Pulse remains deterministic and evidence-backed. Q Chat may use the
+// configured model, but every answer still has tenant-scoped evidence cards and
+// automatically falls back to the free rules response when needed.
 restaurant.get('/q/conversations', async (c) => {
     const actor = await restaurantActorFor(c);
     if (!canUseQ(actor)) return forbid(c, 'Q Assistant is available to restaurant management');
@@ -1186,19 +1247,27 @@ restaurant.post('/q/conversations', async (c) => {
             id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId,
             userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: now,
         };
-        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot, prompt, await buildQBusinessBriefing(actor.businessId));
+        const chatReply = await buildQChatReply(actor, prompt);
         const assistantMessage = {
             id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId,
-            userId: null, role: 'assistant' as const, content: response.summary,
-            evidenceCards: response.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })), feedback: null, createdAt: new Date(),
+            userId: null, role: 'assistant' as const, content: chatReply.content,
+            evidenceCards: chatReply.evidenceCards, feedback: null, createdAt: new Date(),
         };
         await db.insert(qAssistantConversations).values(conversation);
         await db.insert(qAssistantMessages).values([userMessage, assistantMessage]);
-        await recordQUsage(actor, 'business_chat', 'completed', { promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length }, conversation.id);
+        await recordQUsage(actor, 'business_chat', 'completed', {
+            promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length,
+            modelFallback: Boolean(chatReply.fallbackReason),
+        }, conversation.id, chatReply.modelUsage);
         await logAudit(c, 'Q_CHAT_CONVERSATION_CREATED', 'Q_ASSISTANT_CONVERSATION', conversation.id, {
-            userRole: actor.role, provider: 'q360-rules-v1', model: 'structured-pulse-v1', validationStatus: 'passed',
+            userRole: actor.role, provider: chatReply.provider, model: chatReply.model,
+            modelFallback: Boolean(chatReply.fallbackReason), fallbackReason: chatReply.fallbackReason ?? 'none', validationStatus: 'passed',
         });
+        if (chatReply.fallbackReason) {
+            await logAudit(c, 'Q_MODEL_FALLBACK', 'Q_ASSISTANT_CONVERSATION', conversation.id, {
+                provider: chatReply.provider, model: chatReply.model, safeReason: chatReply.fallbackReason,
+            });
+        }
         return c.json({ conversation: publicQConversation(conversation), messages: [publicQMessage(userMessage), publicQMessage(assistantMessage)] }, 201);
     } catch {
         await recordQUsage(actor, 'business_chat', 'failed', { safeReason: 'conversation_creation_failed' }).catch(() => undefined);
@@ -1219,14 +1288,32 @@ restaurant.post('/q/conversations/:id/messages', async (c) => {
     )));
     if (!conversation) return c.json({ error: 'Q conversation not found' }, 404);
     try {
+        const history = await db.select().from(qAssistantMessages).where(and(
+            eq(qAssistantMessages.conversationId, conversation.id),
+            eq(qAssistantMessages.businessId, actor.businessId),
+        )).orderBy(asc(qAssistantMessages.createdAt));
+        const recentMessages: QModelConversationMessage[] = history.slice(-6).map((message) => ({
+            role: message.role,
+            content: message.content,
+        }));
         const userMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: actor.userId, role: 'user' as const, content: prompt, evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>, feedback: null, createdAt: new Date() };
-        const snapshot = await buildBusinessPulseSnapshot(actor.businessId);
-        const response = buildQPulseResponse(snapshot, prompt, await buildQBusinessBriefing(actor.businessId));
-        const assistantMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: null, role: 'assistant' as const, content: response.summary, evidenceCards: response.evidenceCards.map(card => ({ id: card.id, label: card.label, facts: card.facts })), feedback: null, createdAt: new Date() };
+        const chatReply = await buildQChatReply(actor, prompt, recentMessages);
+        const assistantMessage = { id: randomUUID(), conversationId: conversation.id, businessId: actor.businessId, userId: null, role: 'assistant' as const, content: chatReply.content, evidenceCards: chatReply.evidenceCards, feedback: null, createdAt: new Date() };
         await db.insert(qAssistantMessages).values([userMessage, assistantMessage]);
         await db.update(qAssistantConversations).set({ updatedAt: new Date() }).where(eq(qAssistantConversations.id, conversation.id));
-        await recordQUsage(actor, 'business_chat', 'completed', { promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length }, conversation.id);
-        await logAudit(c, 'Q_CHAT_MESSAGE_CREATED', 'Q_ASSISTANT_CONVERSATION', conversation.id, { userRole: actor.role, validationStatus: 'passed' });
+        await recordQUsage(actor, 'business_chat', 'completed', {
+            promptLength: prompt.length, evidenceCount: assistantMessage.evidenceCards.length,
+            modelFallback: Boolean(chatReply.fallbackReason),
+        }, conversation.id, chatReply.modelUsage);
+        await logAudit(c, 'Q_CHAT_MESSAGE_CREATED', 'Q_ASSISTANT_CONVERSATION', conversation.id, {
+            userRole: actor.role, provider: chatReply.provider, model: chatReply.model,
+            modelFallback: Boolean(chatReply.fallbackReason), fallbackReason: chatReply.fallbackReason ?? 'none', validationStatus: 'passed',
+        });
+        if (chatReply.fallbackReason) {
+            await logAudit(c, 'Q_MODEL_FALLBACK', 'Q_ASSISTANT_CONVERSATION', conversation.id, {
+                provider: chatReply.provider, model: chatReply.model, safeReason: chatReply.fallbackReason,
+            });
+        }
         return c.json({ messages: [publicQMessage(userMessage), publicQMessage(assistantMessage)] }, 201);
     } catch {
         await recordQUsage(actor, 'business_chat', 'failed', { safeReason: 'message_generation_failed' }, conversation.id).catch(() => undefined);
@@ -1261,9 +1348,7 @@ restaurant.get('/business-pulse/drafts', async (c) => {
 restaurant.get('/business-pulse/usage', async (c) => {
     const actor = await restaurantActorFor(c);
     if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can view Q usage');
-    const since = new Date();
-    since.setDate(1);
-    since.setHours(0, 0, 0, 0);
+    const since = startOfCurrentMonth();
     const events = await db.select().from(qUsageEvents).where(and(
         eq(qUsageEvents.businessId, actor.businessId),
         gte(qUsageEvents.createdAt, since),
@@ -1272,13 +1357,21 @@ restaurant.get('/business-pulse/usage', async (c) => {
         result[event.feature] = (result[event.feature] ?? 0) + 1;
         return result;
     }, {});
+    const estimatedCostUsd = events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000;
+    const provider = getQProviderStatus(estimatedCostUsd);
     return c.json({
         periodStart: since.toISOString(),
         requests: events.length,
         completed: events.filter((event) => event.requestStatus === 'completed').length,
         failed: events.filter((event) => event.requestStatus === 'failed').length,
-        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000,
+        estimatedCostUsd,
         tokens: events.reduce((sum, event) => sum + event.inputTokens + event.outputTokens + event.imageTokens, 0),
+        modelRequests: events.filter((event) => event.provider === 'openai' && event.requestStatus === 'completed').length,
+        fallbacks: events.filter((event) => (event.metadata as Record<string, unknown> | null)?.modelFallback === true).length,
+        monthlyBudgetUsd: provider.monthlyBudgetUsd,
+        budgetRemainingUsd: provider.budgetRemainingUsd,
+        model: provider.model,
+        modelEnabled: provider.externalModelEnabled,
         byFeature,
     });
 });
@@ -1286,13 +1379,8 @@ restaurant.get('/business-pulse/usage', async (c) => {
 restaurant.get('/q/provider-status', async (c) => {
     const actor = await restaurantActorFor(c);
     if (!canReviewQDraft(actor)) return forbid(c, 'Only an owner or admin can view Q provider settings');
-    const since = new Date();
-    since.setDate(1);
-    since.setHours(0, 0, 0, 0);
-    const events = await db.select({ estimatedCostUsdMicros: qUsageEvents.estimatedCostUsdMicros })
-        .from(qUsageEvents)
-        .where(and(eq(qUsageEvents.businessId, actor.businessId), gte(qUsageEvents.createdAt, since)));
-    const estimatedSpendUsd = events.reduce((sum, event) => sum + event.estimatedCostUsdMicros, 0) / 1_000_000;
+    const since = startOfCurrentMonth();
+    const estimatedSpendUsd = await qMonthlySpendFor(actor.businessId, since);
     return c.json({ periodStart: since.toISOString(), provider: getQProviderStatus(estimatedSpendUsd) });
 });
 
