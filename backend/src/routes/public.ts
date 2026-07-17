@@ -2,8 +2,22 @@ import { Hono } from 'hono';
 import { and, asc, eq } from 'drizzle-orm';
 import { businessAssets, businesses, menuCategories, menuItemAssets, menuItems } from '../db/schema.js';
 import { db, first, supabase } from '../db/client.js';
+import { answerPublicConcierge } from '../services/qPublicConcierge.js';
 
 const publicRoutes = new Hono();
+
+publicRoutes.post('/q-concierge', async (c) => {
+  const payload = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+  const forwardedFor = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+  const visitorKey = c.req.header('x-real-ip') || forwardedFor || c.req.header('user-agent') || 'anonymous';
+
+  return c.json(await answerPublicConcierge({
+    message: payload.message,
+    history: payload.history,
+    draft: payload.draft,
+    visitorKey,
+  }));
+});
 const LOGO_BUCKET = 'business-assets';
 
 publicRoutes.get('/businesses/:publicCode', async (c) => {
