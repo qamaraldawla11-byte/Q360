@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Check, Copy, Send, Sparkles, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, Check, Copy, Send, Sparkles, X } from 'lucide-react';
 import { http } from '@/api/http';
 import { LogoMark } from '@/components/ui/Logo';
 
@@ -88,23 +88,23 @@ const fallbackModules = (setup: GuestSetup) => {
 };
 
 const guestQStyles = [
-  '.guest-q-overlay{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:24px;background:rgba(13,24,43,.55);backdrop-filter:blur(12px);}',
-  '.guest-q-modal{width:min(1120px,100%);max-height:min(820px,calc(100vh - 48px));display:flex;flex-direction:column;overflow:hidden;border:1px solid #d9e2ef;border-radius:28px;background:#fffdf9;color:#14233b;box-shadow:0 28px 90px rgba(15,30,55,.35);}',
+  '.guest-q-overlay{position:fixed;inset:0;z-index:2000;height:100dvh;display:grid;place-items:center;padding:24px;background:rgba(13,24,43,.55);backdrop-filter:blur(12px);overflow:hidden;overscroll-behavior:none;}',
+  '.guest-q-modal{isolation:isolate;width:min(1120px,100%);height:min(820px,calc(100dvh - 48px));max-height:calc(100dvh - 48px);display:flex;flex-direction:column;overflow:hidden;border:1px solid #d9e2ef;border-radius:28px;background:#fffdf9;color:#14233b;box-shadow:0 28px 90px rgba(15,30,55,.35);}',
   '.guest-q-overlay[data-theme=dark] .guest-q-modal{background:#0f1a2c;color:#edf5ff;border-color:#2b405f;}',
-  '.guest-q-header{display:flex;align-items:center;gap:14px;padding:20px 26px;border-bottom:1px solid #e3e9f2;}',
+  '.guest-q-header{display:flex;flex:0 0 auto;align-items:center;gap:14px;padding:20px 26px;border-bottom:1px solid #e3e9f2;}',
   '.guest-q-overlay[data-theme=dark] .guest-q-header{border-color:#273b58;}',
   '.guest-q-title{font-size:22px;font-weight:800;line-height:1.1;}.guest-q-subtitle{margin-top:4px;color:#627695;font-size:15px;}',
   '.guest-q-close{margin-left:auto;border:0;background:transparent;color:inherit;cursor:pointer;padding:8px;border-radius:10px;}.guest-q-close:hover{background:#eef3fa;}',
-  '.guest-q-content{display:grid;grid-template-columns:minmax(0,1fr) 310px;min-height:0;overflow:auto;}',
-  '.guest-q-chat{min-height:500px;display:flex;flex-direction:column;padding:24px;gap:16px;}.guest-q-messages{display:flex;flex:1;flex-direction:column;gap:16px;min-height:280px;}',
+  '.guest-q-content{display:grid;grid-template-columns:minmax(0,1fr) 310px;flex:1 1 0;height:0;min-height:0;overflow:hidden;}',
+  '.guest-q-chat{height:100%;max-height:100%;min-height:0;display:flex;flex-direction:column;padding:24px;gap:16px;overflow:hidden;}.guest-q-messages-wrap{position:relative;display:flex;flex:1 1 0;flex-direction:column;min-height:0;max-height:100%;}.guest-q-messages{display:flex;flex:1 1 0;flex-direction:column;gap:16px;min-height:0;max-height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable;padding-right:6px;}',
   '.guest-q-bubble{max-width:78%;padding:16px 18px;border:1px solid #dce5f0;border-radius:18px;white-space:pre-wrap;line-height:1.55;font-size:17px;}.guest-q-bubble--q{align-self:flex-start;background:#fff;border-bottom-left-radius:5px;}.guest-q-bubble--user{align-self:flex-end;background:#131e32;color:#fff;border-color:#131e32;border-bottom-right-radius:5px;}',
   '.guest-q-overlay[data-theme=dark] .guest-q-bubble--q{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
   '.guest-q-status{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-left:2px;color:#567093;font-size:13px;font-weight:700;}.guest-q-status--ai{color:#007b65;}',
-  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}',
-  '.guest-q-form{display:flex;gap:10px;padding-top:6px;}.guest-q-input{min-width:0;flex:1;border:1px solid #c7d5e7;border-radius:15px;background:#fff;color:#18263a;padding:14px 16px;font:inherit;font-size:16px;}.guest-q-input:focus{outline:2px solid #7cadff;outline-offset:1px;}.guest-q-send{display:grid;place-items:center;width:54px;border:0;border-radius:15px;background:#14223a;color:#fff;cursor:pointer;}.guest-q-send:disabled{opacity:.45;cursor:not-allowed;}',
-  '.guest-q-brief{display:flex;flex-direction:column;gap:16px;padding:24px;border-left:1px solid #e3e9f2;background:#fbfcff;}.guest-q-overlay[data-theme=dark] .guest-q-brief{background:#101c2e;border-color:#273b58;}.guest-q-brief h3{margin:0;font-size:19px;}.guest-q-brief p{margin:0;color:#637898;line-height:1.55;}.guest-q-modules{display:flex;flex-wrap:wrap;gap:7px;}.guest-q-modules span{padding:7px 9px;border-radius:999px;background:#fff2e4;color:#b85200;font-size:13px;font-weight:700;}.guest-q-overlay[data-theme=dark] .guest-q-modules span{background:#3b2b20;color:#ffbd7b;}',
-  '.guest-q-brief-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #c7d5e7;border-radius:12px;background:#fff;color:#1b2b43;padding:11px 13px;font:inherit;font-weight:750;cursor:pointer;}.guest-q-button--primary{border-color:#11223b;background:#11223b;color:#fff;}.guest-q-note{font-size:13px;color:#71809a;}',
-  '@media(max-width:760px){.guest-q-overlay{padding:0;align-items:end;}.guest-q-modal{max-height:94vh;border-radius:24px 24px 0 0;}.guest-q-content{grid-template-columns:1fr;}.guest-q-chat{min-height:460px;padding:18px;}.guest-q-brief{border-left:0;border-top:1px solid #e3e9f2;}.guest-q-bubble{max-width:92%;}.guest-q-header{padding:16px 18px;}}',
+  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}.guest-q-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;border:1px solid #c7d5e7;border-radius:999px;background:#ffffff;color:#1b2b43;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,30,55,.18);z-index:2;}.guest-q-overlay[data-theme=dark] .guest-q-jump{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
+  '.guest-q-form{display:flex;flex:0 0 auto;gap:10px;padding-top:6px;}.guest-q-input{min-width:0;flex:1;border:1px solid #c7d5e7;border-radius:15px;background:#fff;color:#18263a;padding:14px 16px;font:inherit;font-size:16px;}.guest-q-input:focus{outline:2px solid #7cadff;outline-offset:1px;}.guest-q-send{display:grid;place-items:center;width:54px;border:0;border-radius:15px;background:#14223a;color:#fff;cursor:pointer;}.guest-q-send:disabled{opacity:.45;cursor:not-allowed;}',
+  '.guest-q-brief{display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:24px;border-left:1px solid #e3e9f2;background:#fbfcff;}.guest-q-overlay[data-theme=dark] .guest-q-brief{background:#101c2e;border-color:#273b58;}.guest-q-brief h3{margin:0;font-size:19px;}.guest-q-brief p{margin:0;color:#637898;line-height:1.55;}.guest-q-modules{display:flex;flex-wrap:wrap;gap:7px;}.guest-q-modules span{padding:7px 9px;border-radius:999px;background:#fff2e4;color:#b85200;font-size:13px;font-weight:700;}.guest-q-overlay[data-theme=dark] .guest-q-modules span{background:#3b2b20;color:#ffbd7b;}',
+  '.guest-q-brief-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #c7d5e7;border-radius:12px;background:#fff;color:#1b2b43;padding:11px 13px;font:inherit;font-weight:750;cursor:pointer;}.guest-q-button:disabled{opacity:.45;cursor:not-allowed;}.guest-q-button--primary{border-color:#11223b;background:#11223b;color:#fff;}.guest-q-note{font-size:13px;color:#71809a;}',
+  '@media(max-width:760px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:34dvh;overflow-y:auto;border-left:0;border-top:1px solid #e3e9f2;}.guest-q-bubble{max-width:92%;}.guest-q-header{padding:16px 18px;}}',
 ].join('');
 
 export function GuestQConcierge({
@@ -129,11 +129,13 @@ export function GuestQConcierge({
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [replyMode, setReplyMode] = useState<'ai' | 'guided' | 'pending'>('pending');
+  const [hasNewBelow, setHasNewBelow] = useState(false);
   const messageId = useRef(0);
   const messagesRef = useRef<Message[]>([]);
   const setupRef = useRef(firstSetup);
   const startedRef = useRef(false);
-  const messageEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
 
   const appendMessage = useCallback((from: Message['from'], text: string) => {
     const next = [...messagesRef.current, { id: ++messageId.current, from, text }];
@@ -151,9 +153,11 @@ export function GuestQConcierge({
         content: item.text,
       }));
 
+      pinnedRef.current = true;
       appendMessage('user', message);
       setInput('');
       setError('');
+      setQuickReplies([]);
       setIsSending(true);
 
       try {
@@ -185,12 +189,80 @@ export function GuestQConcierge({
     void sendMessage(initialPrompt.trim() || 'Hello');
   }, [initialPrompt, sendMessage]);
 
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = messageScrollRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+    }
+  }, []);
+
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, isSending]);
+    const frame = window.requestAnimationFrame(() => {
+      if (pinnedRef.current) {
+        scrollToLatest();
+        setHasNewBelow(false);
+      } else {
+        setHasNewBelow(true);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, isSending, quickReplies, scrollToLatest]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messageScrollRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const pinned = distanceFromBottom < 80;
+    pinnedRef.current = pinned;
+    if (pinned) setHasNewBelow(false);
+  }, []);
+
+  useEffect(() => {
+    const body = document.body;
+    const html = document.documentElement;
+    const scrollY = window.scrollY;
+    const previous = {
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      bodyWidth: body.style.width,
+      bodyOverscroll: body.style.overscrollBehavior,
+      htmlOverflow: html.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+    };
+
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.overscrollBehavior = 'none';
+
+    return () => {
+      body.style.overflow = previous.bodyOverflow;
+      body.style.position = previous.bodyPosition;
+      body.style.top = previous.bodyTop;
+      body.style.left = previous.bodyLeft;
+      body.style.right = previous.bodyRight;
+      body.style.width = previous.bodyWidth;
+      body.style.overscrollBehavior = previous.bodyOverscroll;
+      html.style.overflow = previous.htmlOverflow;
+      html.style.overscrollBehavior = previous.htmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   const modules = recommendedModules.length ? recommendedModules : fallbackModules(setup);
   const canContinue = readyForSignIn && emailPattern.test(setup.email);
+  const continueHint = emailPattern.test(setup.email)
+    ? 'Q is still preparing your setup — a few more answers to go.'
+    : 'Share your email in the chat to unlock secure sign-in.';
   const brief = [
     'Q360 setup brief',
     setup.businessName ? 'Business: ' + setup.businessName : '',
@@ -241,27 +313,41 @@ export function GuestQConcierge({
               {replyMode === 'ai' ? 'Q is preparing a tailored plan' : replyMode === 'guided' ? 'Q is guiding your setup' : 'Q is ready to help'}
             </div>
 
-            <div className="guest-q-messages">
-              {messages.map((item) => (
-                <div key={item.id} className={'guest-q-bubble guest-q-bubble--' + item.from}>
-                  {item.text}
-                </div>
-              ))}
-              {isSending ? <div className="guest-q-bubble guest-q-bubble--q">Q is thinking...</div> : null}
-              <div ref={messageEndRef} />
+            <div className="guest-q-messages-wrap">
+              <div className="guest-q-messages" ref={messageScrollRef} onScroll={handleMessagesScroll}>
+                {messages.map((item) => (
+                  <div key={item.id} className={'guest-q-bubble guest-q-bubble--' + item.from}>
+                    {item.text}
+                  </div>
+                ))}
+                {isSending ? <div className="guest-q-bubble guest-q-bubble--q">Q is thinking...</div> : null}
+                {!isSending && quickReplies.length ? (
+                  <div className="guest-q-chips">
+                    {quickReplies.map((reply) => (
+                      <button key={reply} type="button" className="guest-q-chip" onClick={() => void sendMessage(reply)} disabled={isSending}>
+                        {reply}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {hasNewBelow ? (
+                <button
+                  type="button"
+                  className="guest-q-jump"
+                  onClick={() => {
+                    pinnedRef.current = true;
+                    setHasNewBelow(false);
+                    scrollToLatest('smooth');
+                  }}
+                >
+                  <ArrowDown size={15} />
+                  New message
+                </button>
+              ) : null}
             </div>
 
             {error ? <div className="guest-q-error">{error}</div> : null}
-
-            {quickReplies.length ? (
-              <div className="guest-q-chips">
-                {quickReplies.map((reply) => (
-                  <button key={reply} type="button" className="guest-q-chip" onClick={() => void sendMessage(reply)} disabled={isSending}>
-                    {reply}
-                  </button>
-                ))}
-              </div>
-            ) : null}
 
             <form className="guest-q-form" onSubmit={submit}>
               <input
@@ -302,6 +388,7 @@ export function GuestQConcierge({
                 Continue securely <ArrowRight size={17} />
               </button>
             </div>
+            {!canContinue ? <div className="guest-q-note">{continueHint}</div> : null}
             <div className="guest-q-note">Q does not need your password or payment details. You remain in control of every decision.</div>
           </aside>
         </div>
