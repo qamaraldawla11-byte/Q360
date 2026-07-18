@@ -201,9 +201,16 @@ auth.post('/verify', async (c) => {
         return c.json({ error: 'Account is not available' }, 403);
     }
 
-    if (!user.businessId || isWorkspaceRoute(user.businessId)) {
-        const businessId = resolveJwtBusinessId(user);
-        await ensureBusinessRecord(businessId, user.businessName || `${user.name || user.email}'s Business`, user.segment || 'retail');
+    if (!user.businessId) {
+        // Fail safe: never silently place an authenticated user into the shared demo tenant.
+        return c.json({ error: 'TENANT_IDENTITY_REQUIRED', message: 'A stable business identity is required.' }, 400);
+    }
+
+    if (isWorkspaceRoute(user.businessId)) {
+        // Legacy migration: pre-tenant accounts stored a workspace route instead of a stable
+        // tenant id. Issue a fresh user-owned tenant — never the shared demo tenant.
+        const businessId = `biz_${randomUUID()}`;
+        await ensureBusinessRecord(businessId, user.businessName || `${user.name || user.email}'s Business`, user.segment || 'retail', user.id);
         await db.update(users)
             .set({ businessId })
             .where(eq(users.id, user.id));

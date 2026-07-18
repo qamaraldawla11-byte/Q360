@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import { businesses, users, type User } from '../db/schema.js';
@@ -7,7 +8,7 @@ export const DEFAULT_BUSINESS_ID = 'biz_main';
 export const isWorkspaceRoute = (value: string | null | undefined) =>
     typeof value === 'string' && value.startsWith('/app/');
 
-const stableTenantId = (value: string | null | undefined) => {
+export const stableTenantId = (value: string | null | undefined) => {
     const trimmed = typeof value === 'string' ? value.trim() : '';
     return trimmed && !isWorkspaceRoute(trimmed) ? trimmed : null;
 };
@@ -34,15 +35,26 @@ export const ensureBusinessRecord = async (businessId: string, name: string, typ
     return businessId;
 };
 
+export class TenantIdentityRequiredError extends Error {
+    constructor() {
+        super('TENANT_IDENTITY_REQUIRED');
+        this.name = 'TenantIdentityRequiredError';
+    }
+}
+
 export const ensureUserBusiness = async (
     userId: string,
     input: { businessName: string; segment: string },
 ) => {
     const user = await first(db.select().from(users).where(eq(users.id, userId)));
     if (!user) return null;
+    if (!user.businessId) throw new TenantIdentityRequiredError();
 
-    const businessId = stableTenantId(user.businessId) ?? DEFAULT_BUSINESS_ID;
-    await ensureBusinessRecord(businessId, input.businessName, input.segment);
+    const stableId = stableTenantId(user.businessId);
+    // Legacy workspace-route identities migrate to a fresh user-owned tenant,
+    // never to the shared demo tenant.
+    const businessId = stableId ?? `biz_${randomUUID()}`;
+    await ensureBusinessRecord(businessId, input.businessName, input.segment, stableId ? undefined : userId);
 
     if (user.businessId !== businessId) {
         await db.update(users)
