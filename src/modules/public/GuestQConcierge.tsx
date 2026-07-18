@@ -97,10 +97,14 @@ const guestQStyles = [
   '.guest-q-close{margin-left:auto;border:0;background:transparent;color:inherit;cursor:pointer;padding:8px;border-radius:10px;}.guest-q-close:hover{background:#eef3fa;}',
   '.guest-q-content{display:grid;grid-template-columns:minmax(0,1fr) 310px;flex:1 1 0;height:0;min-height:0;overflow:hidden;}',
   '.guest-q-chat{height:100%;max-height:100%;min-height:0;display:flex;flex-direction:column;padding:24px;gap:16px;overflow:hidden;}.guest-q-messages-wrap{position:relative;display:flex;flex:1 1 0;flex-direction:column;min-height:0;max-height:100%;}.guest-q-messages{display:flex;flex:1 1 0;flex-direction:column;gap:16px;min-height:0;max-height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable;padding-right:6px;}',
-  '.guest-q-bubble{max-width:78%;padding:16px 18px;border:1px solid #dce5f0;border-radius:18px;white-space:pre-wrap;line-height:1.55;font-size:17px;}.guest-q-bubble--q{align-self:flex-start;background:#fff;border-bottom-left-radius:5px;}.guest-q-bubble--user{align-self:flex-end;background:#131e32;color:#fff;border-color:#131e32;border-bottom-right-radius:5px;}',
+  '.guest-q-bubble{max-width:78%;padding:16px 18px;border:1px solid #dce5f0;border-radius:18px;white-space:pre-wrap;line-height:1.55;font-size:17px;animation:guestQIn .18s ease-out both;}.guest-q-bubble--q{align-self:flex-start;background:#fff;border-bottom-left-radius:5px;}.guest-q-bubble--user{align-self:flex-end;background:#131e32;color:#fff;border-color:#131e32;border-bottom-right-radius:5px;}',
   '.guest-q-overlay[data-theme=dark] .guest-q-bubble--q{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
   '.guest-q-status{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-left:2px;color:#567093;font-size:13px;font-weight:700;}.guest-q-status--ai{color:#007b65;}',
-  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}.guest-q-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;border:1px solid #c7d5e7;border-radius:999px;background:#ffffff;color:#1b2b43;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,30,55,.18);z-index:2;}.guest-q-overlay[data-theme=dark] .guest-q-jump{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
+  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;animation:guestQIn .18s ease-out both;}.guest-q-chip:nth-child(2){animation-delay:.04s;}.guest-q-chip:nth-child(3){animation-delay:.08s;}.guest-q-chip:nth-child(4){animation-delay:.12s;}.guest-q-chip:nth-child(5){animation-delay:.16s;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}.guest-q-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;border:1px solid #c7d5e7;border-radius:999px;background:#ffffff;color:#1b2b43;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,30,55,.18);z-index:2;}.guest-q-overlay[data-theme=dark] .guest-q-jump{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
+  '.guest-q-typing{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:12px 16px;border:1px solid #dce5f0;border-radius:18px;border-bottom-left-radius:5px;background:#fff;animation:guestQIn .18s ease-out both;}.guest-q-overlay[data-theme=dark] .guest-q-typing{background:#17243a;border-color:#2a405e;}.guest-q-typing span{width:7px;height:7px;border-radius:50%;background:#8ba1bd;animation:guestQTyping 1.2s ease-in-out infinite;}.guest-q-typing span:nth-child(2){animation-delay:.15s;}.guest-q-typing span:nth-child(3){animation-delay:.3s;}',
+  '@keyframes guestQIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}',
+  '@keyframes guestQTyping{0%,60%,100%{transform:translateY(0);opacity:.45;}30%{transform:translateY(-4px);opacity:1;}}',
+  '@media(prefers-reduced-motion:reduce){.guest-q-bubble,.guest-q-chip,.guest-q-typing,.guest-q-typing span{animation:none !important;}}',
   '.guest-q-form{display:flex;flex:0 0 auto;gap:10px;padding-top:6px;}.guest-q-input{min-width:0;flex:1;border:1px solid #c7d5e7;border-radius:15px;background:#fff;color:#18263a;padding:14px 16px;font:inherit;font-size:16px;}.guest-q-input:focus{outline:2px solid #7cadff;outline-offset:1px;}.guest-q-send{display:grid;place-items:center;width:54px;border:0;border-radius:15px;background:#14223a;color:#fff;cursor:pointer;}.guest-q-send:disabled{opacity:.45;cursor:not-allowed;}',
   '.guest-q-brief{display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:24px;border-left:1px solid #e3e9f2;background:#fbfcff;}.guest-q-overlay[data-theme=dark] .guest-q-brief{background:#101c2e;border-color:#273b58;}.guest-q-brief h3{margin:0;font-size:19px;}.guest-q-brief p{margin:0;color:#637898;line-height:1.55;}.guest-q-modules{display:flex;flex-wrap:wrap;gap:7px;}.guest-q-modules span{padding:7px 9px;border-radius:999px;background:#fff2e4;color:#b85200;font-size:13px;font-weight:700;}.guest-q-overlay[data-theme=dark] .guest-q-modules span{background:#3b2b20;color:#ffbd7b;}',
   '.guest-q-brief-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #c7d5e7;border-radius:12px;background:#fff;color:#1b2b43;padding:11px 13px;font:inherit;font-weight:750;cursor:pointer;}.guest-q-button:disabled{opacity:.45;cursor:not-allowed;}.guest-q-button--primary{border-color:#11223b;background:#11223b;color:#fff;}.guest-q-note{font-size:13px;color:#71809a;}',
@@ -135,6 +139,7 @@ export function GuestQConcierge({
   const setupRef = useRef(firstSetup);
   const startedRef = useRef(false);
   const messageScrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const pinnedRef = useRef(true);
 
   const appendMessage = useCallback((from: Message['from'], text: string) => {
@@ -178,6 +183,7 @@ export function GuestQConcierge({
         setError('Q is temporarily unavailable. Please try again in a moment.');
       } finally {
         setIsSending(false);
+        window.requestAnimationFrame(() => inputRef.current?.focus());
       }
     },
     [appendMessage, isSending],
@@ -320,7 +326,13 @@ export function GuestQConcierge({
                     {item.text}
                   </div>
                 ))}
-                {isSending ? <div className="guest-q-bubble guest-q-bubble--q">Q is thinking...</div> : null}
+                {isSending ? (
+                  <div className="guest-q-typing" role="status" aria-label="Q is typing">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                ) : null}
                 {!isSending && quickReplies.length ? (
                   <div className="guest-q-chips">
                     {quickReplies.map((reply) => (
@@ -351,12 +363,13 @@ export function GuestQConcierge({
 
             <form className="guest-q-form" onSubmit={submit}>
               <input
+                ref={inputRef}
                 className="guest-q-input"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Reply to Q..."
                 aria-label="Message Q"
-                disabled={isSending}
+                autoFocus
               />
               <button className="guest-q-send" type="submit" disabled={!input.trim() || isSending} aria-label="Send message">
                 <Send size={21} />
