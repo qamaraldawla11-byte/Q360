@@ -59,10 +59,39 @@ export const authMiddleware = async (c: Context<AppEnv>, next: Next) => {
             businessId = resolvedTenantId;
         }
         c.set('businessId', businessId);
+
+        // Per-request account-state enforcement (Platform Operations ADR §7.4):
+        // lock, deactivation, and role changes take effect immediately — not at
+        // the next login — because the token's 24h lifetime is no longer the
+        // only session control.
+        // Schema-drift safety: if the status/is_locked columns are unavailable
+        // in the deployed database, fall back to token claims (previous
+        // behavior) and log, instead of taking down every authenticated route.
+        let accountRole: string = payload.role;
+        try {
+            const account = await first(db.select({
+                role: users.role,
+                status: users.status,
+                isLocked: users.isLocked,
+            }).from(users).where(eq(users.id, payload.sub)));
+            if (!account) {
+                return c.json({ error: 'Unauthorized: Account no longer exists' }, 401);
+            }
+            if (account.isLocked) {
+                return c.json({ error: 'ACCOUNT_LOCKED', message: 'This account has been locked by an administrator.' }, 403);
+            }
+            if (account.status && account.status !== 'active') {
+                return c.json({ error: 'ACCOUNT_INACTIVE', message: 'This account has been deactivated.' }, 403);
+            }
+            accountRole = account.role ?? payload.role;
+        } catch (enforcementError) {
+            console.error('[AUTH] Account-state enforcement unavailable; falling back to token claims:', enforcementError);
+        }
+
         c.set('userRole', await resolveEffectiveBusinessRole({
             userId: payload.sub,
             businessId,
-            tokenRole: payload.role,
+            tokenRole: accountRole,
         }));
 
         await next();
