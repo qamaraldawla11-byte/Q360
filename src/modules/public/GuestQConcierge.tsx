@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, Check, Copy, Send, Sparkles, X } from 'lucide-react';
 import { http } from '@/api/http';
 import { LogoMark } from '@/components/ui/Logo';
@@ -100,7 +100,7 @@ const guestQStyles = [
   '.guest-q-bubble{max-width:78%;padding:16px 18px;border:1px solid #dce5f0;border-radius:18px;white-space:pre-wrap;line-height:1.55;font-size:17px;animation:guestQIn .18s ease-out both;}.guest-q-bubble--q{align-self:flex-start;background:#fff;border-bottom-left-radius:5px;}.guest-q-bubble--user{align-self:flex-end;background:#131e32;color:#fff;border-color:#131e32;border-bottom-right-radius:5px;}',
   '.guest-q-overlay[data-theme=dark] .guest-q-bubble--q{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
   '.guest-q-status{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-left:2px;color:#567093;font-size:13px;font-weight:700;}.guest-q-status--ai{color:#007b65;}',
-  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;animation:guestQIn .18s ease-out both;}.guest-q-chip:nth-child(2){animation-delay:.04s;}.guest-q-chip:nth-child(3){animation-delay:.08s;}.guest-q-chip:nth-child(4){animation-delay:.12s;}.guest-q-chip:nth-child(5){animation-delay:.16s;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}.guest-q-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;border:1px solid #c7d5e7;border-radius:999px;background:#ffffff;color:#1b2b43;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,30,55,.18);z-index:2;}.guest-q-overlay[data-theme=dark] .guest-q-jump{background:#17243a;border-color:#2a405e;color:#f5f8ff;}',
+  '.guest-q-error{padding:11px 14px;border-radius:12px;background:#fff0ee;color:#b0362c;font-size:14px;}.guest-q-chips{display:flex;flex-wrap:wrap;gap:9px;}.guest-q-chip{border:1px solid #cad8ea;border-radius:999px;background:#fff;color:#27405f;padding:9px 13px;font:inherit;cursor:pointer;animation:guestQIn .18s ease-out both;}.guest-q-chip:nth-child(2){animation-delay:.04s;}.guest-q-chip:nth-child(3){animation-delay:.08s;}.guest-q-chip:nth-child(4){animation-delay:.12s;}.guest-q-chip:nth-child(5){animation-delay:.16s;}.guest-q-chip:hover{border-color:#2f7df6;color:#1263d9;}.guest-q-jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;border:1px solid #c7d5e7;border-radius:999px;background:#ffffff;color:#1b2b43;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(15,30,55,.18);z-index:2;}.guest-q-overlay[data-theme=dark] .guest-q-jump{background:#17243a;border-color:#2a405e;color:#f5f8ff;}.guest-q-chip:focus-visible,.guest-q-button:focus-visible,.guest-q-jump:focus-visible,.guest-q-send:focus-visible,.guest-q-close:focus-visible{outline:2px solid #7cadff;outline-offset:2px;}',
   '.guest-q-typing{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:12px 16px;border:1px solid #dce5f0;border-radius:18px;border-bottom-left-radius:5px;background:#fff;animation:guestQIn .18s ease-out both;}.guest-q-overlay[data-theme=dark] .guest-q-typing{background:#17243a;border-color:#2a405e;}.guest-q-typing span{width:7px;height:7px;border-radius:50%;background:#8ba1bd;animation:guestQTyping 1.2s ease-in-out infinite;}.guest-q-typing span:nth-child(2){animation-delay:.15s;}.guest-q-typing span:nth-child(3){animation-delay:.3s;}',
   '@keyframes guestQIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}',
   '@keyframes guestQTyping{0%,60%,100%{transform:translateY(0);opacity:.45;}30%{transform:translateY(-4px);opacity:1;}}',
@@ -140,7 +140,12 @@ export function GuestQConcierge({
   const startedRef = useRef(false);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
   const pinnedRef = useRef(true);
+  const openerRef = useRef<HTMLElement | null>(null);
+  if (openerRef.current === null) {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
 
   const appendMessage = useCallback((from: Message['from'], text: string) => {
     const next = [...messagesRef.current, { id: ++messageId.current, from, text }];
@@ -225,6 +230,46 @@ export function GuestQConcierge({
   }, []);
 
   useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      openerRef.current?.focus();
+    };
+  }, []);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const root = modalRef.current;
+    if (!root) return;
+    const focusable = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.getClientRects().length > 0);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    const focusIsInside = active instanceof HTMLElement && root.contains(active);
+    if (event.shiftKey) {
+      if (!focusIsInside || active === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (!focusIsInside || active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  useEffect(() => {
     const body = document.body;
     const html = document.documentElement;
     const scrollY = window.scrollY;
@@ -298,9 +343,16 @@ export function GuestQConcierge({
   };
 
   return (
-    <div className={'guest-q-overlay guest-q-overlay--' + theme} data-theme={theme} role="dialog" aria-modal="true" aria-label="Q Concierge">
+    <div
+      className={'guest-q-overlay guest-q-overlay--' + theme}
+      data-theme={theme}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Q Concierge"
+      onKeyDown={handleKeyDown}
+    >
       <style>{guestQStyles}</style>
-      <section className="guest-q-modal">
+      <section className="guest-q-modal" ref={modalRef}>
         <header className="guest-q-header">
           <LogoMark size={50} />
           <div>
@@ -320,7 +372,14 @@ export function GuestQConcierge({
             </div>
 
             <div className="guest-q-messages-wrap">
-              <div className="guest-q-messages" ref={messageScrollRef} onScroll={handleMessagesScroll}>
+              <div
+                className="guest-q-messages"
+                ref={messageScrollRef}
+                onScroll={handleMessagesScroll}
+                role="log"
+                aria-live="polite"
+                aria-busy={isSending}
+              >
                 {messages.map((item) => (
                   <div key={item.id} className={'guest-q-bubble guest-q-bubble--' + item.from}>
                     {item.text}
@@ -369,7 +428,6 @@ export function GuestQConcierge({
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Reply to Q..."
                 aria-label="Message Q"
-                autoFocus
               />
               <button className="guest-q-send" type="submit" disabled={!input.trim() || isSending} aria-label="Send message">
                 <Send size={21} />
