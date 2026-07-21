@@ -1,7 +1,7 @@
 # Q360 Master Handover and Operating Plan
 
-**Status:** Authoritative operating reference for ChatGPT Work and Codex  
-**Baseline date:** 11 July 2026  
+**Status:** Authoritative operating reference for ChatGPT Work and Codex
+**Baseline date:** 11 July 2026
 **Authority:** Current repository evidence, Q360 current-state reporting, Railway deployment verification, and relevant Q360 documentation. Where an older report conflicts with newer verified evidence or this document, use this document and then re-verify the repository before acting.
 
 ## 1. Q360 product definition
