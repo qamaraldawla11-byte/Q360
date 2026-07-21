@@ -142,6 +142,10 @@ export function GuestQConcierge({
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLElement>(null);
   const pinnedRef = useRef(true);
+  const openerRef = useRef<HTMLElement | null>(null);
+  if (openerRef.current === null) {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
 
   const appendMessage = useCallback((from: Message['from'], text: string) => {
     const next = [...messagesRef.current, { id: ++messageId.current, from, text }];
@@ -226,9 +230,12 @@ export function GuestQConcierge({
   }, []);
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     return () => {
-      previouslyFocused?.focus();
+      openerRef.current?.focus();
     };
   }, []);
 
@@ -421,7 +428,6 @@ export function GuestQConcierge({
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Reply to Q..."
                 aria-label="Message Q"
-                autoFocus
               />
               <button className="guest-q-send" type="submit" disabled={!input.trim() || isSending} aria-label="Send message">
                 <Send size={21} />
