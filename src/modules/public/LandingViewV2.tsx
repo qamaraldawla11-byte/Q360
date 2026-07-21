@@ -488,6 +488,45 @@ export const LandingViewV2 = () => {
                         <button type="button" className="d2-create" onClick={() => navigate('/login')}>
                             Start with Q
                         </button>
+                        <div className="d2-hero-chips" aria-hidden="true">
+                            <span className="d2-chip">
+                                <i />
+                                <i />
+                                <i className="d2-chip-low" />
+                                <b className="d2-chip-tick">
+                                    <Check size={9} />
+                                </b>
+                            </span>
+                            <span className="d2-chip">
+                                <i />
+                                <i />
+                                <b className="d2-chip-tick">
+                                    <Check size={9} />
+                                </b>
+                            </span>
+                            <span className="d2-chip">
+                                <i />
+                                <i className="d2-chip-low" />
+                                <b className="d2-chip-tick">
+                                    <Check size={9} />
+                                </b>
+                            </span>
+                            <span className="d2-chip">
+                                <i />
+                                <i />
+                                <b className="d2-chip-tick">
+                                    <Check size={9} />
+                                </b>
+                            </span>
+                            <span className="d2-chip">
+                                <svg viewBox="0 0 26 14" aria-hidden="true">
+                                    <path d="M1 11 C 6 10, 8 4, 13 6 S 21 11, 25 3" pathLength={100} />
+                                </svg>
+                                <b className="d2-chip-tick">
+                                    <Check size={9} />
+                                </b>
+                            </span>
+                        </div>
                     </div>
                     <div className="d2-hero-desk">
                         <p className="d2-dateline">
@@ -724,6 +763,27 @@ const d2Styles = `
 .d2-concierge-send:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(228,87,46,.35);}
 .d2-create{display:inline-block;margin-top:18px;background:var(--ink);color:var(--bg);border:0;border-radius:999px;padding:11px 24px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:background-color .2s ease,color .2s ease,transform .15s ease;}
 .d2-create:hover{background:var(--orange);color:#fff;transform:translateY(-1px);}
+.d2-act.is-visible .d2-hero-copy>*:nth-child(6){animation-delay:1.1s;}
+
+.d2-hero-chips{display:flex;align-items:center;gap:12px;margin-top:34px;}
+.d2-chip{--r:0deg;position:relative;display:flex;flex-direction:column;justify-content:center;gap:4px;width:48px;height:60px;background:var(--paper);color:var(--paper-ink);border-radius:10px;padding:12px 10px;box-shadow:var(--doc-shadow);opacity:0;animation:d2ChipIn .9s var(--ease) both;}
+.d2-chip:nth-child(1){--r:-6deg;animation-delay:1.2s;}
+.d2-chip:nth-child(2){--r:-2deg;animation-delay:1.4s;}
+.d2-chip:nth-child(3){--r:1.5deg;animation-delay:1.6s;}
+.d2-chip:nth-child(4){--r:5deg;animation-delay:1.8s;}
+.d2-chip:nth-child(5){--r:9deg;animation-delay:2s;}
+.d2-chip i{display:block;height:3px;border-radius:2px;background:color-mix(in srgb,var(--paper-ink) 18%,transparent);}
+.d2-chip i:nth-child(2){width:72%;}
+.d2-chip i:nth-child(3){width:48%;}
+.d2-chip i.d2-chip-low{background:var(--orange);}
+.d2-chip svg{width:24px;height:13px;}
+.d2-chip svg path{fill:none;stroke:var(--paper-soft);stroke-width:2;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;animation:d2Spark 1s var(--ease) 2.7s both;}
+.d2-chip-tick{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--orange);color:#fff;transform:scale(0);box-shadow:0 2px 5px rgba(0,0,0,.25);animation:d2Pop .4s var(--ease) both;}
+.d2-chip:nth-child(1) .d2-chip-tick{animation-delay:2.6s;}
+.d2-chip:nth-child(2) .d2-chip-tick{animation-delay:2.75s;}
+.d2-chip:nth-child(3) .d2-chip-tick{animation-delay:2.9s;}
+.d2-chip:nth-child(4) .d2-chip-tick{animation-delay:3.05s;}
+.d2-chip:nth-child(5) .d2-chip-tick{animation-delay:3.2s;}
 
 .d2-hero-desk{position:relative;padding:6px 0 44px;}
 .d2-dateline{display:flex;align-items:center;gap:9px;margin:0 0 20px;font-size:13px;letter-spacing:.04em;color:var(--soft);opacity:0;transform:translateY(12px);}
@@ -864,6 +924,8 @@ const d2Styles = `
 @keyframes d2ApprovePulse{0%,90%,100%{border-color:var(--paper-hair);}95%{border-color:color-mix(in srgb,var(--orange) 55%,transparent);}}
 @keyframes d2Swell{from{opacity:0;}30%{opacity:1;}to{opacity:0;}}
 @keyframes d2ArcFlow{to{stroke-dashoffset:-8.5;}}
+@keyframes d2ChipIn{from{opacity:0;transform:translateY(18px) rotate(var(--r,0deg)) scale(.92);}to{opacity:1;transform:translateY(0) rotate(var(--r,0deg)) scale(1);}}
+@keyframes d2Spark{from{stroke-dashoffset:100;}to{stroke-dashoffset:0;}}
 
 @media(max-width:900px){
 .d2-rail{display:none;}
@@ -883,6 +945,8 @@ const d2Styles = `
 .d2-sign-row{flex-direction:column;}
 .d2-counter{right:16px;bottom:16px;}
 .d2-headline{font-size:clamp(32px,9.4vw,52px);}
+.d2-hero-chips{gap:10px;margin-top:28px;}
+.d2-chip{width:42px;height:54px;padding:10px 9px;}
 }
 
 @media(prefers-reduced-motion:reduce){
