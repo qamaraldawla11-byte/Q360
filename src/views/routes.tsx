@@ -14,8 +14,7 @@ import { PLATFORM_APP_URL } from '@/utils/host';
 // Architecture authority: docs/adr/ADR_PLATFORM_OPERATIONS_EXPERIENCE.md
 
 // Lazy Load Modules
-const LandingView = lazy(() => import('@/modules/public/LandingView').then(m => ({ default: m.LandingView })));
-const LandingViewV2 = lazy(() => import('@/modules/public/LandingViewV2').then(m => ({ default: m.LandingViewV2 })));
+const LaunchLandingView = lazy(() => import('@/modules/public/LaunchLandingView').then(m => ({ default: m.LaunchLandingView })));
 const PricingView = lazy(() => import('@/modules/public/PricingView').then(m => ({ default: m.PricingView })));
 const DocsView = lazy(() => import('@/modules/public/DocsView').then(m => ({ default: m.DocsView })));
 const SupportView = lazy(() => import('@/modules/public/SupportView').then(m => ({ default: m.SupportView })));
@@ -189,8 +188,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const appRoutes: RouteObject[] = [
-    { path: '/', element: <Suspense fallback={<PageLoader />}><LandingView /></Suspense> },
-    { path: '/design-2', element: <Suspense fallback={<PageLoader />}><LandingViewV2 /></Suspense> },
+    { path: '/', element: <Suspense fallback={<PageLoader />}><LaunchLandingView /></Suspense> },
+    { path: '/design-2', element: <Navigate to="/" replace /> },
     { path: '/pricing', element: <Suspense fallback={<PageLoader />}><PricingView /></Suspense> },
     { path: '/docs', element: <Suspense fallback={<PageLoader />}><DocsView /></Suspense> },
     { path: '/support', element: <Suspense fallback={<PageLoader />}><SupportView /></Suspense> },

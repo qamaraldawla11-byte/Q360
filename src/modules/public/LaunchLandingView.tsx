@@ -302,7 +302,7 @@ const ConciergeCard = ({
     </form>
 );
 
-export const LandingViewV2 = () => {
+export const LaunchLandingView = () => {
     const navigate = useNavigate();
     const pageRef = useRef<HTMLDivElement>(null);
     const doorInputRef = useRef<HTMLInputElement>(null);
