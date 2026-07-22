@@ -307,16 +307,32 @@ export const getCurrentGuestBriefForUser = async (
 export const confirmGuestBrief = async (
     input: { userId: string; acceptedFields: string[] },
     deps: QGuestBriefServiceDeps,
-): Promise<QGuestBriefResult<{ brief: QGuestBriefView }>> => {
+): Promise<QGuestBriefResult<{ outcome: 'confirmed' | 'already_confirmed'; brief: QGuestBriefView }>> => {
     const at = now(deps);
     return db.transaction(async (tx) => {
         const rows = await tx.select().from(qGuestBriefs)
             .where(and(eq(qGuestBriefs.claimedByUserId, input.userId), inArray(qGuestBriefs.state, [...UNRESOLVED_BRIEF_STATES])))
             .for('update');
         const row = rows[0];
-        if (!row || row.state !== 'claimed') {
+        if (!row) {
             return fail('invalid_state', 'No claimed brief awaits confirmation.');
         }
+
+        // D2: repeated confirmation with the same effective fields is an
+        // idempotent success — no timestamp changes, no repeated events.
+        // A materially different confirmation is a deterministic conflict.
+        if (row.state === 'confirmed') {
+            const stored = row.confirmedFields ?? [];
+            const sameFields = stored.length === input.acceptedFields.length
+                && stored.every(field => input.acceptedFields.includes(field));
+            if (sameFields) {
+                const brief = toView(row);
+                if (!brief) return fail('payload_invalid', 'Stored payload no longer satisfies the contract.');
+                return { ok: true as const, outcome: 'already_confirmed' as const, brief };
+            }
+            return fail('conflict', 'This brief was already confirmed with different fields.');
+        }
+
         const expired = await applyLazyExpiry(tx, row, at, deps);
         if (expired) return fail('expired', 'This brief has expired.');
 
@@ -338,7 +354,7 @@ export const confirmGuestBrief = async (
         emit(deps, { type: 'confirmed', briefId: row.id, userId: input.userId });
         const confirmedBrief = toView(updated[0]);
         if (!confirmedBrief) return fail('payload_invalid', 'Stored payload no longer satisfies the contract.');
-        return { ok: true as const, brief: confirmedBrief };
+        return { ok: true as const, outcome: 'confirmed' as const, brief: confirmedBrief };
     });
 };
 
