@@ -83,7 +83,7 @@ admin.get('/q-usage', async (c) => {
         type UsageRow = typeof usageRows[number];
         const periodRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= periodStart.getTime());
         const monthRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= monthStart.getTime());
-        const isModelRequest = (row: UsageRow) => row.provider === 'openai';
+        const isModelRequest = (row: UsageRow) => row.provider !== 'q360-rules-v1';
         const costUsd = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.estimatedCostUsdMicros || 0), 0) / 1_000_000;
         const totalTokens = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.inputTokens || 0) + (row.outputTokens || 0), 0);
 

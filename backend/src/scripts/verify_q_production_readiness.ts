@@ -9,6 +9,9 @@ type EnvironmentKey =
     | 'Q_AI_EXTERNAL_ENABLED'
     | 'Q_OPENAI_MODEL'
     | 'Q_AI_MODEL'
+    | 'Q_AI_DEFAULT_MODEL'
+    | 'Q_AI_STRONG_MODEL'
+    | 'Q_AI_BASE_URL'
     | 'Q_MONTHLY_BUDGET_USD';
 
 const environmentKeys: EnvironmentKey[] = [
@@ -18,6 +21,9 @@ const environmentKeys: EnvironmentKey[] = [
     'Q_AI_EXTERNAL_ENABLED',
     'Q_OPENAI_MODEL',
     'Q_AI_MODEL',
+    'Q_AI_DEFAULT_MODEL',
+    'Q_AI_STRONG_MODEL',
+    'Q_AI_BASE_URL',
     'Q_MONTHLY_BUDGET_USD',
 ];
 
@@ -117,6 +123,34 @@ try {
     assert.match(requestBody.input, /USER QUESTION:/);
     assert.match(String((capturedRequest?.init?.headers as Record<string, string>)?.Authorization), /^Bearer readiness-test-key$/);
     pass('Valid response: constrained prompt, no storage, token and cost accounting');
+
+    globalThis.fetch = async (input, init) => {
+        capturedRequest = { url: String(input), init };
+        return Response.json({
+            choices: [{ message: { content: 'Kimi says two unpaid orders need review.' } }],
+            usage: { prompt_tokens: 800, completion_tokens: 80 },
+        });
+    };
+    setQEnvironment({ Q_AI_PROVIDER: 'kimi', Q_AI_API_KEY: 'kimi-readiness-test-key' });
+    const kimiSuccessful = await answer(1);
+    assert.equal(kimiSuccessful.usedModel, true);
+    assert.equal(kimiSuccessful.provider, 'kimi');
+    assert.equal(kimiSuccessful.model, 'moonshot-v1-8k');
+    assert.equal(kimiSuccessful.inputTokens, 800);
+    assert.equal(kimiSuccessful.outputTokens, 80);
+    assert.equal(capturedRequest?.url, 'https://api.moonshot.ai/v1/chat/completions');
+
+    const kimiRequestBody = JSON.parse(String(capturedRequest?.init?.body)) as {
+        model: string;
+        messages: Array<{ role: string; content: string }>;
+        max_tokens: number;
+    };
+    assert.equal(kimiRequestBody.model, 'moonshot-v1-8k');
+    assert.equal(kimiRequestBody.max_tokens, 450);
+    assert.equal(kimiRequestBody.messages[0]?.role, 'system');
+    assert.equal(kimiRequestBody.messages[1]?.role, 'user');
+    assert.match(String((capturedRequest?.init?.headers as Record<string, string>)?.Authorization), /^Bearer kimi-readiness-test-key$/);
+    pass('Kimi provider: chat completions endpoint, system+user messages, token accounting');
 
     assert.equal(estimateQModelCostUsdMicros(-1, Number.NaN), 0);
     assert.equal(estimateQModelCostUsdMicros(1_000, 100), 1_200);

@@ -60,7 +60,7 @@ export interface AuditLogFilters {
 
 export interface QProviderStatus {
     mode: 'rules_only' | 'model_active' | 'budget_reached';
-    provider: 'openai' | 'q360-rules-v1';
+    provider: 'openai' | 'kimi' | 'q360-rules-v1';
     model: string;
     configured: boolean;
     externalModelEnabled: boolean;

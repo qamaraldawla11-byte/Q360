@@ -1,3 +1,5 @@
+import { callQProvider, type QProvider } from './qProviderClient.js';
+
 type PublicDraft = {
   businessType?: string;
   businessName?: string;
@@ -212,20 +214,6 @@ const guidedResponse = (message: string, currentDraft: PublicDraft): PublicConci
   };
 };
 
-const extractResponseText = (payload: unknown) => {
-  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-  if (typeof record.output_text === 'string') return record.output_text;
-  if (!Array.isArray(record.output)) return '';
-  return record.output
-    .flatMap((item) => {
-      const content = item && typeof item === 'object' ? (item as Record<string, unknown>).content : [];
-      return Array.isArray(content) ? content : [];
-    })
-    .map((item) => item && typeof item === 'object' ? (item as Record<string, unknown>).text : '')
-    .filter((text): text is string => typeof text === 'string')
-    .join('\n');
-};
-
 const parseModelResult = (text: string, fallback: PublicConciergeResult, currentDraft: PublicDraft, message: string): PublicConciergeResult => {
   const clean = text.trim().replace(/^\x60\x60\x60(?:json)?/i, '').replace(/\x60\x60\x60$/, '').trim();
   try {
@@ -249,6 +237,26 @@ const parseModelResult = (text: string, fallback: PublicConciergeResult, current
   }
 };
 
+const publicProvider = (): QProvider => {
+  const configured = process.env.Q_AI_PROVIDER?.trim().toLowerCase();
+  if (configured === 'kimi') return 'kimi';
+  return 'openai';
+};
+
+const publicApiKey = (provider: QProvider): string | undefined => {
+  if (provider === 'kimi') {
+    return process.env.Q_AI_API_KEY?.trim() || process.env.Q_AI_KEY?.trim();
+  }
+  return process.env.OPENAI_API_KEY?.trim() || process.env.Q_AI_API_KEY?.trim() || process.env.Q_AI_KEY?.trim();
+};
+
+const publicModel = (provider: QProvider): string => {
+  if (provider === 'kimi') {
+    return process.env.Q_AI_DEFAULT_MODEL?.trim() || process.env.Q_AI_MODEL?.trim() || 'moonshot-v1-8k';
+  }
+  return process.env.Q_PUBLIC_OPENAI_MODEL?.trim() || process.env.Q_OPENAI_MODEL?.trim() || process.env.Q_AI_MODEL?.trim() || 'gpt-5.4-mini';
+};
+
 export const answerPublicConcierge = async (input: {
   message: unknown;
   history?: unknown;
@@ -258,8 +266,9 @@ export const answerPublicConcierge = async (input: {
   const message = cleanText(input.message, 1000);
   const currentDraft = cleanDraft(input.draft);
   const fallback = guidedResponse(message, currentDraft);
-  const apiKey = process.env.OPENAI_API_KEY || process.env.Q_AI_API_KEY || process.env.Q_AI_KEY;
   const aiEnabled = process.env.Q_PUBLIC_AI_ENABLED !== 'false';
+  const provider = publicProvider();
+  const apiKey = publicApiKey(provider);
   if (!apiKey || !aiEnabled || !message || !allowPublicAiRequest(input.visitorKey)) return fallback;
 
   const history = Array.isArray(input.history)
@@ -292,26 +301,16 @@ export const answerPublicConcierge = async (input: {
     'VISITOR MESSAGE:\n' + message,
   ].filter(Boolean).join('\n\n');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.Q_PUBLIC_OPENAI_MODEL?.trim() || process.env.Q_OPENAI_MODEL?.trim() || process.env.Q_AI_MODEL?.trim() || 'gpt-5.4-mini',
-        instructions,
-        input: modelInput,
-        max_output_tokens: 450,
-        store: false,
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) return fallback;
-    return parseModelResult(extractResponseText(await response.json()), fallback, currentDraft, message);
-  } catch {
-    return fallback;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const result = await callQProvider({
+    provider,
+    baseUrl: process.env.Q_AI_BASE_URL,
+    apiKey,
+    model: publicModel(provider),
+    systemPrompt: instructions,
+    userPrompt: modelInput,
+    maxOutputTokens: 450,
+  });
+
+  if (!result) return fallback;
+  return parseModelResult(result.text, fallback, currentDraft, message);
 };
