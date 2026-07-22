@@ -19,7 +19,24 @@ export type QProviderCallOptions = {
     maxOutputTokens: number;
 };
 
-const REQUEST_TIMEOUT_MS = 12_000;
+const DEFAULT_OPENAI_TIMEOUT_MS = 12_000;
+// Kimi K2.6-class models spend longer before the first token, so short Q
+// answers need a wider window than the OpenAI default. Q_AI_TIMEOUT_MS
+// overrides both when present.
+const DEFAULT_KIMI_TIMEOUT_MS = 30_000;
+const MIN_TIMEOUT_MS = 1_000;
+const MAX_TIMEOUT_MS = 120_000;
+
+export const resolveQProviderTimeoutMs = (
+    provider: QProvider,
+    environment: Record<string, string | undefined> = process.env,
+) => {
+    const override = Number(environment.Q_AI_TIMEOUT_MS);
+    if (Number.isFinite(override) && override >= MIN_TIMEOUT_MS && override <= MAX_TIMEOUT_MS) {
+        return Math.floor(override);
+    }
+    return provider === 'kimi' ? DEFAULT_KIMI_TIMEOUT_MS : DEFAULT_OPENAI_TIMEOUT_MS;
+};
 
 const asNonNegativeNumber = (value: unknown) => {
     const parsed = typeof value === 'number' ? value : Number(value);
@@ -134,7 +151,7 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
     if (provider === 'q360-rules-v1') return null;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), resolveQProviderTimeoutMs(provider));
     const requestStartedAt = Date.now();
 
     try {
@@ -153,6 +170,9 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
                         { role: 'user', content: clip(userPrompt, 12_000) },
                     ],
                     max_tokens: maxOutputTokens,
+                    // Short concierge/chat answers do not need K2.6's default
+                    // thinking pass; disabling it keeps latency within budget.
+                    thinking: { type: 'disabled' },
                 }),
                 signal: controller.signal,
             });

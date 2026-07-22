@@ -1,8 +1,12 @@
 import { strict as assert } from 'node:assert';
-import { callQProvider } from '../services/qProviderClient.js';
+import { callQProvider, resolveQProviderTimeoutMs } from '../services/qProviderClient.js';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
+const originalTimeoutEnv = process.env.Q_AI_TIMEOUT_MS;
+
+// Keep the abort-driven timeout check fast and prove the env override is honored.
+process.env.Q_AI_TIMEOUT_MS = '1000';
 
 const logs: unknown[] = [];
 
@@ -102,7 +106,8 @@ try {
     assert.equal(networkLog?.category, 'network_error');
     assertNoSecrets(networkLog as Record<string, unknown>);
 
-    // Timeout (AbortError) -> timeout
+    // Timeout (AbortError) -> timeout. Q_AI_TIMEOUT_MS=1000 above must drive
+    // the abort: the Kimi default (30000) would push durationMs far past 15s.
     clearLogs();
     globalThis.fetch = async (_input, init) => {
         const signal = init?.signal;
@@ -124,7 +129,18 @@ try {
     assert.equal(timeoutFailure, null);
     const timeoutLog = lastLog();
     assert.equal(timeoutLog?.category, 'timeout');
+    assert.equal(typeof timeoutLog?.durationMs === 'number' && (timeoutLog.durationMs as number) < 15_000, true,
+        'configured Q_AI_TIMEOUT_MS override must drive the abort');
     assertNoSecrets(timeoutLog as Record<string, unknown>);
+
+    // Timeout resolver: safe per-provider defaults and validated override
+    assert.equal(resolveQProviderTimeoutMs('kimi', {}), 30_000);
+    assert.equal(resolveQProviderTimeoutMs('openai', {}), 12_000);
+    assert.equal(resolveQProviderTimeoutMs('kimi', { Q_AI_TIMEOUT_MS: '45000' }), 45_000);
+    assert.equal(resolveQProviderTimeoutMs('openai', { Q_AI_TIMEOUT_MS: '45000' }), 45_000);
+    assert.equal(resolveQProviderTimeoutMs('kimi', { Q_AI_TIMEOUT_MS: 'not-a-number' }), 30_000);
+    assert.equal(resolveQProviderTimeoutMs('kimi', { Q_AI_TIMEOUT_MS: '0' }), 30_000);
+    assert.equal(resolveQProviderTimeoutMs('kimi', { Q_AI_TIMEOUT_MS: '999999' }), 30_000);
 
     // 200 with empty content -> missing_content log but still returns result
     clearLogs();
@@ -140,22 +156,31 @@ try {
     assert.equal(emptyLog?.category, 'missing_content');
     assertNoSecrets(emptyLog as Record<string, unknown>);
 
-    // 200 with valid content -> no failure log
+    // 200 with valid content -> no failure log; Kimi body disables thinking
     clearLogs();
-    globalThis.fetch = async () => new Response(JSON.stringify({
-        choices: [{ message: { content: 'Kimi reply text' } }],
-        usage: { prompt_tokens: 10, completion_tokens: 5 },
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    let capturedBody: Record<string, unknown> | undefined;
+    globalThis.fetch = async (_input, init) => {
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: 'Kimi reply text' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
     const validSuccess = await makeCall();
     assert.notEqual(validSuccess, null);
     assert.equal(validSuccess?.text, 'Kimi reply text');
     assert.equal(logs.length, 0, 'no failure log should be emitted for valid response');
+    assert.deepEqual(capturedBody?.thinking, { type: 'disabled' }, 'Kimi request must disable thinking');
+    assert.equal(capturedBody?.model, 'moonshot-v1-8k');
+    assert.equal(capturedBody?.max_tokens, 450);
 
-    console.log(JSON.stringify({ status: 'PASS', checks: 8 }));
+    console.log(JSON.stringify({ status: 'PASS', checks: 10 }));
 } catch (error) {
     console.error('Q provider diagnostics verification failed:', error);
     process.exitCode = 1;
 } finally {
     globalThis.fetch = originalFetch;
     console.error = originalConsoleError;
+    if (originalTimeoutEnv === undefined) delete process.env.Q_AI_TIMEOUT_MS;
+    else process.env.Q_AI_TIMEOUT_MS = originalTimeoutEnv;
 }
