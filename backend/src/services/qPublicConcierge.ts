@@ -148,7 +148,7 @@ const inferFallbackUpdates = (message: string, draft: PublicDraft): Partial<Publ
   if (employees) updates.employees = Number(employees[1]);
 
   const explicitName = message.match(/(?:called|named|name is|my business is)\s+([a-z0-9][a-z0-9 '&.-]{1,80})/i);
-  const typedName = message.match(/\b(?:restaurant|resturant|cafe|cafÃ©|pharmacy|retail(?: shop)?|service business)\s*[,:-]\s*([a-z0-9][a-z0-9 '&.-]{1,80})/i);
+  const typedName = message.match(/\b(?:restaurant|resturant|cafe|café|pharmacy|retail(?: shop)?|service business)\s*[,:-]\s*([a-z0-9][a-z0-9 '&.-]{1,80})/i);
   const candidateName = explicitName?.[1] || typedName?.[1];
   if (candidateName && !draft.businessName) updates.businessName = candidateName.trim().replace(/[.,!]+$/, '');
   return updates;
@@ -172,7 +172,7 @@ const guidedResponse = (message: string, currentDraft: PublicDraft): PublicConci
 
     if (!draft.businessType) {
       reply = greeting + 'When you are ready, what kind of business do you run?';
-      suggestedReplies = ['Restaurant', 'CafÃ©', 'Retail shop', 'Pharmacy', 'Service business'];
+      suggestedReplies = ['Restaurant', 'Café', 'Retail shop', 'Pharmacy', 'Service business'];
     } else if (!draft.businessName) {
       reply = greeting + 'What is the name of your ' + draft.businessType + '?';
       suggestedReplies = ['I will choose it later'];
