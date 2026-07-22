@@ -61,7 +61,9 @@ export const getQProviderStatus = (
 
     const configured = providerSupported && hasApiKey;
     const monthlyBudgetUsd = positiveNumber(environment.Q_MONTHLY_BUDGET_USD, DEFAULT_MONTHLY_BUDGET_USD);
-    const explicitlyDisabled = environment.Q_AI_EXTERNAL_ENABLED?.trim().toLowerCase() === 'false';
+    const explicitlyDisabled =
+        environment.Q_AI_EXTERNAL_ENABLED?.trim().toLowerCase() === 'false' ||
+        environment.Q_EXTERNAL_ENABLED?.trim().toLowerCase() === 'false';
     const requestedEnablement = configured && !explicitlyDisabled;
     const budgetAvailable = Math.max(0, monthlyBudgetUsd - estimatedSpendUsd) >= MIN_MODEL_CALL_BUDGET_USD;
     const externalModelEnabled = requestedEnablement && budgetAvailable;

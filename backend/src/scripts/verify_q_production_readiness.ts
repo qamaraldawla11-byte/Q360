@@ -7,6 +7,7 @@ type EnvironmentKey =
     | 'Q_AI_API_KEY'
     | 'Q_AI_PROVIDER'
     | 'Q_AI_EXTERNAL_ENABLED'
+    | 'Q_EXTERNAL_ENABLED'
     | 'Q_OPENAI_MODEL'
     | 'Q_AI_MODEL'
     | 'Q_AI_DEFAULT_MODEL'
@@ -19,6 +20,7 @@ const environmentKeys: EnvironmentKey[] = [
     'Q_AI_API_KEY',
     'Q_AI_PROVIDER',
     'Q_AI_EXTERNAL_ENABLED',
+    'Q_EXTERNAL_ENABLED',
     'Q_OPENAI_MODEL',
     'Q_AI_MODEL',
     'Q_AI_DEFAULT_MODEL',
