@@ -21,6 +21,7 @@ import businessRoutes from './routes/business.js';
 import staffRoutes from './routes/staff.js';
 import publicRoutes from './routes/public.js';
 import purchasesExpensesRoutes from './routes/purchasesExpenses.js';
+import { getQGuestBriefDeps, qGuestBriefRoutes } from './routes/qGuestBriefs.js';
 
 const app = new Hono();
 
@@ -73,6 +74,11 @@ app.route('/api/restaurant', restaurantRoutes);
 app.route('/api/business', businessRoutes);
 app.route('/api/staff', staffRoutes);
 app.route('/api/purchases-expenses', purchasesExpensesRoutes);
+// Q guest-brief lifecycle routes mount ONLY behind the fail-closed flag:
+// Q_GUEST_BRIEF_ENABLED=true plus Q_GUEST_BRIEF_TOKEN_SECRET (≥ 32 bytes).
+// The public brief-create route (/api/public/q-concierge/brief) self-gates
+// on the same check at request time.
+if (getQGuestBriefDeps()) app.route('/api/q/guest-briefs', qGuestBriefRoutes);
 
 // 404 handler
 app.notFound((c) => {
