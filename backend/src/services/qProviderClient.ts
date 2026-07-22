@@ -84,6 +84,46 @@ const extractKimiResponseText = (payload: Record<string, unknown>) => {
     return typeof content === 'string' ? content.trim() : '';
 };
 
+type ProviderFailureCategory =
+    | 'authentication_error'
+    | 'invalid_request'
+    | 'rate_limited'
+    | 'provider_server_error'
+    | 'provider_http_error'
+    | 'timeout'
+    | 'network_error'
+    | 'provider_exception'
+    | 'missing_content';
+
+const categoryForHttpStatus = (status: number): ProviderFailureCategory => {
+    if (status === 401 || status === 403) return 'authentication_error';
+    if (status === 400 || status === 404 || status === 422) return 'invalid_request';
+    if (status === 429) return 'rate_limited';
+    if (status >= 500 && status < 600) return 'provider_server_error';
+    return 'provider_http_error';
+};
+
+const categoryForException = (error: unknown): ProviderFailureCategory => {
+    if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+        return 'timeout';
+    }
+    if (error instanceof TypeError) return 'network_error';
+    return 'provider_exception';
+};
+
+type ProviderFailureLog = {
+    event: 'Q_PROVIDER_REQUEST_FAILED' | 'Q_PROVIDER_INVALID_RESPONSE';
+    provider: QProvider;
+    model: string;
+    httpStatus?: number;
+    category: ProviderFailureCategory;
+    durationMs: number;
+};
+
+const logProviderFailure = (details: ProviderFailureLog) => {
+    console.error(JSON.stringify(details));
+};
+
 /**
  * Shared, server-only provider caller. No API key is ever returned to the
  * frontend; the normalized result is provider-agnostic and safe to log or
@@ -95,6 +135,7 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const requestStartedAt = Date.now();
 
     try {
         if (provider === 'kimi') {
@@ -116,9 +157,28 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
                 signal: controller.signal,
             });
 
-            if (!response.ok) return null;
+            if (!response.ok) {
+                logProviderFailure({
+                    event: 'Q_PROVIDER_REQUEST_FAILED',
+                    provider,
+                    model,
+                    httpStatus: response.status,
+                    category: categoryForHttpStatus(response.status),
+                    durationMs: Date.now() - requestStartedAt,
+                });
+                return null;
+            }
             const payload = (await response.json()) as Record<string, unknown>;
             const text = clip(extractKimiResponseText(payload), 2_000);
+            if (!text) {
+                logProviderFailure({
+                    event: 'Q_PROVIDER_INVALID_RESPONSE',
+                    provider,
+                    model,
+                    category: 'missing_content',
+                    durationMs: Date.now() - requestStartedAt,
+                });
+            }
             const usage = payload.usage && typeof payload.usage === 'object' ? (payload.usage as Record<string, unknown>) : {};
             const inputTokens = asNonNegativeNumber(usage.prompt_tokens);
             const outputTokens = asNonNegativeNumber(usage.completion_tokens);
@@ -150,9 +210,28 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
             signal: controller.signal,
         });
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            logProviderFailure({
+                event: 'Q_PROVIDER_REQUEST_FAILED',
+                provider,
+                model,
+                httpStatus: response.status,
+                category: categoryForHttpStatus(response.status),
+                durationMs: Date.now() - requestStartedAt,
+            });
+            return null;
+        }
         const payload = (await response.json()) as Record<string, unknown>;
         const text = clip(extractOpenAIResponseText(payload), 2_000);
+        if (!text) {
+            logProviderFailure({
+                event: 'Q_PROVIDER_INVALID_RESPONSE',
+                provider,
+                model,
+                category: 'missing_content',
+                durationMs: Date.now() - requestStartedAt,
+            });
+        }
         const usage = payload.usage && typeof payload.usage === 'object' ? (payload.usage as Record<string, unknown>) : {};
         const inputTokens = asNonNegativeNumber(usage.input_tokens);
         const outputTokens = asNonNegativeNumber(usage.output_tokens);
@@ -164,7 +243,14 @@ export const callQProvider = async (options: QProviderCallOptions): Promise<QPro
             outputTokens,
             estimatedCostUsdMicros: estimateQProviderCostUsdMicros(provider, inputTokens, outputTokens),
         };
-    } catch {
+    } catch (error) {
+        logProviderFailure({
+            event: 'Q_PROVIDER_REQUEST_FAILED',
+            provider,
+            model,
+            category: categoryForException(error),
+            durationMs: Date.now() - requestStartedAt,
+        });
         return null;
     } finally {
         clearTimeout(timeout);

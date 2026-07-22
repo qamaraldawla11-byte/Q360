@@ -19,6 +19,7 @@
         "verify:bookings-q-foundation": "tsx src/scripts/verify_bookings_q_foundation.ts",
     "verify:q-provider-config": "tsx src/scripts/verify_q_provider_config.ts",
     "verify:q-production-readiness": "tsx src/scripts/verify_q_production_readiness.ts",
+    "verify:q-provider-diagnostics": "tsx src/scripts/verify_q_provider_diagnostics.ts",
     "verify:public-q-concierge": "tsx src/scripts/verify_public_q_concierge.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:business-settings": "tsx src/scripts/verify_business_settings.ts",
