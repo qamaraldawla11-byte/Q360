@@ -23,7 +23,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import {
     businesses,
@@ -128,125 +128,135 @@ export const provisionRestaurantWorkspaceFromBrief = async (
         : null;
     const modesSummary = serviceModes.join(', ') || 'standard';
 
-    // Tenant: configure the claiming user's existing tenant (never a payload id).
-    const businessId = await ensureUserBusiness(userId, { businessName, segment: 'restaurant' });
-    if (!businessId) return fail('invalid_payload', 'The confirming user no longer exists.');
+    // Serialize all workspace provisioning for this authenticated user. The
+    // confirm flow can race (two requests may both see 'confirmed' and enter
+    // provisioning); the user-scoped advisory lock ensures only one of them
+    // creates business/table/memory/conversation state at a time. Every write
+    // inside the transaction re-checks existing records, so a retry or replay
+    // remains a safe idempotent no-op.
+    return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
 
-    // Canonical profile write — mirrors routes/user.ts PUT /profile exactly,
-    // pinned to userType 'sme' + segment 'restaurant'.
-    const currentUser = await first(db.select().from(users).where(eq(users.id, userId)));
-    if (!currentUser) return fail('invalid_payload', 'The confirming user no longer exists.');
-    const staffMembership = await first(db.select({ id: staffMembers.id }).from(staffMembers).where(and(
-        eq(staffMembers.businessId, businessId), eq(staffMembers.userId, userId),
-    )));
-    const business = await first(db.select().from(businesses).where(eq(businesses.id, businessId)));
-    const creatorRole = currentUser.role === 'user' || currentUser.role === 'owner';
-    const canClaimOwnership = creatorRole && !staffMembership && (!business?.ownerUserId || business.ownerUserId === userId);
-    if (canClaimOwnership && !business?.ownerUserId) {
-        await db.update(businesses).set({ ownerUserId: userId, updatedAt: new Date() })
-            .where(and(eq(businesses.id, businessId), isNull(businesses.ownerUserId)));
-    }
+        // Tenant: configure the claiming user's existing tenant (never a payload id).
+        const businessId = await ensureUserBusiness(userId, { businessName, segment: 'restaurant' }, tx);
+        if (!businessId) return fail('invalid_payload', 'The confirming user no longer exists.');
 
-    await db.update(users)
-        .set({
-            userType: 'sme',
-            segment: 'restaurant',
-            businessName,
-            country,
-            currency,
-            onboardingCompleted: true,
+        // Canonical profile write — mirrors routes/user.ts PUT /profile exactly,
+        // pinned to userType 'sme' + segment 'restaurant'.
+        const currentUser = await first(tx.select().from(users).where(eq(users.id, userId)));
+        if (!currentUser) return fail('invalid_payload', 'The confirming user no longer exists.');
+        const staffMembership = await first(tx.select({ id: staffMembers.id }).from(staffMembers).where(and(
+            eq(staffMembers.businessId, businessId), eq(staffMembers.userId, userId),
+        )));
+        const business = await first(tx.select().from(businesses).where(eq(businesses.id, businessId)));
+        const creatorRole = currentUser.role === 'user' || currentUser.role === 'owner';
+        const canClaimOwnership = creatorRole && !staffMembership && (!business?.ownerUserId || business.ownerUserId === userId);
+        if (canClaimOwnership && !business?.ownerUserId) {
+            await tx.update(businesses).set({ ownerUserId: userId, updatedAt: new Date() })
+                .where(and(eq(businesses.id, businessId), isNull(businesses.ownerUserId)));
+        }
+
+        await tx.update(users)
+            .set({
+                userType: 'sme',
+                segment: 'restaurant',
+                businessName,
+                country,
+                currency,
+                onboardingCompleted: true,
+                businessId,
+                primaryWorkspace: RESTAURANT_DESTINATION,
+                role: canClaimOwnership ? 'owner' : currentUser.role,
+            })
+            .where(eq(users.id, userId));
+
+        // Business record: confirmed locale + service format. restaurantType only
+        // changes when the confirmed service modes map to a known value.
+        await tx.update(businesses)
+            .set({
+                country,
+                currency,
+                ...(restaurantType ? { restaurantType: restaurantType as 'dine_in' | 'takeaway' | 'both' } : {}),
+                updatedAt: new Date(),
+            })
+            .where(eq(businesses.id, businessId));
+
+        // Deterministic table set: check-then-insert on (businessId, label), the
+        // same app-level duplicate guard as routes/restaurant.ts POST /tables.
+        let tablesCreated = 0;
+        for (let index = 1; index <= tableCount; index += 1) {
+            const label = `Table ${index}`;
+            const existing = await first(tx.select({ id: restaurantTables.id }).from(restaurantTables)
+                .where(and(eq(restaurantTables.businessId, businessId), eq(restaurantTables.label, label))));
+            if (existing) continue;
+            await tx.insert(restaurantTables).values({
+                id: randomUUID(),
+                businessId,
+                label,
+                capacity: TABLE_CAPACITY,
+                status: 'available',
+            });
+            tablesCreated += 1;
+        }
+
+        // Q memory: one owner-managed row per business (unique on businessId).
+        // Content is deterministic, payload-derived, and free of tokens/auth data.
+        const priorities = payload.recommendation.priorities;
+        const joinedGoals = priorities.join(', ').trim();
+        const ownerSummary = `${businessName} is a restaurant in ${country}. Currency: ${currency}. Service modes: ${modesSummary}. Tables: ${tableCount}. Prepared by Q from the owner-confirmed onboarding brief.`.slice(0, MEMORY_TEXT_MAX);
+        const businessGoals = joinedGoals.length > 0 ? joinedGoals.slice(0, MEMORY_TEXT_MAX) : null;
+        const operatingPriorities = priorities.filter(priority =>
+            (OPERATING_PRIORITY_ALLOWLIST as readonly string[]).includes(priority));
+        const existingMemory = await first(tx.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, businessId)));
+        const memoryRecord = {
+            id: existingMemory?.id ?? randomUUID(),
             businessId,
-            primaryWorkspace: RESTAURANT_DESTINATION,
-            role: canClaimOwnership ? 'owner' : currentUser.role,
-        })
-        .where(eq(users.id, userId));
-
-    // Business record: confirmed locale + service format. restaurantType only
-    // changes when the confirmed service modes map to a known value.
-    await db.update(businesses)
-        .set({
-            country,
-            currency,
-            ...(restaurantType ? { restaurantType: restaurantType as 'dine_in' | 'takeaway' | 'both' } : {}),
+            ownerSummary,
+            businessGoals,
+            operatingPriorities,
+            updatedBy: userId,
             updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, businessId));
+        };
+        if (existingMemory) {
+            await tx.update(qBusinessMemories).set(memoryRecord).where(eq(qBusinessMemories.id, existingMemory.id));
+        } else {
+            await tx.insert(qBusinessMemories).values({ ...memoryRecord, createdAt: new Date() });
+        }
 
-    // Deterministic table set: check-then-insert on (businessId, label), the
-    // same app-level duplicate guard as routes/restaurant.ts POST /tables.
-    let tablesCreated = 0;
-    for (let index = 1; index <= tableCount; index += 1) {
-        const label = `Table ${index}`;
-        const existing = await first(db.select({ id: restaurantTables.id }).from(restaurantTables)
-            .where(and(eq(restaurantTables.businessId, businessId), eq(restaurantTables.label, label))));
-        if (existing) continue;
-        await db.insert(restaurantTables).values({
-            id: randomUUID(),
+        // Welcome conversation: deterministic id, inserted at most once per business.
+        const conversationId = `qconv_onboarding_${businessId}`;
+        const existingConversation = await first(tx.select({ id: qAssistantConversations.id }).from(qAssistantConversations)
+            .where(eq(qAssistantConversations.id, conversationId)));
+        if (!existingConversation) {
+            const at = new Date();
+            await tx.insert(qAssistantConversations).values({
+                id: conversationId,
+                businessId,
+                createdBy: userId,
+                title: 'Welcome from Q',
+                createdAt: at,
+                updatedAt: at,
+            });
+            await tx.insert(qAssistantMessages).values({
+                id: `qmsg_onboarding_${businessId}`,
+                conversationId,
+                businessId,
+                userId: null,
+                role: 'assistant' as const,
+                content: `Welcome to ${businessName}. I prepared your Restaurant workspace with ${tableCount} tables and ${modesSummary} service. Let's finish your menu and opening setup.`,
+                evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>,
+                feedback: null,
+                createdAt: at,
+            });
+        }
+
+        return {
+            ok: true,
             businessId,
-            label,
-            capacity: TABLE_CAPACITY,
-            status: 'available',
-        });
-        tablesCreated += 1;
-    }
-
-    // Q memory: one owner-managed row per business (unique on businessId).
-    // Content is deterministic, payload-derived, and free of tokens/auth data.
-    const priorities = payload.recommendation.priorities;
-    const joinedGoals = priorities.join(', ').trim();
-    const ownerSummary = `${businessName} is a restaurant in ${country}. Currency: ${currency}. Service modes: ${modesSummary}. Tables: ${tableCount}. Prepared by Q from the owner-confirmed onboarding brief.`.slice(0, MEMORY_TEXT_MAX);
-    const businessGoals = joinedGoals.length > 0 ? joinedGoals.slice(0, MEMORY_TEXT_MAX) : null;
-    const operatingPriorities = priorities.filter(priority =>
-        (OPERATING_PRIORITY_ALLOWLIST as readonly string[]).includes(priority));
-    const existingMemory = await first(db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, businessId)));
-    const memoryRecord = {
-        id: existingMemory?.id ?? randomUUID(),
-        businessId,
-        ownerSummary,
-        businessGoals,
-        operatingPriorities,
-        updatedBy: userId,
-        updatedAt: new Date(),
-    };
-    if (existingMemory) {
-        await db.update(qBusinessMemories).set(memoryRecord).where(eq(qBusinessMemories.id, existingMemory.id));
-    } else {
-        await db.insert(qBusinessMemories).values({ ...memoryRecord, createdAt: new Date() });
-    }
-
-    // Welcome conversation: deterministic id, inserted at most once per business.
-    const conversationId = `qconv_onboarding_${businessId}`;
-    const existingConversation = await first(db.select({ id: qAssistantConversations.id }).from(qAssistantConversations)
-        .where(eq(qAssistantConversations.id, conversationId)));
-    if (!existingConversation) {
-        const at = new Date();
-        await db.insert(qAssistantConversations).values({
-            id: conversationId,
-            businessId,
-            createdBy: userId,
-            title: 'Welcome from Q',
-            createdAt: at,
-            updatedAt: at,
-        });
-        await db.insert(qAssistantMessages).values({
-            id: `qmsg_onboarding_${businessId}`,
-            conversationId,
-            businessId,
-            userId: null,
-            role: 'assistant' as const,
-            content: `Welcome to ${businessName}. I prepared your Restaurant workspace with ${tableCount} tables and ${modesSummary} service. Let's finish your menu and opening setup.`,
-            evidenceCards: [] as Array<{ id: string; label: string; facts: string[] }>,
-            feedback: null,
-            createdAt: at,
-        });
-    }
-
-    return {
-        ok: true,
-        businessId,
-        workspace: 'restaurant',
-        destination: RESTAURANT_DESTINATION,
-        tablesEnsured: tableCount,
-        tablesCreated,
-    };
+            workspace: 'restaurant',
+            destination: RESTAURANT_DESTINATION,
+            tablesEnsured: tableCount,
+            tablesCreated,
+        };
+    });
 };
