@@ -112,8 +112,8 @@ const mockRestaurantDashboard = (page: Page) =>
 // Drives the landing concierge from the hero prompt to the Continue click.
 const continueFromLanding = async (page: Page, email: string) => {
   await page.goto('/');
-  await page.getByLabel('Tell Q about your business').fill(HERO_PROMPT);
-  await page.getByLabel('Tell Q about your business').press('Enter');
+  await page.locator('#d2-hero-input').fill(HERO_PROMPT);
+  await page.locator('#d2-hero-input').press('Enter');
   await expect(page.getByText('I drafted a plan for Noor.')).toBeVisible();
   await page.getByLabel('Message Q').fill(email);
   await page.getByRole('button', { name: 'Send message' }).click();
