@@ -1366,7 +1366,7 @@ restaurant.get('/business-pulse/usage', async (c) => {
         failed: events.filter((event) => event.requestStatus === 'failed').length,
         estimatedCostUsd,
         tokens: events.reduce((sum, event) => sum + event.inputTokens + event.outputTokens + event.imageTokens, 0),
-        modelRequests: events.filter((event) => event.provider === 'openai' && event.requestStatus === 'completed').length,
+        modelRequests: events.filter((event) => event.provider !== 'q360-rules-v1' && event.requestStatus === 'completed').length,
         fallbacks: events.filter((event) => (event.metadata as Record<string, unknown> | null)?.modelFallback === true).length,
         monthlyBudgetUsd: provider.monthlyBudgetUsd,
         budgetRemainingUsd: provider.budgetRemainingUsd,

@@ -1,4 +1,5 @@
 import { getQProviderStatus } from './qProviderConfig.js';
+import { callQProvider, type QProvider } from './qProviderClient.js';
 
 export type QModelConversationMessage = {
     role: 'user' | 'assistant';
@@ -7,7 +8,7 @@ export type QModelConversationMessage = {
 
 export type QModelAnswer = {
     usedModel: boolean;
-    provider: string;
+    provider: QProvider;
     model: string;
     content: string | null;
     inputTokens: number;
@@ -17,7 +18,6 @@ export type QModelAnswer = {
 };
 
 const MAX_OUTPUT_TOKENS = 450;
-const REQUEST_TIMEOUT_MS = 12_000;
 
 const clip = (value: string, limit: number) => value.replace(/\s+/g, ' ').trim().slice(0, limit);
 
@@ -30,27 +30,6 @@ const asNonNegativeNumber = (value: unknown) => {
 // accounting remains accurate without floating-point rounding in the database.
 export const estimateQModelCostUsdMicros = (inputTokens: number, outputTokens: number) =>
     Math.round((asNonNegativeNumber(inputTokens) * 0.75) + (asNonNegativeNumber(outputTokens) * 4.5));
-
-const extractResponseText = (payload: Record<string, unknown>) => {
-    if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
-        return payload.output_text.trim();
-    }
-
-    const output = Array.isArray(payload.output) ? payload.output : [];
-    const parts: string[] = [];
-    for (const item of output) {
-        if (!item || typeof item !== 'object') continue;
-        const content = Array.isArray((item as { content?: unknown }).content)
-            ? (item as { content: unknown[] }).content
-            : [];
-        for (const entry of content) {
-            if (!entry || typeof entry !== 'object') continue;
-            const text = (entry as { text?: unknown }).text;
-            if (typeof text === 'string') parts.push(text);
-        }
-    }
-    return parts.join('\n').trim();
-};
 
 const buildInstructions = () => `You are Q, a calm private business co-founder for one restaurant.
 Give concise, practical advice using only the business reference below and the user's question.
@@ -78,6 +57,27 @@ const buildInput = (
     ].filter(Boolean).join('\n\n');
 };
 
+const rulesOnlyAnswer = (fallbackReason: QModelAnswer['fallbackReason']): QModelAnswer => ({
+    usedModel: false,
+    provider: 'q360-rules-v1',
+    model: 'structured-pulse-v1',
+    content: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsdMicros: 0,
+    fallbackReason,
+});
+
+const resolveApiKey = (provider: QProvider) => {
+    if (provider === 'openai') {
+        return process.env.OPENAI_API_KEY?.trim() || process.env.Q_AI_API_KEY?.trim();
+    }
+    if (provider === 'kimi') {
+        return process.env.Q_AI_API_KEY?.trim();
+    }
+    return undefined;
+};
+
 /**
  * Calls the external model only when it is configured and within the monthly
  * business budget. Every non-success result is deliberately safe to fall back
@@ -96,64 +96,46 @@ export const answerWithQModel = async ({
 }): Promise<QModelAnswer> => {
     const status = getQProviderStatus(estimatedSpendUsd);
     if (!status.configured) {
-        return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'not_configured' };
+        return rulesOnlyAnswer('not_configured');
     }
     if (status.mode === 'budget_reached') {
-        return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'budget_reached' };
+        return rulesOnlyAnswer('budget_reached');
     }
     if (!status.externalModelEnabled) {
-        return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'disabled' };
+        return rulesOnlyAnswer('disabled');
     }
 
-    const apiKey = process.env.OPENAI_API_KEY?.trim() || process.env.Q_AI_API_KEY?.trim();
+    const apiKey = resolveApiKey(status.provider);
     if (!apiKey) {
-        return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'not_configured' };
+        return rulesOnlyAnswer('not_configured');
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-        const response = await fetch('https://api.openai.com/v1/responses', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: status.model,
-                instructions: buildInstructions(),
-                input: buildInput(prompt, businessContext, recentMessages),
-                max_output_tokens: MAX_OUTPUT_TOKENS,
-                store: false,
-            }),
-            signal: controller.signal,
-        });
+    const result = await callQProvider({
+        provider: status.provider,
+        baseUrl: process.env.Q_AI_BASE_URL,
+        apiKey,
+        model: status.model,
+        systemPrompt: buildInstructions(),
+        userPrompt: buildInput(prompt, businessContext, recentMessages),
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+    });
 
-        if (!response.ok) {
-            return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'provider_unavailable' };
-        }
-
-        const payload = await response.json() as Record<string, unknown>;
-        const content = clip(extractResponseText(payload), 2_000);
-        if (!content) {
-            return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'invalid_response' };
-        }
-
-        const usage = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : {};
-        const inputTokens = asNonNegativeNumber(usage.input_tokens);
-        const outputTokens = asNonNegativeNumber(usage.output_tokens);
-        return {
-            usedModel: true,
-            provider: 'openai',
-            model: status.model,
-            content,
-            inputTokens,
-            outputTokens,
-            estimatedCostUsdMicros: estimateQModelCostUsdMicros(inputTokens, outputTokens),
-        };
-    } catch {
-        return { usedModel: false, provider: 'q360-rules-v1', model: 'structured-pulse-v1', content: null, inputTokens: 0, outputTokens: 0, estimatedCostUsdMicros: 0, fallbackReason: 'provider_unavailable' };
-    } finally {
-        clearTimeout(timeout);
+    if (!result) {
+        return rulesOnlyAnswer('provider_unavailable');
     }
+
+    const content = clip(result.text, 2_000);
+    if (!content) {
+        return rulesOnlyAnswer('invalid_response');
+    }
+
+    return {
+        usedModel: true,
+        provider: result.provider,
+        model: result.model,
+        content,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        estimatedCostUsdMicros: result.estimatedCostUsdMicros,
+    };
 };
