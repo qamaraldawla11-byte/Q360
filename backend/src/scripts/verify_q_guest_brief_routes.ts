@@ -54,11 +54,17 @@ const SECRET = process.env.Q_GUEST_BRIEF_TOKEN_SECRET;
 const USER_A = 'usr_verify_qbrief_a';
 const USER_B = 'usr_verify_qbrief_b';
 const USER_C = 'usr_verify_qbrief_c';
+const USER_D = 'usr_verify_qbrief_d';
+const USER_E = 'usr_verify_qbrief_e';
+const USER_F = 'usr_verify_qbrief_f';
 const BIZ_A = 'biz_verify_qbrief_a';
 const BIZ_B = 'biz_verify_qbrief_b';
 const BIZ_C = 'biz_verify_qbrief_c';
-const userIds = [USER_A, USER_B, USER_C];
-const businessIds = [BIZ_A, BIZ_B, BIZ_C];
+const BIZ_D = 'biz_verify_qbrief_d';
+const BIZ_E = 'biz_verify_qbrief_e';
+const BIZ_F = 'biz_verify_qbrief_f';
+const userIds = [USER_A, USER_B, USER_C, USER_D, USER_E, USER_F];
+const businessIds = [BIZ_A, BIZ_B, BIZ_C, BIZ_D, BIZ_E, BIZ_F];
 const httpTokenHashes: string[] = [];
 const serviceBriefIds: string[] = [];
 
@@ -143,15 +149,24 @@ try {
         { id: BIZ_A, name: 'Qbrief A', type: 'restaurant' },
         { id: BIZ_B, name: 'Qbrief B', type: 'restaurant' },
         { id: BIZ_C, name: 'Qbrief C', type: 'restaurant' },
+        { id: BIZ_D, name: 'Qbrief D', type: 'restaurant' },
+        { id: BIZ_E, name: 'Qbrief E', type: 'restaurant' },
+        { id: BIZ_F, name: 'Qbrief F', type: 'restaurant' },
     ]);
     await db.insert(users).values([
         { id: USER_A, email: `${USER_A}@example.com`, role: 'owner', businessId: BIZ_A },
         { id: USER_B, email: `${USER_B}@example.com`, role: 'owner', businessId: BIZ_B },
         { id: USER_C, email: `${USER_C}@example.com`, role: 'owner', businessId: BIZ_C, userType: 'sme', segment: 'restaurant', businessName: 'Qbrief C', country: 'Germany', currency: 'EUR', onboardingCompleted: true, primaryWorkspace: '/app/restaurant' },
+        { id: USER_D, email: `${USER_D}@example.com`, role: 'owner', businessId: BIZ_D },
+        { id: USER_E, email: `${USER_E}@example.com`, role: 'owner', businessId: BIZ_E },
+        { id: USER_F, email: `${USER_F}@example.com`, role: 'owner', businessId: BIZ_F },
     ]);
     const tokenA = token(USER_A, BIZ_A);
     const tokenB = token(USER_B, BIZ_B);
     const tokenC = token(USER_C, BIZ_C);
+    const tokenD = token(USER_D, BIZ_D);
+    const tokenE = token(USER_E, BIZ_E);
+    const tokenF = token(USER_F, BIZ_F);
 
     await check('01: gating is fail-closed (flag off / missing secret / short secret → null)', () => {
         const savedEnabled = process.env.Q_GUEST_BRIEF_ENABLED;
@@ -412,6 +427,102 @@ try {
         assert(limited.status === 429, `6th create returned ${limited.status}`);
         const body = await limited.json() as { error?: string; retryAfterSeconds?: number };
         assert(body.error === 'rate_limited' && typeof body.retryAfterSeconds === 'number' && body.retryAfterSeconds >= 1, 'rate_limited body mismatch');
+    });
+
+    await check('17: concurrent confirmations for the same brief serialize and create exactly one workspace', async () => {
+        const create = await createBriefHttp('verify-visitor-17', validCreateBody({ businessName: 'D Diner', tables: 4 }));
+        assert(create.status === 201, `create returned ${create.status}`);
+        const { briefToken } = await create.json() as { briefToken: string };
+        httpTokenHashes.push(hashBriefToken(briefToken, SECRET));
+        const claim = await request(tokenD, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken }) });
+        assert(claim.status === 200, `claim returned ${claim.status}`);
+
+        const body = JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] });
+        const [responseA, responseB] = await Promise.all([
+            request(tokenD, '/api/q/guest-briefs/current/confirm', { method: 'POST', body }),
+            request(tokenD, '/api/q/guest-briefs/current/confirm', { method: 'POST', body }),
+        ]);
+        assert(responseA.status === 200, `concurrent confirm A returned ${responseA.status}`);
+        assert(responseB.status === 200, `concurrent confirm B returned ${responseB.status}`);
+        const outcomeA = (await responseA.json() as { outcome?: string }).outcome;
+        const outcomeB = (await responseB.json() as { outcome?: string }).outcome;
+        assert(
+            (outcomeA === 'confirmed' && outcomeB === 'already_confirmed')
+            || (outcomeA === 'already_confirmed' && outcomeB === 'confirmed'),
+            `expected one confirmed and one already_confirmed, got ${outcomeA}/${outcomeB}`,
+        );
+
+        const tables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_D));
+        assert(tables.length === 4, `expected exactly 4 tables, got ${tables.length}`);
+        const memories = await db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, BIZ_D));
+        assert(memories.length === 1, `expected exactly one memory row, got ${memories.length}`);
+        const conversation = await first(db.select().from(qAssistantConversations).where(eq(qAssistantConversations.id, `qconv_onboarding_${BIZ_D}`)));
+        assert(conversation, 'expected exactly one welcome conversation');
+        const messages = await db.select().from(qAssistantMessages).where(eq(qAssistantMessages.conversationId, `qconv_onboarding_${BIZ_D}`));
+        assert(messages.length === 1, `expected exactly one welcome message, got ${messages.length}`);
+
+        const user = await first(db.select().from(users).where(eq(users.id, USER_D)));
+        assert(user?.onboardingCompleted === true && user.segment === 'restaurant', 'user was not onboarded');
+    });
+
+    await check('18: second claim while another unresolved brief exists → 409 unresolved_exists', async () => {
+        const createA = await createBriefHttp('verify-visitor-18a', validCreateBody({ businessName: 'E Diner A' }));
+        assert(createA.status === 201, `create A returned ${createA.status}`);
+        const { briefToken: tokenA18 } = await createA.json() as { briefToken: string };
+        httpTokenHashes.push(hashBriefToken(tokenA18, SECRET));
+        const claimA = await request(tokenE, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken: tokenA18 }) });
+        assert(claimA.status === 200, `claim A returned ${claimA.status}`);
+
+        const createB = await createBriefHttp('verify-visitor-18b', validCreateBody({ businessName: 'E Diner B' }));
+        assert(createB.status === 201, `create B returned ${createB.status}`);
+        const { briefToken: tokenB18 } = await createB.json() as { briefToken: string };
+        httpTokenHashes.push(hashBriefToken(tokenB18, SECRET));
+        const claimB = await request(tokenE, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken: tokenB18 }) });
+        assert(claimB.status === 409, `second claim returned ${claimB.status}`);
+        const body = await claimB.json() as { error?: string };
+        assert(body.error === 'brief_unresolved_exists', `expected brief_unresolved_exists, got ${body.error}`);
+
+        const rowA = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.tokenHash, hashBriefToken(tokenA18, SECRET))));
+        assert(rowA?.state === 'claimed' && rowA.claimedByUserId === USER_E, 'first brief should remain claimed by user E');
+        const rowB = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.tokenHash, hashBriefToken(tokenB18, SECRET))));
+        assert(rowB?.state === 'active', 'second brief should stay active');
+    });
+
+    await check('19: confirm of a lazily expired claimed brief → 410 expired', async () => {
+        const create = await createBriefHttp('verify-visitor-19', validCreateBody({ businessName: 'F Diner' }));
+        assert(create.status === 201, `create returned ${create.status}`);
+        const { briefToken } = await create.json() as { briefToken: string };
+        httpTokenHashes.push(hashBriefToken(briefToken, SECRET));
+        const claim = await request(tokenF, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken }) });
+        assert(claim.status === 200, `claim returned ${claim.status}`);
+        const briefId = (await claim.json() as { brief: { id: string } }).brief.id;
+
+        const expiredClaimedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+        await db.update(qGuestBriefs)
+            .set({ claimedAt: expiredClaimedAt, stateUpdatedAt: expiredClaimedAt })
+            .where(eq(qGuestBriefs.id, briefId));
+
+        const confirm = await request(tokenF, '/api/q/guest-briefs/current/confirm', {
+            method: 'POST', body: JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] }),
+        });
+        assert(confirm.status === 410, `expected 410, got ${confirm.status}`);
+        assert((await confirm.json() as { error?: string }).error === 'expired', 'expected expired');
+        const row = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.id, briefId)));
+        assert(row?.state === 'expired', `lazy expiry not persisted (state=${row?.state})`);
+        const fTables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_F));
+        assert(fTables.length === 0, 'expired confirm mutated tables');
+    });
+
+    await check('20: confirm after dismissal → 409 invalid_state, no workspace mutation', async () => {
+        // USER_B dismissed their brief in case 13; the brief row is terminal.
+        const confirm = await request(tokenB, '/api/q/guest-briefs/current/confirm', {
+            method: 'POST', body: JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] }),
+        });
+        assert(confirm.status === 409, `expected 409, got ${confirm.status}`);
+        const body = await confirm.json() as { error?: string };
+        assert(body.error === 'invalid_state', `expected invalid_state, got ${body.error}`);
+        const bTables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_B));
+        assert(bTables.length === 0, 'dismissed confirm mutated tables');
     });
 
     await check('16: login/auth path stays independent of the guest-brief feature', () => {
