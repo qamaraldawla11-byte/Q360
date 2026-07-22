@@ -23,6 +23,7 @@
         "verify:q-orchestration-contract": "tsx src/scripts/verify_q_orchestration_contract.ts",
         "verify:q-guest-brief-contract": "tsx src/scripts/verify_q_guest_brief_contract.ts",
         "verify:q-guest-brief-service": "tsx src/scripts/verify_q_guest_brief_service.ts",
+        "verify:q-guest-brief-routes": "tsx src/scripts/verify_q_guest_brief_routes.ts",
         "verify:tenant-identity": "tsx src/scripts/verify_tenant_identity.ts",
         "verify:business-settings": "tsx src/scripts/verify_business_settings.ts",
         "verify:business-ownership": "tsx src/scripts/verify_business_ownership.ts",
