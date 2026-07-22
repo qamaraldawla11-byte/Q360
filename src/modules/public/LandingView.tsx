@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GuestQConcierge, type GuestSetup } from './GuestQConcierge';
+import { createGuestBrief, currencyForCountry } from '@/api/qGuestBrief.api';
 import {
     ArrowRight,
     BriefcaseBusiness,
@@ -205,6 +206,7 @@ export const LandingView = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('q360-landing-theme') === 'dark' ? 'dark' : 'light');
     const [heroPrompt, setHeroPrompt] = useState('');
     const [guestChatOpen, setGuestChatOpen] = useState(false);
+    const continueInFlight = useRef(false);
     const activeSummary = workspaceSummaries[activeWorkspace];
 
     const scrollToSection = (id: string) => {
@@ -214,6 +216,35 @@ export const LandingView = () => {
     useEffect(() => {
         localStorage.setItem('q360-landing-theme', theme);
     }, [theme]);
+
+    const handleGuestContinue = async (setup: GuestSetup, modules: string[]) => {
+        if (continueInFlight.current) return;
+        continueInFlight.current = true;
+        try {
+            sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
+            if (setup.businessType === 'restaurant') {
+                try {
+                    const brief = await createGuestBrief({
+                        businessType: setup.businessType,
+                        businessName: setup.businessName,
+                        country: setup.country,
+                        currency: currencyForCountry(setup.country),
+                        services: setup.services,
+                        tables: setup.tables,
+                        priorities: setup.priorities,
+                        recommendedModules: modules,
+                        initialRequest: setup.initialRequest,
+                    });
+                    sessionStorage.setItem('q360_guest_brief_token', brief.briefToken);
+                } catch {
+                    // Brief creation is best-effort: manual onboarding stays the fallback.
+                }
+            }
+            navigate('/login', { state: { guestSetup: setup } });
+        } finally {
+            continueInFlight.current = false;
+        }
+    };
 
     return (
         <div className="landing-page" data-theme={theme}>
@@ -492,9 +523,8 @@ export const LandingView = () => {
                     initialPrompt={heroPrompt.trim()}
                     theme={theme}
                     onClose={() => setGuestChatOpen(false)}
-                    onContinue={(setup: GuestSetup) => {
-                        sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
-                        navigate('/login', { state: { guestSetup: setup } });
+                    onContinue={(setup: GuestSetup, modules: string[]) => {
+                        void handleGuestContinue(setup, modules);
                     }}
                 />
             )}

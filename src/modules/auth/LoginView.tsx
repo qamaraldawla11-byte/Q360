@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { GuestSetup } from '@/modules/public/GuestQConcierge';
+import { claimGuestBrief } from '@/api/qGuestBrief.api';
 import { LogoApp } from '@/components/ui/Logo';
 
 export const LoginView = () => {
@@ -46,9 +47,24 @@ export const LoginView = () => {
             }
 
             await verifyOtp(email, code);
+
+            const briefToken = sessionStorage.getItem('q360_guest_brief_token');
+            let briefClaimed = false;
+            if (briefToken) {
+                try {
+                    await claimGuestBrief(briefToken);
+                    briefClaimed = true;
+                } catch {
+                    // Claiming the guest brief is best-effort and must never block sign-in.
+                }
+                sessionStorage.removeItem('q360_guest_brief_token');
+            }
+
             const user = useAuthStore.getState().user;
 
-            if (user?.onboardingCompleted) {
+            if (briefClaimed && !user?.onboardingCompleted) {
+                navigate('/onboarding/brief');
+            } else if (user?.onboardingCompleted) {
                 navigate(user.primaryWorkspace || (user.segment ? `/app/${user.segment}` : '/app'));
             } else {
                 navigate('/onboarding/identity');

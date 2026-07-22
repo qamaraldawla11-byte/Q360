@@ -5,9 +5,10 @@ import { LogoApp } from '@/components/ui/Logo';
 
 // Onboarding Steps Definition
 const STEPS = [
-    { path: '/onboarding/identity', label: 'Profile', index: 1 },
-    { path: '/onboarding/type', label: 'Business Type', index: 2 },
-    { path: '/onboarding/workspace', label: 'Workspace', index: 3 },
+    { path: '/onboarding/brief', label: 'Review', index: 1 },
+    { path: '/onboarding/identity', label: 'Profile', index: 2 },
+    { path: '/onboarding/type', label: 'Business Type', index: 3 },
+    { path: '/onboarding/workspace', label: 'Workspace', index: 4 },
 ];
 
 export const OnboardingLayout = () => {
@@ -65,6 +66,7 @@ export const OnboardingLayout = () => {
                     </div>
 
                     <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px' }}>
+                        {currentStep.label === 'Review' && 'Review your workspace plan'}
                         {currentStep.label === 'Profile' && 'Set Up Your Profile'}
                         {currentStep.label === 'Business Type' && 'What type of business do you run?'}
                         {currentStep.label === 'Workspace' && 'Configure Your Workspace'}

@@ -32,6 +32,7 @@ const IdentityView = lazy(() => import('@/modules/onboarding/IdentityView').then
 const SegmentView = lazy(() => import('@/modules/onboarding/SegmentView').then(m => ({ default: m.SegmentView })));
 const SubSegmentView = lazy(() => import('@/modules/onboarding/SubSegmentView').then(m => ({ default: m.SubSegmentView })));
 const BusinessTypeView = lazy(() => import('@/modules/onboarding/BusinessTypeView').then(m => ({ default: m.BusinessTypeView })));
+const GuestBriefReviewView = lazy(() => import('@/modules/onboarding/GuestBriefReviewView').then(m => ({ default: m.GuestBriefReviewView })));
 
 const LoginView = lazy(() => import('@/modules/auth/LoginView').then(m => ({ default: m.LoginView })));
 const SegmentsView = lazy(() => import('@/modules/core/SegmentsView').then(m => ({ default: m.SegmentsView })));
@@ -206,6 +207,7 @@ export const appRoutes: RouteObject[] = [
         children: [
             { index: true, element: <Navigate to="/onboarding/identity" replace /> },
             { path: 'identity', element: <IdentityView /> },
+            { path: 'brief', element: <GuestBriefReviewView /> },
             { path: 'segment', element: <SegmentView /> },
             { path: 'type', element: <SubSegmentView /> },
             { path: 'workspace', element: <BusinessTypeView /> },

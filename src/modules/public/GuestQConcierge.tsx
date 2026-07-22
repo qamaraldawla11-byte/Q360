@@ -120,7 +120,7 @@ export function GuestQConcierge({
   initialPrompt: string;
   theme: 'light' | 'dark';
   onClose: () => void;
-  onContinue: (setup: GuestSetup) => void;
+  onContinue: (setup: GuestSetup, modules: string[]) => void;
 }) {
   const firstSetup = useMemo(() => initialSetup(initialPrompt), [initialPrompt]);
   const [setup, setSetup] = useState(firstSetup);
@@ -397,7 +397,7 @@ export function GuestQConcierge({
                 {copied ? <Check size={17} /> : <Copy size={17} />}
                 {copied ? 'Copied' : 'Copy brief'}
               </button>
-              <button type="button" className="guest-q-button guest-q-button--primary" onClick={() => onContinue(setup)} disabled={!canContinue}>
+              <button type="button" className="guest-q-button guest-q-button--primary" onClick={() => onContinue(setup, modules)} disabled={!canContinue}>
                 Continue securely <ArrowRight size={17} />
               </button>
             </div>
