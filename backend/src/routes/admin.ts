@@ -83,7 +83,7 @@ admin.get('/q-usage', async (c) => {
         type UsageRow = typeof usageRows[number];
         const periodRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= periodStart.getTime());
         const monthRows = usageRows.filter((row) => new Date(row.createdAt).getTime() >= monthStart.getTime());
-        const isModelRequest = (row: UsageRow) => row.provider === 'openai';
+        const isModelRequest = (row: UsageRow) => row.provider !== 'q360-rules-v1';
         const costUsd = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.estimatedCostUsdMicros || 0), 0) / 1_000_000;
         const totalTokens = (rows: UsageRow[]) => rows.reduce((sum, row) => sum + (row.inputTokens || 0) + (row.outputTokens || 0), 0);
 
@@ -194,12 +194,26 @@ admin.post('/users', async (c) => {
             return c.json({ error: 'Email and Role are required' }, 400);
         }
 
+        const creatableRoles = ['owner', 'admin', 'manager', 'staff', 'user'];
+        if (typeof role !== 'string' || !creatableRoles.includes(role)) {
+            return c.json({ error: 'Invalid role' }, 400);
+        }
+
+        if (typeof businessId !== 'string' || !businessId.trim()) {
+            return c.json({ error: 'businessId is required' }, 400);
+        }
+        const targetBusiness = await first(db.select({ id: businesses.id }).from(businesses).where(eq(businesses.id, businessId)));
+        if (!targetBusiness) {
+            return c.json({ error: 'businessId must reference an existing business' }, 400);
+        }
+
         const newUser: NewUser = {
             id: uuidv4(),
             email,
             name,
             role,
-            primaryWorkspace: businessId || 'biz_main',
+            businessId,
+            primaryWorkspace: null,
             status: 'active',
             isLocked: false,
             onboardingCompleted: false,
@@ -229,7 +243,48 @@ admin.patch('/users/:id', async (c) => {
         const id = c.req.param('id');
         const body = await c.req.json();
 
-        await db.update(users).set(body).where(eq(users.id, id));
+        const updates: Record<string, unknown> = {};
+
+        if (body.name !== undefined) {
+            if (typeof body.name !== 'string' || !body.name.trim()) {
+                return c.json({ error: 'Invalid name' }, 400);
+            }
+            updates.name = body.name.trim();
+        }
+        if (body.role !== undefined) {
+            const editableRoles = ['owner', 'admin', 'manager', 'staff', 'user'];
+            if (typeof body.role !== 'string' || !editableRoles.includes(body.role)) {
+                return c.json({ error: 'Invalid role' }, 400);
+            }
+            updates.role = body.role;
+        }
+        if (body.status !== undefined) {
+            if (body.status !== 'active' && body.status !== 'inactive') {
+                return c.json({ error: 'Invalid status' }, 400);
+            }
+            updates.status = body.status;
+        }
+        if (body.isLocked !== undefined) {
+            if (typeof body.isLocked !== 'boolean') {
+                return c.json({ error: 'Invalid isLocked' }, 400);
+            }
+            updates.isLocked = body.isLocked;
+        }
+        if (body.moduleAccess !== undefined) {
+            if (!Array.isArray(body.moduleAccess) || body.moduleAccess.some((entry: unknown) => typeof entry !== 'string')) {
+                return c.json({ error: 'Invalid moduleAccess' }, 400);
+            }
+            updates.moduleAccess = body.moduleAccess;
+        }
+
+        // Protected identity, tenant, and audit fields (id, email, businessId,
+        // primaryWorkspace, createdAt, onboarding/segment fields, unknown keys)
+        // are intentionally ignored.
+        if (Object.keys(updates).length === 0) {
+            return c.json({ error: 'No supported fields to update' }, 400);
+        }
+
+        await db.update(users).set(updates).where(eq(users.id, id));
 
         await db.insert(auditLogs).values({
             id: uuidv4(),
@@ -238,7 +293,7 @@ admin.patch('/users/:id', async (c) => {
             action: 'UPDATE',
             entity: 'USER',
             entityId: id,
-            details: JSON.stringify(body),
+            details: JSON.stringify(updates),
         });
 
         return c.json({ message: 'User updated' });

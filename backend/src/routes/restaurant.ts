@@ -1366,7 +1366,7 @@ restaurant.get('/business-pulse/usage', async (c) => {
         failed: events.filter((event) => event.requestStatus === 'failed').length,
         estimatedCostUsd,
         tokens: events.reduce((sum, event) => sum + event.inputTokens + event.outputTokens + event.imageTokens, 0),
-        modelRequests: events.filter((event) => event.provider === 'openai' && event.requestStatus === 'completed').length,
+        modelRequests: events.filter((event) => event.provider !== 'q360-rules-v1' && event.requestStatus === 'completed').length,
         fallbacks: events.filter((event) => (event.metadata as Record<string, unknown> | null)?.modelFallback === true).length,
         monthlyBudgetUsd: provider.monthlyBudgetUsd,
         budgetRemainingUsd: provider.budgetRemainingUsd,
@@ -1522,6 +1522,8 @@ restaurant.get('/menu', async (c) => {
 });
 
 restaurant.post('/menu/categories', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const body = await parseJson<{ name?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
 
@@ -1577,6 +1579,8 @@ restaurant.post('/menu/categories', async (c) => {
 });
 
 restaurant.post('/menu/items', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const body = await parseJson<{
         name?: unknown;
         description?: unknown;
@@ -1646,6 +1650,8 @@ restaurant.post('/menu/items', async (c) => {
 });
 
 restaurant.patch('/menu/categories/:id', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const body = await parseJson<{ name?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     const name = typeof body.name === 'string' ? body.name.trim() : '';
@@ -1664,6 +1670,8 @@ restaurant.patch('/menu/categories/:id', async (c) => {
 });
 
 restaurant.delete('/menu/categories/:id', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const businessId = c.get('businessId');
     const id = c.req.param('id');
     const current = await first(db.select().from(menuCategories).where(and(
@@ -1680,6 +1688,8 @@ restaurant.delete('/menu/categories/:id', async (c) => {
 });
 
 restaurant.patch('/menu/items/:id', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const body = await parseJson<{ name?: unknown; description?: unknown; price?: unknown; categoryId?: unknown; isAvailable?: unknown; prepTimeMinutes?: unknown; imageUrl?: unknown }>(c);
     if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
     const businessId = c.get('businessId');
@@ -1707,6 +1717,8 @@ restaurant.patch('/menu/items/:id', async (c) => {
 });
 
 restaurant.post('/menu/items/:id/image', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     const businessId = c.get('businessId');
     const id = c.req.param('id');
     const item = await first(db.select().from(menuItems).where(and(
@@ -1845,6 +1857,8 @@ restaurant.patch('/bookings/:id', async (c) => {
 });
 
 restaurant.post('/tables', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!canUseQ(actor)) return forbid(c);
     if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
         return c.json({ error: 'Tables module is disabled for this business' }, 409);
     }
@@ -1883,6 +1897,8 @@ restaurant.post('/tables', async (c) => {
 });
 
 restaurant.patch('/tables/:id/status', async (c) => {
+    const actor = await restaurantActorFor(c);
+    if (!(canUseQ(actor) || actor.role === 'waiter')) return forbid(c);
     if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
         return c.json({ error: 'Tables module is disabled for this business' }, 409);
     }

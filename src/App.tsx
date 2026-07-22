@@ -1,11 +1,18 @@
 import { useEffect } from 'react';
 import { useRoutes, BrowserRouter, useLocation } from 'react-router-dom';
 import { appRoutes } from '@/views/routes';
+import { platformRoutes } from '@/views/platformRoutes';
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary';
 import { useAuthStore } from '@/store/auth.store';
+import { isPlatformHost } from '@/utils/host';
+
+// Host-selected shell (ADR: docs/adr/ADR_PLATFORM_OPERATIONS_EXPERIENCE.md):
+// the Platform origin mounts the Platform Operations route table; every other
+// origin mounts the tenant/public route table. One build, two experiences.
+const onPlatformHost = isPlatformHost();
 
 const AppRoutes = () => {
-  const element = useRoutes(appRoutes);
+  const element = useRoutes(onPlatformHost ? platformRoutes : appRoutes);
   return element;
 };
 
@@ -21,6 +28,8 @@ function AppContent() {
     const segments = location.pathname.split('/').filter(Boolean);
     const labels: Record<string, string> = {
       ai: 'AI',
+      'ai-operations': 'AI Operations',
+      audit: 'Audit & Security',
       'audit-logs': 'Audit Logs',
       billing: 'Orders',
       businesses: 'Businesses',
@@ -38,7 +47,9 @@ function AppContent() {
       marketplace: 'Marketplace',
       menu: 'Menu',
       merchants: 'Merchants',
+      'no-access': 'No Platform Access',
       offers: 'Offers',
+      people: 'People',
       personal: 'Personal',
       pharmacy: 'Pharmacy',
       pos: 'POS',
@@ -55,10 +66,16 @@ function AppContent() {
       supermarket: 'Supermarket',
       support: 'Support',
       tasks: 'Tasks',
+      tenants: 'Tenants',
       users: 'Users',
     };
 
     let pageName = 'Business Operating System';
+    if (onPlatformHost) {
+      pageName = segments[0] ? (labels[segments[0]] ?? 'Platform') : 'Overview';
+      document.title = `Q360 Platform — ${pageName}`;
+      return;
+    }
     if (segments[0] === 'onboarding') {
       pageName = 'Set Up Your Workspace';
     } else if (segments[0] === 'app' && segments[1]) {

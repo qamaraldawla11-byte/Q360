@@ -216,7 +216,7 @@ export interface RestaurantQBusinessMemory {
 
 export interface RestaurantQProviderStatus {
     mode: 'rules_only' | 'model_active' | 'budget_reached';
-    provider: 'openai' | 'q360-rules-v1';
+    provider: 'openai' | 'kimi' | 'q360-rules-v1';
     model: string;
     configured: boolean;
     externalModelEnabled: boolean;
@@ -307,15 +307,17 @@ export const restaurantApi = {
     getDashboard: () => http.get<RestaurantDashboard>('/restaurant/dashboard'),
 
     getBusinessPulse: () => http.get<RestaurantQPulse>('/restaurant/business-pulse'),
-    askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }),
+    // Q AI calls can wait up to ~30s server-side for the model before falling
+    // back to rules; allow that window plus overhead (client default is 10s).
+    askBusinessPulse: (prompt: string) => http.post<RestaurantQPulse>('/restaurant/business-pulse/ask', { prompt }, { timeout: 45_000 }),
     getQBusinessBriefing: () => http.get<{ briefing: RestaurantQBusinessBriefing }>('/restaurant/q/briefing'),
     getQBusinessMemory: () => http.get<{ memory: RestaurantQBusinessMemory }>('/restaurant/q/memory'),
     updateQBusinessMemory: (payload: Omit<RestaurantQBusinessMemory, 'updatedAt'>) => http.put<{ memory: RestaurantQBusinessMemory; message: string }>('/restaurant/q/memory', payload),
     getQProviderStatus: () => http.get<{ periodStart: string; provider: RestaurantQProviderStatus }>('/restaurant/q/provider-status'),
     getQConversations: () => http.get<{ conversations: RestaurantQConversation[] }>('/restaurant/q/conversations'),
     getQConversation: (id: string) => http.get<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}`),
-    createQConversation: (prompt: string) => http.post<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>('/restaurant/q/conversations', { prompt }),
-    sendQMessage: (id: string, prompt: string) => http.post<{ messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}/messages`, { prompt }),
+    createQConversation: (prompt: string) => http.post<{ conversation: RestaurantQConversation; messages: RestaurantQChatMessage[] }>('/restaurant/q/conversations', { prompt }, { timeout: 45_000 }),
+    sendQMessage: (id: string, prompt: string) => http.post<{ messages: RestaurantQChatMessage[] }>(`/restaurant/q/conversations/${id}/messages`, { prompt }, { timeout: 45_000 }),
     giveQMessageFeedback: (id: string, feedback: 'helpful' | 'not_helpful') => http.patch<{ message: RestaurantQChatMessage }>(`/restaurant/q/messages/${id}/feedback`, { feedback }),
     getQDrafts: () => http.get<{ drafts: RestaurantQDraft[] }>('/restaurant/business-pulse/drafts'),
     getQUsage: () => http.get<RestaurantQUsage>('/restaurant/business-pulse/usage'),

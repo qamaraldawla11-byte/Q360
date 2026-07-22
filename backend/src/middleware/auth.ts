@@ -2,7 +2,10 @@
 import { Context, Next } from 'hono';
 import { verify } from 'hono/jwt';
 import type { AppEnv } from '../types/app.js';
-import { DEFAULT_BUSINESS_ID, isWorkspaceRoute } from '../utils/tenant.js';
+import { eq } from 'drizzle-orm';
+import { db, first } from '../db/client.js';
+import { users } from '../db/schema.js';
+import { isWorkspaceRoute, stableTenantId } from '../utils/tenant.js';
 import { resolveEffectiveBusinessRole } from '../services/businessOwnership.js';
 
 // SECURITY: JWT_SECRET must be set in environment. No fallback allowed.
@@ -39,16 +42,56 @@ export const authMiddleware = async (c: Context<AppEnv>, next: Next) => {
         // Attach user info to context
         c.set('userId', payload.sub);
         c.set('userEmail', payload.email);
-        // Default to the seeded demo tenant only for missing legacy tokens.
+        // Workspace-route identities are rejected; a missing tenant claim resolves
+        // only through the verified user record below.
         if (isWorkspaceRoute(payload.businessId)) {
             return c.json({ error: 'Unauthorized: Invalid tenant identity' }, 401);
         }
-        const businessId = payload.businessId || DEFAULT_BUSINESS_ID;
+        let businessId = payload.businessId;
+        if (!businessId) {
+            // Legacy tokens predate the tenant claim: resolve the tenant only through
+            // the verified user record, never through a shared default tenant.
+            const legacyUser = await first(db.select({ businessId: users.businessId }).from(users).where(eq(users.id, payload.sub)));
+            const resolvedTenantId = stableTenantId(legacyUser?.businessId);
+            if (!resolvedTenantId) {
+                return c.json({ error: 'TENANT_IDENTITY_REQUIRED', message: 'A stable business identity is required.' }, 400);
+            }
+            businessId = resolvedTenantId;
+        }
         c.set('businessId', businessId);
+
+        // Per-request account-state enforcement (Platform Operations ADR §7.4):
+        // lock, deactivation, and role changes take effect immediately — not at
+        // the next login — because the token's 24h lifetime is no longer the
+        // only session control.
+        // Schema-drift safety: if the status/is_locked columns are unavailable
+        // in the deployed database, fall back to token claims (previous
+        // behavior) and log, instead of taking down every authenticated route.
+        let accountRole: string = payload.role;
+        try {
+            const account = await first(db.select({
+                role: users.role,
+                status: users.status,
+                isLocked: users.isLocked,
+            }).from(users).where(eq(users.id, payload.sub)));
+            if (!account) {
+                return c.json({ error: 'Unauthorized: Account no longer exists' }, 401);
+            }
+            if (account.isLocked) {
+                return c.json({ error: 'ACCOUNT_LOCKED', message: 'This account has been locked by an administrator.' }, 403);
+            }
+            if (account.status && account.status !== 'active') {
+                return c.json({ error: 'ACCOUNT_INACTIVE', message: 'This account has been deactivated.' }, 403);
+            }
+            accountRole = account.role ?? payload.role;
+        } catch (enforcementError) {
+            console.error('[AUTH] Account-state enforcement unavailable; falling back to token claims:', enforcementError);
+        }
+
         c.set('userRole', await resolveEffectiveBusinessRole({
             userId: payload.sub,
             businessId,
-            tokenRole: payload.role,
+            tokenRole: accountRole,
         }));
 
         await next();

@@ -4,7 +4,7 @@ import { db, first } from '../db/client.js';
 import { businesses, staffMembers, users } from '../db/schema.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
-import { ensureUserBusiness } from '../utils/tenant.js';
+import { ensureUserBusiness, TenantIdentityRequiredError } from '../utils/tenant.js';
 
 const userRoutes = new Hono<AppEnv>();
 
@@ -98,7 +98,15 @@ userRoutes.put('/profile', async (c) => {
     }
 
     const userId = c.get('userId');
-    const businessId = await ensureUserBusiness(userId, { businessName, segment });
+    let businessId: string | null;
+    try {
+        businessId = await ensureUserBusiness(userId, { businessName, segment });
+    } catch (error) {
+        if (error instanceof TenantIdentityRequiredError) {
+            return c.json({ error: 'TENANT_IDENTITY_REQUIRED', message: 'A stable business identity is required.' }, 400);
+        }
+        throw error;
+    }
     if (!businessId) {
         return c.json({ error: 'User not found' }, 404);
     }

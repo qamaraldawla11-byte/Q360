@@ -17,8 +17,8 @@ export const DashboardView = () => {
     return (
         <div>
             <header style={{ marginBottom: '32px' }}>
-                <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Admin Dashboard</h1>
-                <p style={{ color: 'var(--fg-secondary)', marginTop: '8px' }}>System overview and recent activity</p>
+                <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Platform Overview</h1>
+                <p style={{ color: 'var(--fg-secondary)', marginTop: '8px' }}>Platform health, tenants, and recent operations</p>
             </header>
 
             {/* Stats Cards */}

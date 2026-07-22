@@ -19,6 +19,7 @@
         "verify:bookings-q-foundation": "tsx src/scripts/verify_bookings_q_foundation.ts",
     "verify:q-provider-config": "tsx src/scripts/verify_q_provider_config.ts",
     "verify:q-production-readiness": "tsx src/scripts/verify_q_production_readiness.ts",
+    "verify:q-provider-diagnostics": "tsx src/scripts/verify_q_provider_diagnostics.ts",
     "verify:public-q-concierge": "tsx src/scripts/verify_public_q_concierge.ts",
         "verify:q-orchestration-contract": "tsx src/scripts/verify_q_orchestration_contract.ts",
         "verify:q-guest-brief-contract": "tsx src/scripts/verify_q_guest_brief_contract.ts",
@@ -36,6 +37,7 @@
         "verify:quotes": "tsx src/scripts/verify_quotes.ts",
         "verify:jwt-init": "tsx src/scripts/verify_jwt_init.ts",
         "verify:otp": "tsx src/scripts/verify_otp.ts",
+        "verify:security-authz": "tsx src/scripts/verify_security_authz.ts",
         "verify:resend-live": "node dist/scripts/verify_resend_live.js"
     },
     "dependencies": {

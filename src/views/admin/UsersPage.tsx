@@ -8,7 +8,7 @@ export const UsersPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    const [newUser, setNewUser] = useState({ email: '', role: 'user', businessId: 'biz_main', name: '' });
+    const [newUser, setNewUser] = useState({ email: '', role: 'user', businessId: '', name: '' });
 
     const fetchUsers = async () => {
         try {
@@ -27,10 +27,11 @@ export const UsersPage = () => {
     }, []);
 
     const handleCreate = async () => {
+        if (!newUser.businessId.trim()) return;
         try {
             await adminApi.createUser(newUser);
             setShowModal(false);
-            setNewUser({ email: '', role: 'user', businessId: 'biz_main', name: '' });
+            setNewUser({ email: '', role: 'user', businessId: '', name: '' });
             fetchUsers();
         } catch {
             alert('Failed to create user');
@@ -90,19 +91,30 @@ export const UsersPage = () => {
                                 onChange={e => setNewUser({ ...newUser, name: e.target.value })}
                                 style={{ padding: '8px' }}
                             />
+                            <input
+                                placeholder="Business ID (existing tenant, e.g. biz_...)"
+                                value={newUser.businessId}
+                                onChange={e => setNewUser({ ...newUser, businessId: e.target.value })}
+                                style={{ padding: '8px' }}
+                            />
+                            {!newUser.businessId.trim() && (
+                                <div style={{ color: '#f59e0b', fontSize: '12px' }}>
+                                    An existing business ID is required. The user will be attached to that tenant.
+                                </div>
+                            )}
                             <select
                                 value={newUser.role}
                                 onChange={e => setNewUser({ ...newUser, role: e.target.value })}
                                 style={{ padding: '8px' }}
                             >
                                 <option value="user">User</option>
-                                <option value="cashier">Cashier</option>
+                                <option value="staff">Staff</option>
                                 <option value="manager">Manager</option>
                                 <option value="admin">Admin</option>
                                 <option value="owner">Owner</option>
                             </select>
                             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                <button onClick={handleCreate} style={{ flex: 1, padding: '8px', background: '#10b981', color: 'white', border: 'none' }}>Create</button>
+                                <button onClick={handleCreate} disabled={!newUser.businessId.trim()} style={{ flex: 1, padding: '8px', background: '#10b981', color: 'white', border: 'none', opacity: newUser.businessId.trim() ? 1 : 0.5 }}>Create</button>
                                 <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: '8px', background: '#ef4444', color: 'white', border: 'none' }}>Cancel</button>
                             </div>
                         </div>

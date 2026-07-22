@@ -36,13 +36,21 @@ const developmentOrigins = [
     'http://127.0.0.1:5174',
     'http://127.0.0.1:3000',
 ];
+// Platform origins are first-class, versioned configuration (ADR:
+// docs/adr/ADR_PLATFORM_OPERATIONS_EXPERIENCE.md, Phase 0). admin.q360.app is
+// the Platform Operations origin. Explicit origins only — never a wildcard.
+const platformOrigins = [
+    'https://admin.q360.app',
+];
 const envOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+// Every previously valid origin is preserved: deploy-time CORS_ORIGINS entries
+// remain authoritative, platform origins are additive. Nothing is weakened.
 const allowedOrigins = process.env.NODE_ENV === 'production'
-    ? envOrigins
-    : [...developmentOrigins, ...envOrigins];
+    ? [...platformOrigins, ...envOrigins]
+    : [...developmentOrigins, ...platformOrigins, ...envOrigins];
 
 app.use('*', cors({
     origin: allowedOrigins,

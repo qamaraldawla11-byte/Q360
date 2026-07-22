@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db, first } from '../db/client.js';
 import { customers, products, quoteItems, quotes } from '../db/schema.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
 
@@ -207,7 +207,7 @@ quotesRouter.get('/:id', async (c) => {
 });
 
 // POST /api/quotes
-quotesRouter.post('/', async (c) => {
+quotesRouter.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => {
     let body: QuoteInput;
 
     try {
@@ -268,7 +268,7 @@ quotesRouter.post('/', async (c) => {
 });
 
 // PATCH /api/quotes/:id
-quotesRouter.patch('/:id', async (c) => {
+quotesRouter.patch('/:id', requireRole(['owner', 'admin', 'manager']), async (c) => {
     let body: QuoteInput;
 
     try {
@@ -278,6 +278,7 @@ quotesRouter.patch('/:id', async (c) => {
     }
 
     const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Quote id is required' }, 400);
     const businessId = c.get('businessId');
 
     try {

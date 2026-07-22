@@ -1,24 +1,20 @@
 /* eslint-disable react-refresh/only-export-components */
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, type RouteObject, useLocation } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
 import { AppShell } from '@/layouts/AppShell';
 import { useAuthStore } from '@/store/auth.store';
 import { RestaurantAccessGuard } from '@/components/auth/RestaurantAccessGuard';
 import { hasRestaurantModuleAccess, isRestaurantManager } from '@/utils/restaurantAccess';
+import { PLATFORM_APP_URL } from '@/utils/host';
 
-// Admin Pages (Lazy Load)
-const AdminLayout = lazy(() => import('@/layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
-const UsersPage = lazy(() => import('@/views/admin/UsersPage').then(m => ({ default: m.UsersPage })));
-const BusinessesPage = lazy(() => import('@/views/admin/BusinessesPage').then(m => ({ default: m.BusinessesPage })));
-const AuditLogsPage = lazy(() => import('@/views/admin/AuditLogsPage').then(m => ({ default: m.AuditLogsPage })));
-const SettingsPage = lazy(() => import('@/views/admin/SettingsPage').then(m => ({ default: m.SettingsPage })));
-const QUsagePage = lazy(() => import('@/views/admin/QUsagePage').then(m => ({ default: m.QUsagePage })));
-
-
+// NOTE: The Platform Operations experience (admin.q360.app) has its own route
+// table in src/views/platformRoutes.tsx, selected by host in src/App.tsx.
+// This file serves ONLY tenant/public origins.
+// Architecture authority: docs/adr/ADR_PLATFORM_OPERATIONS_EXPERIENCE.md
 
 // Lazy Load Modules
-const LandingView = lazy(() => import('@/modules/public/LandingView').then(m => ({ default: m.LandingView })));
+const LaunchLandingView = lazy(() => import('@/modules/public/LaunchLandingView').then(m => ({ default: m.LaunchLandingView })));
 const PricingView = lazy(() => import('@/modules/public/PricingView').then(m => ({ default: m.PricingView })));
 const DocsView = lazy(() => import('@/modules/public/DocsView').then(m => ({ default: m.DocsView })));
 const SupportView = lazy(() => import('@/modules/public/SupportView').then(m => ({ default: m.SupportView })));
@@ -36,7 +32,6 @@ const GuestBriefReviewView = lazy(() => import('@/modules/onboarding/GuestBriefR
 
 const LoginView = lazy(() => import('@/modules/auth/LoginView').then(m => ({ default: m.LoginView })));
 const SegmentsView = lazy(() => import('@/modules/core/SegmentsView').then(m => ({ default: m.SegmentsView })));
-const DashboardView = lazy(() => import('@/modules/admin/DashboardView').then(m => ({ default: m.DashboardView })));
 const MarketplaceView = lazy(() => import('@/modules/marketplace/MarketplaceView').then(m => ({ default: m.MarketplaceView })));
 const LogisticsView = lazy(() => import('@/modules/logistics/LogisticsView').then(m => ({ default: m.LogisticsView })));
 const MerchantsView = lazy(() => import('@/modules/merchants/MerchantsView').then(m => ({ default: m.MerchantsView })));
@@ -128,6 +123,28 @@ const PageLoader = () => (
     </div>
 );
 
+// Cross-origin handoff (ADR §8): admin surfaces exist ONLY on the Platform
+// origin. Legacy /admin/* and /app/admin paths on tenant origins forward to
+// the Platform origin, preserving the intended destination.
+const PLATFORM_PATH_MAP: Record<string, string> = {
+    '/admin': '/',
+    '/admin/users': '/people',
+    '/admin/businesses': '/tenants',
+    '/admin/audit-logs': '/audit',
+    '/admin/q-usage': '/ai-operations',
+    '/admin/settings': '/settings',
+    '/app/admin': '/',
+};
+
+const PlatformOriginRedirect = () => {
+    const location = useLocation();
+    useEffect(() => {
+        const target = PLATFORM_PATH_MAP[location.pathname] ?? '/';
+        window.location.replace(`${PLATFORM_APP_URL}${target}`);
+    }, [location.pathname]);
+    return <PageLoader />;
+};
+
 // Auth Guard Wrapper — Architecture Spec Compliant
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, user } = useAuthStore();
@@ -171,21 +188,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
 };
 
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-    const { isAuthenticated, user } = useAuthStore();
-
-    if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
-    }
-    if (user?.role !== 'admin') {
-        return <Navigate to="/app" replace />;
-    }
-
-    return <>{children}</>;
-};
-
 export const appRoutes: RouteObject[] = [
-    { path: '/', element: <Suspense fallback={<PageLoader />}><LandingView /></Suspense> },
+    { path: '/', element: <Suspense fallback={<PageLoader />}><LaunchLandingView /></Suspense> },
+    { path: '/design-2', element: <Navigate to="/" replace /> },
     { path: '/pricing', element: <Suspense fallback={<PageLoader />}><PricingView /></Suspense> },
     { path: '/docs', element: <Suspense fallback={<PageLoader />}><DocsView /></Suspense> },
     { path: '/support', element: <Suspense fallback={<PageLoader />}><SupportView /></Suspense> },
@@ -321,12 +326,10 @@ export const appRoutes: RouteObject[] = [
                         element: <Navigate to="/app/personal" replace />,
                     },
                     {
+                        // Consolidated (ADR §8): the old in-workspace admin
+                        // dashboard now lives only on the Platform origin.
                         path: 'admin',
-                        element: (
-                            <Suspense fallback={<PageLoader />}>
-                                <DashboardView />
-                            </Suspense>
-                        ),
+                        element: <PlatformOriginRedirect />,
                     },
                     {
                         path: 'marketplace',
@@ -364,18 +367,10 @@ export const appRoutes: RouteObject[] = [
             },
         ],
     },
-    {
-        path: '/admin',
-        element: <ProtectedRoute><AdminRoute><AdminLayout /></AdminRoute></ProtectedRoute>,
-        children: [
-            { index: true, element: <Navigate to="/admin/users" replace /> },
-            { path: 'users', element: <UsersPage /> },
-            { path: 'businesses', element: <BusinessesPage /> },
-            { path: 'audit-logs', element: <AuditLogsPage /> },
-            { path: 'q-usage', element: <QUsagePage /> },
-            { path: 'settings', element: <SettingsPage /> },
-        ]
-    },
+    // Consolidated (ADR §8): the /admin/* tree moved to the Platform origin's
+    // own route table. On tenant origins it forwards cross-origin.
+    { path: '/admin', element: <PlatformOriginRedirect /> },
+    { path: '/admin/*', element: <PlatformOriginRedirect /> },
     {
         path: '*',
         element: (

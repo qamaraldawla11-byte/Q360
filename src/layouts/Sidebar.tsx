@@ -6,21 +6,25 @@ import {
     Users,
     Settings,
     LogOut,
+    ShieldAlert,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { LogoFull, LogoMark } from '@/components/ui/Logo';
+import { PLATFORM_APP_URL } from '@/utils/host';
 
 export const Sidebar = () => {
-    const { logout } = useAuthStore();
+    const { logout, user } = useAuthStore();
     const { sidebarCollapsed } = useConfigStore();
 
+    // The Platform Console link is visible only to platform operators and
+    // points at the Platform origin — the console never renders inside the
+    // tenant workspace (ADR: docs/adr/ADR_PLATFORM_OPERATIONS_EXPERIENCE.md).
     const navItems = [
         { icon: LayoutDashboard, label: 'Segments Hub', path: '/app/segments' },
         { icon: Store, label: 'Marketplace', path: '/app/marketplace' },
         { icon: Truck, label: 'Logistics', path: '/app/logistics' },
         { icon: Users, label: 'Merchants', path: '/app/merchants' },
-        { icon: LayoutDashboard, label: 'Admin Ops', path: '/app/admin' },
         { icon: Settings, label: 'Settings', path: '/app/settings' },
     ];
 
@@ -68,6 +72,26 @@ export const Sidebar = () => {
                         {!sidebarCollapsed && <span style={{ marginLeft: '12px', fontSize: '14px' }}>{item.label}</span>}
                     </NavLink>
                 ))}
+
+                {user?.role === 'admin' && (
+                    <a
+                        href={PLATFORM_APP_URL}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '12px',
+                            borderRadius: 'var(--radius-md)',
+                            textDecoration: 'none',
+                            color: '#ef4444',
+                            background: 'transparent',
+                            transition: 'background 0.2s, color 0.2s',
+                            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                        }}
+                    >
+                        <ShieldAlert size={20} />
+                        {!sidebarCollapsed && <span style={{ marginLeft: '12px', fontSize: '14px' }}>Platform Console</span>}
+                    </a>
+                )}
             </nav>
 
             {/* Footer / User */}
