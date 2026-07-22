@@ -171,11 +171,13 @@ export function GuestQConcierge({
       setIsSending(true);
 
       try {
+        // The backend may wait up to ~30s for the AI provider before falling
+        // back to guided mode; allow that window plus overhead (default is 10s).
         const result = await http.post<PublicConciergeResponse>('/public/q-concierge', {
           message,
           history,
           draft: setupRef.current,
-        });
+        }, { timeout: 45_000 });
         const nextSetup = mergeSetup(setupRef.current, result.updates);
         setupRef.current = nextSetup;
         setSetup(nextSetup);
