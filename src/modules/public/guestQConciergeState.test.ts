@@ -1,14 +1,20 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  classifyBackendReply,
+  determineNextPresentation,
+  deriveQuickReplies,
   emailPattern,
   FIELD_ORDER,
   fallbackModules,
   fieldDefByKey,
+  hasInlineSkip,
   initialJourney,
   initialSetup,
   isContinueMessage,
   isSkipMessage,
+  isStaleQuickReply,
+  isStaleRevision,
   mergeSetup,
   nextField,
   parseActiveAnswer,
@@ -420,5 +426,181 @@ describe('guestQConciergeState', () => {
     const nextJourney = syncJourney(correctedSetup, { ...journey, businessName: 'missing' }, 'businessName', false, false);
     assert.equal(nextJourney.businessName, 'confirmed');
     assert.equal(correctedSetup.businessName, 'Cairo Bites');
+  });
+
+  // Conversational sequencing, duplicate-question prevention, and active-control sync.
+  it('backend acknowledgement + local next prompt creates one question', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const reply = 'Dine-in only it is.';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'prose');
+    assert.equal(nextField(setup, journey), 'email');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, reply);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'email');
+  });
+
+  it('backend repeated country question is suppressed', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const reply = 'Which country will Noor operate in?';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'stale');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, null);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'email');
+  });
+
+  it('skipped bookings is never asked again', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+      bookings: 'skipped',
+    };
+    assert.notEqual(nextField(setup, journey), 'bookings');
+    const reply = 'Will you take table or appointment bookings?';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'stale');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, null);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'priorities');
+  });
+
+  it('stale booking quick reply cannot answer stock field', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+    };
+    const stockReplies = deriveQuickReplies('stockConcerns', setup, journey);
+    assert.ok(!stockReplies.includes('Yes, take bookings'));
+    assert.equal(isStaleQuickReply('Yes, take bookings', 'stockConcerns', setup, journey), true);
+  });
+
+  it('active-field change clears previous quick replies', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+    };
+    const bookingReplies = deriveQuickReplies('bookings', setup, journey);
+    assert.ok(bookingReplies.includes('Yes, take bookings'));
+    const priorityReplies = deriveQuickReplies('priorities', setup, journey);
+    assert.ok(!priorityReplies.includes('Yes, take bookings'));
+  });
+
+  it('stale async response from revision N cannot alter revision N+1', () => {
+    assert.equal(isStaleRevision(1, 2), true);
+    assert.equal(isStaleRevision(2, 2), false);
+  });
+
+  it('review-ready clears active field and quick replies', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+      priorities: ['Fast checkout'],
+      otherPreferences: 'none',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+      bookings: 'skipped',
+      priorities: 'confirmed',
+      otherPreferences: 'confirmed',
+    };
+    assert.equal(nextField(setup, journey), null);
+    assert.deepEqual(deriveQuickReplies(null, setup, journey), []);
+    const presentation = determineNextPresentation('Thanks — I have everything I need.', setup, journey);
+    assert.equal(presentation.backendReply, 'Thanks — I have everything I need.');
+    assert.equal(presentation.next.type, 'review');
+  });
+
+  it('only one Skip for now control is rendered', () => {
+    // Fields with an inline skip chip/button hide the global action-bar skip.
+    assert.equal(hasInlineSkip('stockConcerns'), true);
+    assert.equal(hasInlineSkip('bookings'), true);
+    // Fields without an inline skip rely on the single global action-bar skip.
+    assert.equal(hasInlineSkip('tables'), false);
+    assert.equal(hasInlineSkip('teamSize'), false);
+    assert.equal(hasInlineSkip('priorities'), false);
+  });
+
+  it('skip message recognizes No, skip and Skip for now', () => {
+    assert.equal(isSkipMessage('No, skip'), true);
+    assert.equal(isSkipMessage('Skip for now'), true);
+    assert.equal(isSkipMessage('skip'), true);
+    assert.equal(isSkipMessage('Egypt'), false);
   });
 });

@@ -50,7 +50,9 @@ export const countOf = (value: unknown) => {
 export const isRestaurantLike = (type: string) => /restaurant|cafe|café/.test((type || '').toLowerCase());
 
 export const isSkipMessage = (message: string) =>
-  /^(skip|later|not now|pass|no thanks?|nope|none|no)$/i.test(message.trim());
+  /^(skip(?:\s+for\s+now)?|later|not\s+now|pass|no\s+thanks?|nope|none|no(?:,\s*skip)?)$/i.test(
+    message.trim(),
+  );
 
 export const isContinueMessage = (message: string) =>
   /^(continue|proceed|review|finish|done|next)$/i.test(message.trim());
@@ -268,7 +270,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.tables !== undefined,
     question: () => 'How many tables do you expect to manage?',
     confirmQuestion: (s) => `You mentioned ${s.tables} tables. Is that right?`,
-    quickReplies: () => ['4 tables', '10 tables', '20 tables', 'Skip for now'],
+    quickReplies: () => ['4 tables', '10 tables', '20 tables'],
   },
   {
     key: 'teamSize',
@@ -278,7 +280,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.employees !== undefined,
     question: () => 'How many team members do you expect at the start?',
     confirmQuestion: (s) => `You mentioned ${s.employees} team members. Is that right?`,
-    quickReplies: () => ['Just me', '2–5 people', '6–10 people', 'Skip for now'],
+    quickReplies: () => ['Just me', '2–5 people', '6–10 people'],
   },
   {
     key: 'stockConcerns',
@@ -308,7 +310,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.priorities.length > 0,
     question: () => 'What matters most for your setup right now?',
     confirmQuestion: (s) => `You mentioned “${s.priorities.join(', ')}”. Is that right?`,
-    quickReplies: () => ['Sales', 'Stock', 'Customers', 'Bookings', 'Team', 'Skip for now'],
+    quickReplies: () => ['Sales', 'Stock', 'Customers', 'Bookings', 'Team'],
   },
   {
     key: 'otherPreferences',
@@ -533,3 +535,107 @@ export const syncJourney = (
   }
   return next;
 };
+
+/**
+ * Returns true when the backend prose is asking the given field.
+ * Matches the field's guided question, confirmation question, or a question
+ * that ends with ? and mentions the field label.
+ */
+export const replyAsksField = (reply: string, field: FieldKey, setup: GuestSetup): boolean => {
+  if (!reply) return false;
+  const def = fieldDefByKey[field];
+  const question = def.question(setup).toLowerCase();
+  const confirm = def.confirmQuestion(setup).toLowerCase();
+  const label = def.label.toLowerCase();
+  const normalized = reply.toLowerCase().trim();
+  return (
+    normalized.includes(question) ||
+    normalized.includes(confirm) ||
+    (normalized.includes(label) && normalized.endsWith('?'))
+  );
+};
+
+/**
+ * Classifies a backend reply relative to the current journey:
+ * - 'intended': the reply asks the next field the frontend intends to ask.
+ * - 'stale':    the reply asks a confirmed, skipped, or off-sequence field.
+ * - 'prose':    the reply is an acknowledgement or unrelated prose.
+ */
+export const classifyBackendReply = (
+  reply: string,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): 'intended' | 'stale' | 'prose' => {
+  const trimmed = textOf(reply);
+  if (!trimmed) return 'prose';
+  const intended = nextField(setup, journey);
+  if (intended && replyAsksField(trimmed, intended, setup)) return 'intended';
+  for (const key of FIELD_ORDER) {
+    if (!fieldDefByKey[key].applicable(setup)) continue;
+    if (replyAsksField(trimmed, key, setup)) return 'stale';
+  }
+  return 'prose';
+};
+
+/**
+ * Decides what to render after a backend response:
+ * - If the backend already asked the intended next question, show it and activate
+ *   that field; do not append a duplicate local question.
+ * - If the backend asked a stale/off-sequence question, suppress it and ask the
+ *   intended field locally exactly once.
+ * - Otherwise show the backend prose and ask the intended field once.
+ * - When no intended field remains, move to review-ready.
+ */
+export const determineNextPresentation = (
+  backendReply: string | undefined,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): {
+  backendReply: string | null;
+  next: { type: 'activate'; field: FieldKey } | { type: 'ask'; field: FieldKey } | { type: 'review' };
+} => {
+  const reply = textOf(backendReply);
+  const intended = nextField(setup, journey);
+  const classification = classifyBackendReply(reply, setup, journey);
+
+  if (!intended) {
+    return { backendReply: classification === 'stale' ? null : reply, next: { type: 'review' } };
+  }
+
+  if (classification === 'intended') {
+    return { backendReply: reply, next: { type: 'activate', field: intended } };
+  }
+
+  return {
+    backendReply: classification === 'stale' ? null : reply,
+    next: { type: 'ask', field: intended },
+  };
+};
+
+/** Quick replies derived directly from the current active field and journey state. */
+export const deriveQuickReplies = (
+  field: FieldKey | null,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): string[] => {
+  if (!field) return [];
+  const def = fieldDefByKey[field];
+  const status = journey[field];
+  return status === 'captured' ? ['Yes, that’s right', 'Change it'] : def.quickReplies(setup);
+};
+
+/** Returns true when a quick-reply label does not belong to the active field. */
+export const isStaleQuickReply = (
+  reply: string,
+  field: FieldKey,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): boolean => !deriveQuickReplies(field, setup, journey).includes(reply);
+
+/** Returns true when an in-flight response belongs to an older journey revision. */
+export const isStaleRevision = (requestRevision: number, currentRevision: number): boolean =>
+  requestRevision !== currentRevision;
+
+/** Returns true when the field's own quick replies already contain a skip action. */
+export const hasInlineSkip = (field: FieldKey): boolean =>
+  fieldDefByKey[field].quickReplies(initialSetup('')).some((reply) => isSkipMessage(reply));

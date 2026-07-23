@@ -348,14 +348,16 @@ test('TEST 7.3 - repeated backend questions for confirmed fields are not shown a
   await page.locator('#d2-hero-input').fill('Restaurant');
   await page.locator('#d2-hero-input').press('Enter');
 
-  // The first occurrence of the business-type question is shown.
-  await expect(page.getByText('What kind of business do you run?')).toHaveCount(1);
+  // The backend tries to re-ask the business type, but it is already confirmed from the
+  // user's first message, so the frontend suppresses it and asks the next intended field.
+  await expect(page.getByText('What kind of business do you run?')).toHaveCount(0);
+  await expect(page.getByText(/How will customers be served/)).toBeVisible();
 
   // A subsequent backend reply that tries to re-ask the already-confirmed business type
   // must not add another visible copy of that question.
   await page.getByLabel('Message Q').fill('Restaurant');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('What kind of business do you run?')).toHaveCount(1);
+  await expect(page.getByText('What kind of business do you run?')).toHaveCount(0);
 });
 
 test('TEST 7.4 - owner name is clarified and country quick reply does not repeat the country question', async ({ page }) => {
