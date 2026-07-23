@@ -220,14 +220,14 @@ describe('guestQConciergeState', () => {
     assert.equal(setup.serviceMode, 'both');
   });
 
-  it('fallbackModules includes Tables and Bookings for dine-in restaurants', () => {
+  it('fallbackModules includes Tables but not Bookings for dine-in restaurants without bookings', () => {
     const setup = mergeSetup(initialSetup('Hello'), {
       businessType: 'restaurant',
       serviceMode: 'dine_in',
     });
     const modules = fallbackModules(setup);
     assert.ok(modules.includes('Tables'));
-    assert.ok(modules.includes('Bookings'));
+    assert.ok(!modules.includes('Bookings'));
   });
 
   it('fallbackModules omits Tables and Bookings for takeaway-only restaurants', () => {
@@ -696,13 +696,13 @@ describe('guestQConciergeState', () => {
     assert.equal(parseActiveAnswer('30 tables', 'tables', setup).tables, 30);
   });
 
-  it('M7.4A fallbackModules adds Tables and Bookings only for dine-in service', () => {
+  it('M7.4A fallbackModules adds Tables only for dine-in service; Bookings require explicit choice', () => {
     const dineIn = mergeSetup(initialSetup('Hello'), {
       businessType: 'restaurant',
       services: ['dine-in'],
     });
     assert.ok(fallbackModules(dineIn).includes('Tables'));
-    assert.ok(fallbackModules(dineIn).includes('Bookings'));
+    assert.ok(!fallbackModules(dineIn).includes('Bookings'));
 
     const takeaway = mergeSetup(initialSetup('Hello'), {
       businessType: 'restaurant',
@@ -717,5 +717,172 @@ describe('guestQConciergeState', () => {
     });
     assert.ok(!fallbackModules(delivery).includes('Tables'));
     assert.ok(!fallbackModules(delivery).includes('Bookings'));
+  });
+
+  // M7.4B prepared module rules derived from confirmed setup.
+  it('M7.4B: takeaway + delivery, tables 0 → no Tables', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway', 'delivery'],
+      tables: 0,
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: delivery only → no Tables', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['delivery'],
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: dine-in + 4 tables → Tables included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      tables: 4,
+    });
+    assert.ok(fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: dine-in + tables 0 → Tables excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      tables: 0,
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: bookings true → Bookings included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      bookings: true,
+    });
+    assert.ok(fallbackModules(setup).includes('Bookings'));
+  });
+
+  it('M7.4B: bookings false/skipped → Bookings excluded', () => {
+    const noBookings = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      bookings: false,
+    });
+    assert.ok(!fallbackModules(noBookings).includes('Bookings'));
+
+    const skipped = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(!fallbackModules(skipped).includes('Bookings'));
+  });
+
+  it('M7.4B: bookings unanswered → Bookings excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(setup.bookings === undefined);
+    assert.ok(!fallbackModules(setup).includes('Bookings'));
+  });
+
+  it('M7.4B: stock true → Stock included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      stockConcerns: true,
+    });
+    assert.ok(fallbackModules(setup).includes('Stock'));
+  });
+
+  it('M7.4B: stock false/skipped → Stock excluded', () => {
+    const noStock = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      stockConcerns: false,
+    });
+    assert.ok(!fallbackModules(noStock).includes('Stock'));
+
+    const skipped = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(!fallbackModules(skipped).includes('Stock'));
+  });
+
+  it('M7.4B: stock unanswered → Stock excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(setup.stockConcerns === undefined);
+    assert.ok(!fallbackModules(setup).includes('Stock'));
+  });
+
+  it('M7.4B: team size 1 → Team excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      employees: 1,
+    });
+    assert.ok(!fallbackModules(setup).includes('Team'));
+  });
+
+  it('M7.4B: team size 3 → Team included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      employees: 3,
+    });
+    assert.ok(fallbackModules(setup).includes('Team'));
+  });
+
+  it('M7.4B: delivery capability does not invent a Delivery module', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway', 'delivery'],
+    });
+    const modules = fallbackModules(setup);
+    assert.ok(!modules.includes('Delivery'));
+    assert.ok(modules.includes('Sales'));
+  });
+
+  it('M7.4B: frontend and backend rules match for Cafe takeaway + delivery, zero tables, solo, no bookings, no stock', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'cafe',
+      services: ['takeaway', 'delivery'],
+      tables: 0,
+      employees: 1,
+      stockConcerns: false,
+    });
+    const expected = ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Customers', 'Reports', 'Finance', 'Q Assistant'];
+    assert.deepEqual(fallbackModules(setup), expected);
+  });
+
+  it('M7.4B: frontend and backend rules match for Restaurant dine-in + takeaway, 4 tables, team 3, stock yes, bookings no', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in', 'takeaway'],
+      tables: 4,
+      employees: 3,
+      stockConcerns: true,
+      bookings: false,
+    });
+    const expected = [
+      'Dashboard',
+      'Sales',
+      'Kitchen',
+      'Menu',
+      'Tables',
+      'Stock',
+      'Team',
+      'Customers',
+      'Reports',
+      'Finance',
+      'Q Assistant',
+    ];
+    assert.deepEqual(fallbackModules(setup), expected);
   });
 });

@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { answerPublicConcierge } from '../services/qPublicConcierge.js';
+import { answerPublicConcierge, deriveModules } from '../services/qPublicConcierge.js';
 
 const originalFetch = globalThis.fetch;
 const environmentKeys = [
@@ -77,13 +77,99 @@ try {
   }) as typeof fetch;
 
   const fallbackResult = await answerPublicConcierge({
-    message: 'I run a restaurant with 4 tables',
+    message: 'dine-in and 4 tables',
+    draft: { businessType: 'restaurant' },
     visitorKey: 'public-q-fallback-verifier',
   });
 
   assert.equal(fallbackResult.mode, 'guided');
-  assert.equal(fallbackResult.updates.businessType, 'restaurant');
   assert.equal(fallbackResult.updates.tables, 4);
+  assert.deepEqual(fallbackResult.recommendedModules, [
+    'Dashboard',
+    'Sales',
+    'Kitchen',
+    'Menu',
+    'Tables',
+    'Customers',
+    'Reports',
+    'Finance',
+    'Q Assistant',
+  ]);
+
+  // M7.4B module rules derived from confirmed setup.
+  assert.deepEqual(
+    deriveModules({ businessType: 'cafe', services: ['takeaway', 'delivery'], tables: 0, employees: 1, stockConcerns: false }),
+    ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Customers', 'Reports', 'Finance', 'Q Assistant'],
+  );
+  assert.deepEqual(
+    deriveModules({
+      businessType: 'restaurant',
+      services: ['dine-in', 'takeaway'],
+      tables: 4,
+      employees: 3,
+      stockConcerns: true,
+      bookings: false,
+    }),
+    [
+      'Dashboard',
+      'Sales',
+      'Kitchen',
+      'Menu',
+      'Tables',
+      'Stock',
+      'Team',
+      'Customers',
+      'Reports',
+      'Finance',
+      'Q Assistant',
+    ],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['dine-in'], tables: 0 }),
+    ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Customers', 'Reports', 'Finance', 'Q Assistant'],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['takeaway'], tables: 0 }),
+    ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Customers', 'Reports', 'Finance', 'Q Assistant'],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['dine-in'], bookings: true }),
+    [
+      'Dashboard',
+      'Sales',
+      'Kitchen',
+      'Menu',
+      'Tables',
+      'Customers',
+      'Reports',
+      'Finance',
+      'Q Assistant',
+      'Bookings',
+    ],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['dine-in'], bookings: false }),
+    ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Tables', 'Customers', 'Reports', 'Finance', 'Q Assistant'],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['dine-in'], employees: 1 }),
+    ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Tables', 'Customers', 'Reports', 'Finance', 'Q Assistant'],
+  );
+  assert.deepEqual(
+    deriveModules({ businessType: 'restaurant', services: ['dine-in'], employees: 3 }),
+    [
+      'Dashboard',
+      'Sales',
+      'Kitchen',
+      'Menu',
+      'Tables',
+      'Team',
+      'Customers',
+      'Reports',
+      'Finance',
+      'Q Assistant',
+    ],
+  );
 
   console.log('Public Q Concierge verification passed: protected AI request and guided fallback both work.');
 } finally {

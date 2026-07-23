@@ -202,6 +202,8 @@ export const mergeSetup = (current: GuestSetup, updates?: Partial<GuestSetup>): 
     priorities: nextPriorities.length ? nextPriorities : current.priorities,
     tables: tableCountOf(updates.tables) ?? current.tables,
     employees: countOf(updates.employees) ?? current.employees,
+    stockConcerns: updates.stockConcerns ?? current.stockConcerns,
+    bookings: updates.bookings ?? current.bookings,
   };
 };
 
@@ -544,26 +546,55 @@ export const parseActiveAnswer = (
   return updates;
 };
 
-export const fallbackModules = (setup: GuestSetup) => {
-  const modules = new Set<string>(['Dashboard', 'Q Assistant']);
-  const type = (setup.businessType || '').toLowerCase();
+const MODULE_ORDER = [
+  'Dashboard',
+  'Sales',
+  'Kitchen',
+  'Menu',
+  'Tables',
+  'Stock',
+  'Team',
+  'Customers',
+  'Reports',
+  'Finance',
+  'Q Assistant',
+  'Bookings',
+];
 
-  if (/restaurant|cafe|café/.test(type)) {
-    ['Sales', 'Kitchen', 'Menu', 'Stock', 'Orders', 'Finance', 'Customers'].forEach((m) => modules.add(m));
-    if (setup.services.includes('dine-in')) {
-      modules.add('Tables');
-      modules.add('Bookings');
+const RESTAURANT_BASE_MODULES = [
+  'Dashboard',
+  'Sales',
+  'Kitchen',
+  'Menu',
+  'Customers',
+  'Reports',
+  'Finance',
+  'Q Assistant',
+];
+
+export const fallbackModules = (setup: GuestSetup) => {
+  const selected = new Set<string>();
+  const type = (setup.businessType || '').toLowerCase();
+  const isFoodBusiness = /restaurant|cafe|café/.test(type);
+
+  if (isFoodBusiness) {
+    RESTAURANT_BASE_MODULES.forEach((module) => selected.add(module));
+    if (setup.services.includes('dine-in') && setup.tables !== 0) {
+      selected.add('Tables');
+    }
+    if ((setup.employees ?? 1) > 1) {
+      selected.add('Team');
     }
   } else if (/retail|shop|pharmacy/.test(type)) {
-    ['Sales', 'Stock', 'Customers', 'Team', 'Finance'].forEach((m) => modules.add(m));
+    ['Sales', 'Stock', 'Customers', 'Team', 'Finance'].forEach((module) => selected.add(module));
   } else {
-    ['Sales', 'Customers', 'Team', 'Finance', 'Bookings'].forEach((m) => modules.add(m));
+    ['Sales', 'Customers', 'Team', 'Finance', 'Bookings'].forEach((module) => selected.add(module));
   }
 
-  if (setup.stockConcerns) modules.add('Stock');
-  if (setup.bookings) modules.add('Bookings');
+  if (setup.stockConcerns) selected.add('Stock');
+  if (setup.bookings) selected.add('Bookings');
 
-  return Array.from(modules);
+  return MODULE_ORDER.filter((module) => selected.has(module));
 };
 
 export const syncJourney = (
