@@ -420,7 +420,8 @@ export const LaunchLandingView = () => {
         continueInFlight.current = true;
         try {
             sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
-            if (setup.businessType === 'restaurant') {
+            const isRestaurantFamily = (type: string) => type === 'restaurant' || type === 'cafe' || type === 'café';
+            if (isRestaurantFamily(setup.businessType)) {
                 try {
                     const brief = await createGuestBrief({
                         businessType: setup.businessType,

@@ -28,11 +28,14 @@ import { http } from '@/api/http';
 import { currencyForCountry } from '@/api/qGuestBrief.api';
 import { LogoMark } from '@/components/ui/Logo';
 import {
+  deriveQuickReplies,
+  determineNextPresentation,
   emailPattern,
   FIELD_ORDER,
   fallbackModules,
   fieldDefByKey,
   formatFieldValue,
+  hasInlineSkip,
   initialJourney,
   initialSetup,
   isChangeMessage,
@@ -40,6 +43,8 @@ import {
   isContinueMessage,
   isOwnerNameStatement,
   isSkipMessage,
+  isStaleQuickReply,
+  isStaleRevision,
   listOf,
   mergeSetup,
   nextField,
@@ -47,6 +52,7 @@ import {
   parseActiveAnswer,
   requiredComplete,
   requiredFields,
+  replyAsksField,
   requiredProgress,
   syncJourney,
   textOf,
@@ -56,16 +62,6 @@ import {
 } from './guestQConciergeState';
 
 export type { GuestSetup } from './guestQConciergeState';
-
-const isQuestionForConfirmedField = (reply: string, fieldKey: FieldKey, setup: GuestSetup) => {
-  const def = fieldDefByKey[fieldKey];
-  const question = def.question(setup).toLowerCase();
-  const label = def.label.toLowerCase();
-  const normalized = reply.toLowerCase().trim();
-  // Only suppress actual re-asks of the field question. A reply that merely mentions
-  // the confirmed value (e.g. "Dine-in only it is...") must still be shown.
-  return normalized.includes(question) || (normalized.includes(label) && normalized.endsWith('?'));
-};
 
 type Message = {
   id: number;
@@ -86,6 +82,36 @@ const statusText = (mode: 'ai' | 'guided' | 'pending') => {
   if (mode === 'ai') return 'Q is preparing a tailored plan';
   if (mode === 'guided') return 'Q is guiding your setup';
   return 'Q is preparing your workspace';
+};
+
+const fieldKeyForUpdateKey = (key: keyof GuestSetup): FieldKey | undefined => {
+  switch (key) {
+    case 'businessType':
+      return 'businessType';
+    case 'services':
+    case 'serviceMode':
+      return 'serviceMode';
+    case 'businessName':
+      return 'businessName';
+    case 'country':
+      return 'country';
+    case 'email':
+      return 'email';
+    case 'tables':
+      return 'tables';
+    case 'employees':
+      return 'teamSize';
+    case 'priorities':
+      return 'priorities';
+    case 'stockConcerns':
+      return 'stockConcerns';
+    case 'bookings':
+      return 'bookings';
+    case 'otherPreferences':
+      return 'otherPreferences';
+    default:
+      return undefined;
+  }
 };
 
 const moduleIcon = (moduleName: string) => {
@@ -192,6 +218,7 @@ export function GuestQConcierge({
   const [setup, setSetup] = useState(firstSetup);
   const [journey, setJourney] = useState<Record<FieldKey, FieldStatus>>(initialJourney());
   const [activeField, setActiveField] = useState<FieldKey | null>(null);
+  const [journeyRevision, setJourneyRevision] = useState(0);
   const [reviewReady, setReviewReady] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -207,9 +234,9 @@ export function GuestQConcierge({
   const setupRef = useRef(firstSetup);
   const journeyRef = useRef<Record<FieldKey, FieldStatus>>(initialJourney());
   const activeFieldRef = useRef<FieldKey | null>(null);
+  const journeyRevisionRef = useRef(0);
   const reviewReadyRef = useRef(false);
   const startedRef = useRef(false);
-  const firstExchangeRef = useRef(true);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLElement>(null);
@@ -220,24 +247,15 @@ export function GuestQConcierge({
   }
 
   useEffect(() => {
-    setupRef.current = setup;
-  }, [setup]);
-
-  useEffect(() => {
-    journeyRef.current = journey;
-  }, [journey]);
-
-  useEffect(() => {
-    activeFieldRef.current = activeField;
-  }, [activeField]);
-
-  useEffect(() => {
     reviewReadyRef.current = reviewReady;
   }, [reviewReady]);
 
   const setActiveFieldAndRef = useCallback((field: FieldKey | null) => {
     activeFieldRef.current = field;
     setActiveField(field);
+    journeyRevisionRef.current += 1;
+    setJourneyRevision(journeyRevisionRef.current);
+    setQuickReplies(deriveQuickReplies(field, setupRef.current, journeyRef.current));
   }, []);
 
   const setReviewReadyAndRef = useCallback((value: boolean) => {
@@ -251,64 +269,43 @@ export function GuestQConcierge({
     setMessages(next);
   }, []);
 
-  const setQuickRepliesForField = useCallback((key: FieldKey | null) => {
-    if (!key) {
-      setQuickReplies([]);
-      return;
-    }
-    const def = fieldDefByKey[key];
-    const status = journeyRef.current[key];
-    setQuickReplies(
-      status === 'captured' ? ['Yes, that’s right', 'Change it'] : def.quickReplies(setupRef.current),
-    );
-  }, []);
-
   const askField = useCallback(
     (key: FieldKey) => {
       const def = fieldDefByKey[key];
       const status = journeyRef.current[key];
       const text =
         status === 'captured' ? def.confirmQuestion(setupRef.current) : def.question(setupRef.current);
+      const lastMessage = messagesRef.current[messagesRef.current.length - 1];
+      if (lastMessage?.from === 'q' && (lastMessage.text === text || replyAsksField(lastMessage.text, key, setupRef.current))) {
+        // The question is already the most recent Q message; just sync controls.
+        setActiveFieldAndRef(key);
+        return;
+      }
       appendMessage('q', text);
       setActiveFieldAndRef(key);
-      setQuickRepliesForField(key);
     },
-    [appendMessage, setActiveFieldAndRef, setQuickRepliesForField],
-  );
-
-  const activateField = useCallback(
-    (key: FieldKey) => {
-      setActiveFieldAndRef(key);
-      setQuickRepliesForField(key);
-    },
-    [setActiveFieldAndRef, setQuickRepliesForField],
+    [appendMessage, setActiveFieldAndRef],
   );
 
   const goToReview = useCallback(() => {
     if (reviewReadyRef.current) return;
     setReviewReadyAndRef(true);
     setActiveFieldAndRef(null);
-    setQuickReplies([]);
     appendMessage(
       'q',
       'Your Q360 setup brief is ready. Review the recommended workspace, then continue securely to save it.',
     );
   }, [appendMessage, setActiveFieldAndRef, setReviewReadyAndRef]);
 
-  const advance = useCallback(() => {
+  const askNextField = useCallback(() => {
     if (reviewReadyRef.current) return;
     const next = nextField(setupRef.current, journeyRef.current);
     if (!next) {
       goToReview();
       return;
     }
-    const lastMessage = messagesRef.current[messagesRef.current.length - 1];
-    if (lastMessage?.from === 'q' && lastMessage.text.trim().endsWith('?')) {
-      activateField(next);
-      return;
-    }
     askField(next);
-  }, [askField, activateField, goToReview]);
+  }, [askField, goToReview]);
 
   const markSkipped = useCallback((key: FieldKey) => {
     const next = { ...journeyRef.current, [key]: 'skipped' };
@@ -391,7 +388,7 @@ export function GuestQConcierge({
         if (isSkipMessage(message) && !def.required(setupRef.current)) {
           appendMessage('user', message);
           markSkipped(activeKey);
-          advance();
+          askNextField();
           setInput('');
           return;
         }
@@ -406,14 +403,14 @@ export function GuestQConcierge({
           const nextJourney = { ...journeyRef.current, [activeKey]: 'confirmed' };
           journeyRef.current = nextJourney;
           setJourney(nextJourney);
-          advance();
+          askNextField();
           setInput('');
           return;
         }
         if (isChangeMessage(message)) {
           appendMessage('user', message);
           resetField(activeKey);
-          advance();
+          askNextField();
           setInput('');
           return;
         }
@@ -426,7 +423,7 @@ export function GuestQConcierge({
         appendMessage('user', message);
         if (activeKey && !fieldDefByKey[activeKey].required(setupRef.current)) {
           markSkipped(activeKey);
-          advance();
+          askNextField();
         } else if (activeKey) {
           appendMessage('q', `I need your ${fieldDefByKey[activeKey].label} to prepare the workspace.`);
         } else if (requiredComplete(setupRef.current, journeyRef.current)) {
@@ -488,15 +485,57 @@ export function GuestQConcierge({
         activeAnswerValue !== undefined &&
         activeAnswerValue !== '' &&
         activeAnswerValue !== null;
-      if (hasActiveAnswer) {
+
+      // If the active field is strict (businessName/country/priorities) and the answer
+      // cannot be parsed for that field, ask for clarification instead of guessing or
+      // sending it to the backend.
+      if (
+        !hasActiveAnswer &&
+        pendingField &&
+        (pendingField === 'businessName' || pendingField === 'country' || pendingField === 'priorities') &&
+        !isSkipMessage(message) &&
+        !isConfirmMessage(message) &&
+        !isChangeMessage(message)
+      ) {
+        let clarification = '';
+        if (pendingField === 'businessName') {
+          clarification = `That doesn't sound like a business name. What is the name of your ${setupRef.current.businessType || 'business'}?`;
+        } else if (pendingField === 'country') {
+          const name = setupRef.current.businessName ? `“${setupRef.current.businessName}”` : 'the business';
+          clarification = `I don't recognize that country. Which country will ${name} operate in?`;
+        } else if (pendingField === 'priorities') {
+          clarification =
+            'Could you tell me what matters most? For example, sales, stock, customers, or fast checkout.';
+        }
+        appendMessage('q', clarification);
+        setIsSending(false);
+        return;
+      }
+
+      // Confirm the active field, or any volunteered facts parsed when no field was active.
+      // Volunteered facts come from reliable local parsers, so they can be confirmed directly.
+      const keysToConfirm = pendingField
+        ? hasActiveAnswer
+          ? [pendingField]
+          : []
+        : (Object.keys(activeFieldAnswer) as FieldKey[]).filter((key) => {
+            const value = (activeFieldAnswer as Record<string, unknown>)[key];
+            return value !== undefined && value !== '' && value !== null && value !== false;
+          });
+
+      if (keysToConfirm.length > 0) {
         const preSetup = mergeSetup(setupRef.current, activeFieldAnswer);
         setupRef.current = preSetup;
         setSetup(preSetup);
-        const preJourney = { ...journeyRef.current, [pendingField]: 'confirmed' };
+        const preJourney = { ...journeyRef.current };
+        for (const key of keysToConfirm) {
+          preJourney[key] = 'confirmed';
+        }
         journeyRef.current = preJourney;
         setJourney(preJourney);
       }
 
+      const requestRevision = journeyRevisionRef.current;
       try {
         const result = await http.post<PublicConciergeResponse>(
           '/public/q-concierge',
@@ -510,15 +549,34 @@ export function GuestQConcierge({
           },
           { timeout: 45_000 },
         );
-        let nextSetup = mergeSetup(setupRef.current, result.updates);
+
+        // If the user has already moved to a different question, this response is stale.
+        if (isStaleRevision(requestRevision, journeyRevisionRef.current)) {
+          setIsSending(false);
+          window.requestAnimationFrame(() => inputRef.current?.focus());
+          return;
+        }
+
+        // Backend inference may only fill missing or captured fields; confirmed and
+        // skipped fields are authoritative and must not be overwritten.
+        const backendUpdates: Partial<GuestSetup> = {};
+        if (result.updates) {
+          for (const [key, value] of Object.entries(result.updates) as Array<[keyof GuestSetup, unknown]>) {
+            const fieldKey = fieldKeyForUpdateKey(key);
+            if (!fieldKey) continue;
+            const status = journeyRef.current[fieldKey];
+            if (status !== 'confirmed' && status !== 'skipped') {
+              (backendUpdates as Record<string, unknown>)[key] = value;
+            }
+          }
+        }
+        let nextSetup = mergeSetup(setupRef.current, backendUpdates);
         const localUpdates = parseActiveAnswer(message, pendingField, nextSetup);
         nextSetup = mergeSetup(nextSetup, localUpdates);
         setupRef.current = nextSetup;
         setSetup(nextSetup);
 
-        const markVolunteeredConfirmed = firstExchangeRef.current;
-        firstExchangeRef.current = false;
-        const nextJourney = syncJourney(nextSetup, journeyRef.current, pendingField, false, markVolunteeredConfirmed);
+        const nextJourney = syncJourney(nextSetup, journeyRef.current, pendingField, false);
         journeyRef.current = nextJourney;
         setJourney(nextJourney);
 
@@ -526,17 +584,19 @@ export function GuestQConcierge({
         setReplyMode(result.mode);
 
         const backendReply = textOf(result.reply, 2400);
-        const isRepeatedQuestion =
-          backendReply &&
-          pendingField &&
-          journeyRef.current[pendingField] === 'confirmed' &&
-          isQuestionForConfirmedField(backendReply, pendingField, setupRef.current);
+        const presentation = determineNextPresentation(backendReply, setupRef.current, journeyRef.current);
 
-        if (backendReply && !isRepeatedQuestion) {
-          appendMessage('q', backendReply);
+        if (presentation.backendReply) {
+          appendMessage('q', presentation.backendReply);
         }
 
-        advance();
+        if (presentation.next.type === 'review') {
+          goToReview();
+        } else if (presentation.next.type === 'activate') {
+          setActiveFieldAndRef(presentation.next.field);
+        } else {
+          askField(presentation.next.field);
+        }
       } catch {
         setError('Q is temporarily unavailable. Please try again in a moment.');
       } finally {
@@ -544,7 +604,7 @@ export function GuestQConcierge({
         window.requestAnimationFrame(() => inputRef.current?.focus());
       }
     },
-    [appendMessage, isSending, advance, goToReview, markSkipped, resetField],
+    [appendMessage, isSending, askNextField, askField, goToReview, markSkipped, resetField, setActiveFieldAndRef],
   );
 
   useEffect(() => {
@@ -687,9 +747,11 @@ export function GuestQConcierge({
   const showSkip = activeField
     ? !activeDef?.required(setup) &&
       journey[activeField] !== 'skipped' &&
-      journey[activeField] !== 'confirmed'
+      journey[activeField] !== 'confirmed' &&
+      !hasInlineSkip(activeField)
     : false;
-  const showDefaults = canContinue && !reviewReady;
+  const requiredHaveValues = requiredFields(setup).every((key) => fieldDefByKey[key].hasValue(setup));
+  const showDefaults = requiredHaveValues && !reviewReady;
 
   const handleNext = useCallback(() => {
     if (!activeFieldRef.current) return;
@@ -698,20 +760,35 @@ export function GuestQConcierge({
       const nextJourney = { ...journeyRef.current, [key]: 'confirmed' };
       journeyRef.current = nextJourney;
       setJourney(nextJourney);
-      advance();
+      askNextField();
     }
-  }, [advance]);
+  }, [askNextField]);
 
   const handleSkip = useCallback(() => {
     if (!activeFieldRef.current) return;
     const key = activeFieldRef.current;
     if (!fieldDefByKey[key].required(setupRef.current)) {
       markSkipped(key);
-      advance();
+      askNextField();
     }
-  }, [advance, markSkipped]);
+  }, [askNextField, markSkipped]);
 
   const handleUseDefaults = useCallback(() => {
+    // The user is explicitly accepting any inferred defaults, so promote captured
+    // applicable fields to confirmed before finishing optional ones.
+    const nextJourney = { ...journeyRef.current };
+    for (const key of FIELD_ORDER) {
+      const def = fieldDefByKey[key];
+      if (
+        def.applicable(setupRef.current) &&
+        nextJourney[key] === 'captured' &&
+        def.hasValue(setupRef.current)
+      ) {
+        nextJourney[key] = 'confirmed';
+      }
+    }
+    journeyRef.current = nextJourney;
+    setJourney(nextJourney);
     finishOptional();
     const modules = recommendedModules.length ? recommendedModules : fallbackModules(setupRef.current);
     onContinue(setupRef.current, modules);
@@ -833,17 +910,30 @@ export function GuestQConcierge({
                       <LogoMark size={22} />
                     </div>
                     <div className="guest-q-chips">
-                      {quickReplies.map((reply) => (
-                        <button
-                          key={reply}
-                          type="button"
-                          className="guest-q-chip"
-                          onClick={() => void sendMessage(reply)}
-                          disabled={isSending}
-                        >
-                          {reply}
-                        </button>
-                      ))}
+                      {quickReplies.map((reply) => {
+                        const expectedField = activeField;
+                        const expectedRevision = journeyRevision;
+                        return (
+                          <button
+                            key={reply}
+                            type="button"
+                            className="guest-q-chip"
+                            onClick={() => {
+                              if (
+                                expectedField &&
+                                activeFieldRef.current === expectedField &&
+                                journeyRevisionRef.current === expectedRevision &&
+                                !isStaleQuickReply(reply, expectedField, setupRef.current, journeyRef.current)
+                              ) {
+                                void sendMessage(reply);
+                              }
+                            }}
+                            disabled={isSending}
+                          >
+                            {reply}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

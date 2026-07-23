@@ -110,11 +110,13 @@ export const provisionRestaurantWorkspaceFromBrief = async (
     if (!/^[A-Z]{3}$/.test(currency)) return fail('invalid_payload', 'A valid three-letter currency code is required.');
 
     // Confirmed onboarding answers drive the deterministic table set and the
-    // restaurant service format. table_count is required and bounded.
+    // restaurant service format. table_count is required and bounded; 0 is
+    // allowed for takeaway/delivery-only (zero-table) setups and creates no
+    // table rows. Missing, non-integer, negative, or >30 values fail closed.
     const rawTableCount = answerFor(brief, 'table_count')?.trim() ?? '';
     const tableCount = /^\d{1,2}$/.test(rawTableCount) ? Number.parseInt(rawTableCount, 10) : Number.NaN;
-    if (!Number.isSafeInteger(tableCount) || tableCount < 1 || tableCount > MAX_TABLES) {
-        return fail('invalid_payload', 'A table count from 1 to 30 is required.');
+    if (!Number.isSafeInteger(tableCount) || tableCount < 0 || tableCount > MAX_TABLES) {
+        return fail('invalid_payload', 'A table count from 0 to 30 is required.');
     }
     const serviceModes = (answerFor(brief, 'service_modes') ?? '')
         .split(',')

@@ -1,14 +1,24 @@
+import {
+  currencyForCountry,
+  normalizeCountry,
+} from '../../utils/countryCurrency.ts';
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  classifyBackendReply,
+  determineNextPresentation,
+  deriveQuickReplies,
   emailPattern,
   FIELD_ORDER,
   fallbackModules,
   fieldDefByKey,
+  hasInlineSkip,
   initialJourney,
   initialSetup,
   isContinueMessage,
   isSkipMessage,
+  isStaleQuickReply,
+  isStaleRevision,
   mergeSetup,
   nextField,
   parseActiveAnswer,
@@ -75,7 +85,14 @@ describe('guestQConciergeState', () => {
 
   it('requiredComplete is true when required fields are confirmed', () => {
     const setup = baseSetup();
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     assert.equal(requiredComplete(setup, journey), true);
   });
 
@@ -92,7 +109,14 @@ describe('guestQConciergeState', () => {
 
   it('requiredProgress counts only confirmed or skipped required fields', () => {
     const setup = baseSetup();
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     const progress = requiredProgress(setup, journey);
     assert.equal(progress.total, 5); // businessType, serviceMode, businessName, country, email
     assert.equal(progress.done, 5);
@@ -153,14 +177,28 @@ describe('guestQConciergeState', () => {
       services: ['dine-in'],
       email: 'owner@noor.test',
     });
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     assert.equal(requiredComplete(setup, journey), true);
   });
 
   it('skipping an optional field marks it skipped and keeps requiredComplete true', () => {
     const setup = baseSetup();
-    const base = syncJourney(setup, initialJourney(), null, false, true);
-    const journey: Record<FieldKey, FieldStatus> = { ...base, tables: 'skipped' };
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+    };
     assert.equal(requiredComplete(setup, journey), true);
     assert.equal(journey.tables, 'skipped');
   });
@@ -186,14 +224,14 @@ describe('guestQConciergeState', () => {
     assert.equal(setup.serviceMode, 'both');
   });
 
-  it('fallbackModules includes Tables and Bookings for dine-in restaurants', () => {
+  it('fallbackModules includes Tables but not Bookings for dine-in restaurants without bookings', () => {
     const setup = mergeSetup(initialSetup('Hello'), {
       businessType: 'restaurant',
       serviceMode: 'dine_in',
     });
     const modules = fallbackModules(setup);
     assert.ok(modules.includes('Tables'));
-    assert.ok(modules.includes('Bookings'));
+    assert.ok(!modules.includes('Bookings'));
   });
 
   it('fallbackModules omits Tables and Bookings for takeaway-only restaurants', () => {
@@ -289,5 +327,662 @@ describe('guestQConciergeState', () => {
     };
     const nextJourney = syncJourney(setup, journey, 'businessName', false, false);
     assert.equal(nextJourney.businessName, 'confirmed');
+  });
+
+  // M7.2 regression tests for strict active-field validation and authoritative states.
+  it('Noor becomes businessName when businessName is active', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('Noor', 'businessName', setup);
+    assert.equal(updates.businessName, 'Noor');
+  });
+
+  it('Sudan becomes country when country is active', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', businessName: 'Noor' });
+    const updates = parseActiveAnswer('Sudan', 'country', setup);
+    assert.equal(updates.country, 'Sudan');
+  });
+
+  it('fast checkout becomes a priority when priorities is active', () => {
+    const setup = initialSetup('Hello');
+    const updates = parseActiveAnswer('fast checkout', 'priorities', setup);
+    assert.deepEqual(updates.priorities, ['Fast checkout']);
+  });
+
+  it('active country does not accept fast checkout as country', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', businessName: 'Noor' });
+    const updates = parseActiveAnswer('fast checkout', 'country', setup);
+    assert.equal(updates.country, undefined);
+  });
+
+  it('active businessName does not accept Sudan as businessName', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('Sudan', 'businessName', setup);
+    assert.equal(updates.businessName, undefined);
+  });
+
+  it('confirmed businessName cannot be overwritten by backend inference', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+    };
+    const backendSetup = mergeSetup(setup, { businessName: 'Another Name' });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+  });
+
+  it('confirmed country cannot be overwritten by backend inference', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const backendSetup = mergeSetup(setup, { country: 'Egypt' });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.country, 'confirmed');
+  });
+
+  it('skipped bookings remains skipped after backend returns bookings-related text', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      bookings: 'skipped',
+    };
+    const backendSetup = mergeSetup(setup, { bookings: true });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.bookings, 'skipped');
+  });
+
+  it('first-response inference becomes captured, not confirmed', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey = syncJourney(setup, initialJourney(), null, false, false);
+    assert.equal(journey.businessType, 'captured');
+  });
+
+  it('explicit correction can replace a confirmed field', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+    };
+    const correctedSetup = mergeSetup(setup, { businessName: 'Cairo Bites' });
+    const nextJourney = syncJourney(correctedSetup, { ...journey, businessName: 'missing' }, 'businessName', false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+    assert.equal(correctedSetup.businessName, 'Cairo Bites');
+  });
+
+  // Conversational sequencing, duplicate-question prevention, and active-control sync.
+  it('backend acknowledgement + local next prompt creates one question', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const reply = 'Dine-in only it is.';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'prose');
+    assert.equal(nextField(setup, journey), 'email');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, reply);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'email');
+  });
+
+  it('backend repeated country question is suppressed', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const reply = 'Which country will Noor operate in?';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'stale');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, null);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'email');
+  });
+
+  it('skipped bookings is never asked again', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+      bookings: 'skipped',
+    };
+    assert.notEqual(nextField(setup, journey), 'bookings');
+    const reply = 'Will you take table or appointment bookings?';
+    assert.equal(classifyBackendReply(reply, setup, journey), 'stale');
+    const presentation = determineNextPresentation(reply, setup, journey);
+    assert.equal(presentation.backendReply, null);
+    assert.equal(presentation.next.type, 'ask');
+    assert.equal((presentation.next as { type: 'ask'; field: FieldKey }).field, 'priorities');
+  });
+
+  it('stale booking quick reply cannot answer stock field', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+    };
+    const stockReplies = deriveQuickReplies('stockConcerns', setup, journey);
+    assert.ok(!stockReplies.includes('Yes, take bookings'));
+    assert.equal(isStaleQuickReply('Yes, take bookings', 'stockConcerns', setup, journey), true);
+  });
+
+  it('active-field change clears previous quick replies', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+    };
+    const bookingReplies = deriveQuickReplies('bookings', setup, journey);
+    assert.ok(bookingReplies.includes('Yes, take bookings'));
+    const priorityReplies = deriveQuickReplies('priorities', setup, journey);
+    assert.ok(!priorityReplies.includes('Yes, take bookings'));
+  });
+
+  it('stale async response from revision N cannot alter revision N+1', () => {
+    assert.equal(isStaleRevision(1, 2), true);
+    assert.equal(isStaleRevision(2, 2), false);
+  });
+
+  it('review-ready clears active field and quick replies', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      serviceMode: 'dine_in',
+      businessName: 'Noor',
+      country: 'Sudan',
+      email: 'owner@noor.test',
+      priorities: ['Fast checkout'],
+      otherPreferences: 'none',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+      teamSize: 'skipped',
+      stockConcerns: 'skipped',
+      bookings: 'skipped',
+      priorities: 'confirmed',
+      otherPreferences: 'confirmed',
+    };
+    assert.equal(nextField(setup, journey), null);
+    assert.deepEqual(deriveQuickReplies(null, setup, journey), []);
+    const presentation = determineNextPresentation('Thanks — I have everything I need.', setup, journey);
+    assert.equal(presentation.backendReply, 'Thanks — I have everything I need.');
+    assert.equal(presentation.next.type, 'review');
+  });
+
+  it('only one Skip for now control is rendered', () => {
+    // Fields with an inline skip chip/button hide the global action-bar skip.
+    assert.equal(hasInlineSkip('stockConcerns'), true);
+    assert.equal(hasInlineSkip('bookings'), true);
+    // Fields without an inline skip rely on the single global action-bar skip.
+    assert.equal(hasInlineSkip('tables'), false);
+    assert.equal(hasInlineSkip('teamSize'), false);
+    assert.equal(hasInlineSkip('priorities'), false);
+  });
+
+  it('skip message recognizes No, skip and Skip for now', () => {
+    assert.equal(isSkipMessage('No, skip'), true);
+    assert.equal(isSkipMessage('Skip for now'), true);
+    assert.equal(isSkipMessage('skip'), true);
+    assert.equal(isSkipMessage('Egypt'), false);
+  });
+
+  // M7.4A regression tests for delivery-aware service parsing and no-tables journey state.
+  it('M7.4A parses dine-in only service capability', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in');
+    assert.deepEqual(updates.services, ['dine-in']);
+  });
+
+  it('M7.4A parses takeaway only service capability and sets tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('takeaway only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'takeaway');
+    assert.deepEqual(updates.services, ['takeaway']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses delivery only service capability and sets tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('delivery only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'delivery');
+    assert.deepEqual(updates.services, ['delivery']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses both dine-in and takeaway', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('both dine-in and takeaway', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'both');
+    assert.deepEqual(updates.services, ['dine-in', 'takeaway']);
+  });
+
+  it('M7.4A parses takeaway and delivery only without dine-in', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('takeaway and delivery only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'takeaway_delivery');
+    assert.deepEqual(updates.services, ['takeaway', 'delivery']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses dine-in and delivery', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in and delivery', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in_delivery');
+    assert.deepEqual(updates.services, ['dine-in', 'delivery']);
+  });
+
+  it('M7.4A parses dine-in, takeaway and delivery', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in, takeaway and delivery', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in_takeaway_delivery');
+    assert.deepEqual(updates.services, ['dine-in', 'takeaway', 'delivery']);
+  });
+
+  it('M7.4A "both" guided reply means dine-in and takeaway unless delivery is mentioned', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const bothOnly = parseActiveAnswer('Both', 'serviceMode', setup);
+    assert.equal(bothOnly.serviceMode, 'both');
+    assert.deepEqual(bothOnly.services, ['dine-in', 'takeaway']);
+
+    const bothWithDelivery = parseActiveAnswer('both dine-in, takeaway and delivery', 'serviceMode', setup);
+    assert.equal(bothWithDelivery.serviceMode, 'dine_in_takeaway_delivery');
+    assert.deepEqual(bothWithDelivery.services, ['dine-in', 'takeaway', 'delivery']);
+  });
+
+  it('M7.4A no-tables phrases set tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    for (const phrase of ['no tables', 'zero tables', '0 tables', 'counter service, no tables']) {
+      const updates = parseActiveAnswer(phrase, 'tables', setup);
+      assert.equal(updates.tables, 0, `expected tables=0 for "${phrase}"`);
+    }
+  });
+
+  it('M7.4A service mode without dine-in infers tables zero and skips tables question', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey = syncJourney(setup, initialJourney(), null, false, false);
+    for (const phrase of ['takeaway only', 'delivery only', 'takeaway and delivery only']) {
+      const updates = parseActiveAnswer(phrase, 'serviceMode', setup);
+      assert.equal(updates.tables, 0, `expected tables=0 for "${phrase}"`);
+      const nextSetup = mergeSetup(setup, updates);
+      const nextJourney = syncJourney(nextSetup, { ...journey }, 'serviceMode', false, false);
+      assert.equal(nextJourney.tables, 'skipped', `expected tables skipped for "${phrase}"`);
+      assert.equal(fieldDefByKey.tables.hasValue(nextSetup), true);
+      assert.notEqual(nextField(nextSetup, nextJourney), 'tables');
+    }
+  });
+
+  it('M7.4A positive table values 1-30 still parse', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    assert.equal(parseActiveAnswer('We have 12 tables', 'tables', setup).tables, 12);
+    assert.equal(parseActiveAnswer('30 tables', 'tables', setup).tables, 30);
+  });
+
+  it('M7.4A fallbackModules adds Tables only for dine-in service; Bookings require explicit choice', () => {
+    const dineIn = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(fallbackModules(dineIn).includes('Tables'));
+    assert.ok(!fallbackModules(dineIn).includes('Bookings'));
+
+    const takeaway = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway'],
+    });
+    assert.ok(!fallbackModules(takeaway).includes('Tables'));
+    assert.ok(!fallbackModules(takeaway).includes('Bookings'));
+
+    const delivery = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['delivery'],
+    });
+    assert.ok(!fallbackModules(delivery).includes('Tables'));
+    assert.ok(!fallbackModules(delivery).includes('Bookings'));
+  });
+
+  // M7.4B prepared module rules derived from confirmed setup.
+  it('M7.4B: takeaway + delivery, tables 0 → no Tables', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway', 'delivery'],
+      tables: 0,
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: delivery only → no Tables', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['delivery'],
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: dine-in + 4 tables → Tables included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      tables: 4,
+    });
+    assert.ok(fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: dine-in + tables 0 → Tables excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      tables: 0,
+    });
+    assert.ok(!fallbackModules(setup).includes('Tables'));
+  });
+
+  it('M7.4B: bookings true → Bookings included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      bookings: true,
+    });
+    assert.ok(fallbackModules(setup).includes('Bookings'));
+  });
+
+  it('M7.4B: bookings false/skipped → Bookings excluded', () => {
+    const noBookings = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      bookings: false,
+    });
+    assert.ok(!fallbackModules(noBookings).includes('Bookings'));
+
+    const skipped = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(!fallbackModules(skipped).includes('Bookings'));
+  });
+
+  it('M7.4B: bookings unanswered → Bookings excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(setup.bookings === undefined);
+    assert.ok(!fallbackModules(setup).includes('Bookings'));
+  });
+
+  it('M7.4B: stock true → Stock included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      stockConcerns: true,
+    });
+    assert.ok(fallbackModules(setup).includes('Stock'));
+  });
+
+  it('M7.4B: stock false/skipped → Stock excluded', () => {
+    const noStock = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      stockConcerns: false,
+    });
+    assert.ok(!fallbackModules(noStock).includes('Stock'));
+
+    const skipped = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(!fallbackModules(skipped).includes('Stock'));
+  });
+
+  it('M7.4B: stock unanswered → Stock excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(setup.stockConcerns === undefined);
+    assert.ok(!fallbackModules(setup).includes('Stock'));
+  });
+
+  it('M7.4B: team size 1 → Team excluded', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      employees: 1,
+    });
+    assert.ok(!fallbackModules(setup).includes('Team'));
+  });
+
+  it('M7.4B: team size 3 → Team included', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+      employees: 3,
+    });
+    assert.ok(fallbackModules(setup).includes('Team'));
+  });
+
+  it('M7.4B: delivery capability does not invent a Delivery module', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway', 'delivery'],
+    });
+    const modules = fallbackModules(setup);
+    assert.ok(!modules.includes('Delivery'));
+    assert.ok(modules.includes('Sales'));
+  });
+
+  it('M7.4B: frontend and backend rules match for Cafe takeaway + delivery, zero tables, solo, no bookings, no stock', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'cafe',
+      services: ['takeaway', 'delivery'],
+      tables: 0,
+      employees: 1,
+      stockConcerns: false,
+    });
+    const expected = ['Dashboard', 'Sales', 'Kitchen', 'Menu', 'Customers', 'Reports', 'Finance', 'Q Assistant'];
+    assert.deepEqual(fallbackModules(setup), expected);
+  });
+
+  it('M7.4B: frontend and backend rules match for Restaurant dine-in + takeaway, 4 tables, team 3, stock yes, bookings no', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in', 'takeaway'],
+      tables: 4,
+      employees: 3,
+      stockConcerns: true,
+      bookings: false,
+    });
+    const expected = [
+      'Dashboard',
+      'Sales',
+      'Kitchen',
+      'Menu',
+      'Tables',
+      'Stock',
+      'Team',
+      'Customers',
+      'Reports',
+      'Finance',
+      'Q Assistant',
+    ];
+    assert.deepEqual(fallbackModules(setup), expected);
+  });
+
+  // M7.4C country and currency normalization.
+  it('M7.4C: KSA normalizes to Saudi Arabia and currency SAR', () => {
+    assert.equal(normalizeCountry('KSA'), 'Saudi Arabia');
+    assert.equal(currencyForCountry('KSA'), 'SAR');
+  });
+
+  it('M7.4C: saudi normalizes to Saudi Arabia and currency SAR', () => {
+    assert.equal(normalizeCountry('saudi'), 'Saudi Arabia');
+    assert.equal(currencyForCountry('saudi'), 'SAR');
+  });
+
+  it('M7.4C: UAE normalizes to United Arab Emirates and currency AED', () => {
+    assert.equal(normalizeCountry('UAE'), 'United Arab Emirates');
+    assert.equal(currencyForCountry('UAE'), 'AED');
+  });
+
+  it('M7.4C: Egypt currency is EGP', () => {
+    assert.equal(currencyForCountry('Egypt'), 'EGP');
+  });
+
+  it('M7.4C: Sudan currency is SDG', () => {
+    assert.equal(currencyForCountry('Sudan'), 'SDG');
+  });
+
+  it('M7.4C: Spain currency is EUR', () => {
+    assert.equal(currencyForCountry('Spain'), 'EUR');
+  });
+
+  it('M7.4C: UK normalizes to United Kingdom and currency GBP', () => {
+    assert.equal(normalizeCountry('UK'), 'United Kingdom');
+    assert.equal(currencyForCountry('UK'), 'GBP');
+  });
+
+  it('M7.4C: USA normalizes to United States and currency USD', () => {
+    assert.equal(normalizeCountry('USA'), 'United States');
+    assert.equal(currencyForCountry('USA'), 'USD');
+  });
+
+  it('M7.4C: mixed-case and whitespace aliases normalize correctly', () => {
+    assert.equal(normalizeCountry('  kSa  '), 'Saudi Arabia');
+    assert.equal(normalizeCountry('u.a.e.'), 'United Arab Emirates');
+    assert.equal(normalizeCountry('GREAT BRITAIN'), 'United Kingdom');
+    assert.equal(normalizeCountry('America'), 'United States');
+    assert.equal(currencyForCountry('  saudi arabia  '), 'SAR');
+    assert.equal(currencyForCountry('ae'), 'AED');
+  });
+
+  it('M7.4C: unknown country keeps deterministic USD fallback and is not normalized', () => {
+    assert.equal(normalizeCountry('Mars'), undefined);
+    assert.equal(currencyForCountry('Mars'), 'USD');
+  });
+
+  it('M7.4C: canonical country value survives setup merge', () => {
+    const fromAlias = mergeSetup(initialSetup('Hello'), { country: 'KSA' });
+    assert.equal(fromAlias.country, 'Saudi Arabia');
+
+    const canonicalPreserved = mergeSetup(fromAlias, { country: '' });
+    assert.equal(canonicalPreserved.country, 'Saudi Arabia');
+
+    const overrideToAlias = mergeSetup(fromAlias, { country: 'uk' });
+    assert.equal(overrideToAlias.country, 'United Kingdom');
+  });
+
+  it('M7.4C: currencyForCountry returns the same currency for aliases and canonical names', () => {
+    const cases = [
+      { aliases: ['KSA', 'saudi', 'SA', 'Saudi Arabia'], currency: 'SAR' },
+      { aliases: ['UAE', 'U.A.E.', 'AE', 'United Arab Emirates'], currency: 'AED' },
+      { aliases: ['Egypt', 'EG'], currency: 'EGP' },
+      { aliases: ['Sudan', 'SD'], currency: 'SDG' },
+      { aliases: ['Spain', 'ES'], currency: 'EUR' },
+      { aliases: ['UK', 'Great Britain', 'GB', 'United Kingdom'], currency: 'GBP' },
+      { aliases: ['USA', 'US', 'America', 'United States'], currency: 'USD' },
+    ];
+    for (const { aliases, currency } of cases) {
+      for (const alias of aliases) {
+        assert.equal(
+          currencyForCountry(alias),
+          currency,
+          `expected ${currency} for "${alias}"`,
+        );
+      }
+    }
+  });
+
+  it('M7.4C: parseActiveAnswer stores canonical country for aliases', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      serviceMode: 'dine_in',
+    });
+    const ksa = parseActiveAnswer('KSA', 'country', setup);
+    assert.equal(ksa.country, 'Saudi Arabia');
+    const usa = parseActiveAnswer('  America  ', 'country', setup);
+    assert.equal(usa.country, 'United States');
   });
 });

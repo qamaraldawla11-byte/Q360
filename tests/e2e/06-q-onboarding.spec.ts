@@ -118,9 +118,10 @@ const continueFromLanding = async (page: Page, email: string) => {
   await page.getByLabel('Message Q').fill(email);
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('Thanks — I have everything I need.')).toBeVisible();
-  const continueButton = page.getByRole('button', { name: 'Continue securely' });
-  await expect(continueButton).toBeEnabled();
-  await continueButton.click();
+  // Backend-inferred fields remain captured until the user explicitly accepts the defaults.
+  const defaultsButton = page.getByRole('button', { name: 'Use defaults and continue' });
+  await expect(defaultsButton).toBeVisible();
+  await defaultsButton.click();
 };
 
 // Drives the OTP form on the already-open /login page. Unlike completeOtpLogin this does

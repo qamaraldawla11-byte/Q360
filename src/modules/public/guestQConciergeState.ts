@@ -1,3 +1,5 @@
+import { normalizeCountry } from '../../utils/countryCurrency.ts';
+
 export interface GuestSetup {
   initialRequest: string;
   businessType: string;
@@ -47,10 +49,54 @@ export const countOf = (value: unknown) => {
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : undefined;
 };
 
+export const tableCountOf = (value: unknown) => {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 && count < 10000 ? Math.floor(count) : undefined;
+};
+
+export const parseServiceCapabilities = (message: string): string[] => {
+  const lower = message.toLowerCase();
+  const hasDineIn = /dine[-_ ]?in|\bdine\b/.test(lower);
+  const hasTakeaway = /take[-_ ]?away|takeout/.test(lower);
+  const hasDelivery = /delivery|deliveries/.test(lower);
+  const hasBoth = /\bboth\b/.test(lower);
+
+  if (hasBoth) {
+    const services = ['dine-in', 'takeaway'];
+    if (hasDelivery) services.push('delivery');
+    return services;
+  }
+
+  const services: string[] = [];
+  if (hasDineIn) services.push('dine-in');
+  if (hasTakeaway) services.push('takeaway');
+  if (hasDelivery) services.push('delivery');
+  return services;
+};
+
+export const serviceDisplayFromServices = (services: string[]): string => {
+  const normalized = services.map((s) => s.toLowerCase().replace(/[-_\s]/g, ''));
+  const hasDineIn = normalized.includes('dinein') || normalized.includes('dine');
+  const hasTakeaway = normalized.includes('takeaway') || normalized.includes('takeout');
+  const hasDelivery = normalized.includes('delivery');
+
+  const parts: string[] = [];
+  if (hasDineIn) parts.push('Dine-in');
+  if (hasTakeaway) parts.push('Takeaway');
+  if (hasDelivery) parts.push('Delivery');
+
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return `${parts[0]} only`;
+  if (parts.length === 2) return parts.join(' and ');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+};
+
 export const isRestaurantLike = (type: string) => /restaurant|cafe|café/.test((type || '').toLowerCase());
 
 export const isSkipMessage = (message: string) =>
-  /^(skip|later|not now|pass|no thanks?|nope|none|no)$/i.test(message.trim());
+  /^(skip(?:\s+for\s+now)?|later|not\s+now|pass|no\s+thanks?|nope|none|no(?:,\s*skip)?)$/i.test(
+    message.trim(),
+  );
 
 export const isContinueMessage = (message: string) =>
   /^(continue|proceed|review|finish|done|next)$/i.test(message.trim());
@@ -73,9 +119,14 @@ export const serviceModeFromServices = (services: string[]): string => {
   const normalized = services.map((s) => s.toLowerCase().replace(/[-_\s]/g, ''));
   const hasDineIn = normalized.includes('dinein') || normalized.includes('dine');
   const hasTakeaway = normalized.includes('takeaway') || normalized.includes('takeout');
+  const hasDelivery = normalized.includes('delivery');
+  if (hasDineIn && hasTakeaway && hasDelivery) return 'dine_in_takeaway_delivery';
+  if (hasDineIn && hasDelivery) return 'dine_in_delivery';
+  if (hasTakeaway && hasDelivery) return 'takeaway_delivery';
   if (hasDineIn && hasTakeaway) return 'both';
   if (hasTakeaway) return 'takeaway';
   if (hasDineIn) return 'dine_in';
+  if (hasDelivery) return 'delivery';
   return '';
 };
 
@@ -84,6 +135,10 @@ export const servicesFromServiceMode = (mode: string): string[] => {
   if (normalized === 'both') return ['dine-in', 'takeaway'];
   if (normalized === 'takeaway') return ['takeaway'];
   if (normalized === 'dinein' || normalized === 'dine') return ['dine-in'];
+  if (normalized === 'delivery') return ['delivery'];
+  if (normalized === 'dineindelivery') return ['dine-in', 'delivery'];
+  if (normalized === 'takeawaydelivery') return ['takeaway', 'delivery'];
+  if (normalized === 'dineintakeawaydelivery') return ['dine-in', 'takeaway', 'delivery'];
   return mode ? [mode] : [];
 };
 
@@ -92,6 +147,10 @@ export const canonicalizeServiceMode = (mode: string): string => {
   if (normalized === 'both') return 'both';
   if (normalized === 'takeaway' || normalized === 'takeout') return 'takeaway';
   if (normalized === 'dinein' || normalized === 'dine') return 'dine_in';
+  if (normalized === 'delivery') return 'delivery';
+  if (normalized === 'dineindelivery') return 'dine_in_delivery';
+  if (normalized === 'takeawaydelivery') return 'takeaway_delivery';
+  if (normalized === 'dineintakeawaydelivery') return 'dine_in_takeaway_delivery';
   return mode;
 };
 
@@ -134,17 +193,22 @@ export const mergeSetup = (current: GuestSetup, updates?: Partial<GuestSetup>): 
   }
   const services = serviceMode ? servicesFromServiceMode(serviceMode) : nextServices.length ? nextServices : current.services;
 
+  const nextCountryRaw = textOf(updates.country, 80) || current.country;
+  const nextCountry = normalizeCountry(nextCountryRaw) || nextCountryRaw;
+
   return {
     ...current,
     businessType: textOf(updates.businessType, 40) || current.businessType,
     businessName: textOf(updates.businessName, 100) || current.businessName,
-    country: textOf(updates.country, 80) || current.country,
+    country: nextCountry,
     email: textOf(updates.email, 160) || current.email,
     serviceMode,
     services,
     priorities: nextPriorities.length ? nextPriorities : current.priorities,
-    tables: countOf(updates.tables) ?? current.tables,
+    tables: tableCountOf(updates.tables) ?? current.tables,
     employees: countOf(updates.employees) ?? current.employees,
+    stockConcerns: updates.stockConcerns ?? current.stockConcerns,
+    bookings: updates.bookings ?? current.bookings,
   };
 };
 
@@ -184,13 +248,7 @@ export const formatFieldValue = (key: FieldKey, setup: GuestSetup): string => {
     case 'email':
       return setup.email;
     case 'serviceMode':
-      return (
-        {
-          dine_in: 'Dine-in only',
-          takeaway: 'Takeaway only',
-          both: 'Dine-in and takeaway',
-        }[setup.serviceMode || ''] || setup.serviceMode || ''
-      );
+      return serviceDisplayFromServices(setup.services) || setup.serviceMode || '';
     case 'tables':
       return setup.tables !== undefined ? `${setup.tables} tables` : '';
     case 'teamSize':
@@ -268,7 +326,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.tables !== undefined,
     question: () => 'How many tables do you expect to manage?',
     confirmQuestion: (s) => `You mentioned ${s.tables} tables. Is that right?`,
-    quickReplies: () => ['4 tables', '10 tables', '20 tables', 'Skip for now'],
+    quickReplies: () => ['4 tables', '10 tables', '20 tables'],
   },
   {
     key: 'teamSize',
@@ -278,7 +336,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.employees !== undefined,
     question: () => 'How many team members do you expect at the start?',
     confirmQuestion: (s) => `You mentioned ${s.employees} team members. Is that right?`,
-    quickReplies: () => ['Just me', '2–5 people', '6–10 people', 'Skip for now'],
+    quickReplies: () => ['Just me', '2–5 people', '6–10 people'],
   },
   {
     key: 'stockConcerns',
@@ -308,7 +366,7 @@ export const fieldDefs: FieldDef[] = [
     hasValue: (s) => s.priorities.length > 0,
     question: () => 'What matters most for your setup right now?',
     confirmQuestion: (s) => `You mentioned “${s.priorities.join(', ')}”. Is that right?`,
-    quickReplies: () => ['Sales', 'Stock', 'Customers', 'Bookings', 'Team', 'Skip for now'],
+    quickReplies: () => ['Sales', 'Stock', 'Customers', 'Bookings', 'Team'],
   },
   {
     key: 'otherPreferences',
@@ -376,44 +434,40 @@ export const parseActiveAnswer = (
     else if (field === 'businessType' && trimmed) updates.businessType = trimmed.slice(0, 40);
   }
 
-  // Active/direct business name answers. Never treat a personal introduction as the business name.
-  if ((field === 'businessName' || (!setup.businessName && !field)) && !updates.businessName) {
+  // Active/direct business name answers. Strictly accept only when the active field is
+  // businessName, and reject answers that are obviously a country or priority.
+  if (field === 'businessName' && !updates.businessName) {
     if (!isOwnerNameStatement(trimmed)) {
       const explicitName = trimmed.match(
         /(?:my\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+is\s+(?:called|named)|the\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+name\s+is|business\s+name(?:\s+is)?|call\s+(?:the\s+)?(?:my\s+)?(?:shop|business|restaurant|cafe|caf[ée]))\s+([a-z0-9][a-z0-9 '&.-]{0,99})/i,
       );
       if (explicitName) {
         updates.businessName = explicitName[1].trim().replace(/[.,!]+$/, '');
-      } else if (
-        field === 'businessName' &&
-        trimmed.length > 0 &&
-        trimmed.length <= 100 &&
-        !isSkipMessage(trimmed) &&
-        !isConfirmMessage(trimmed) &&
-        !isChangeMessage(trimmed)
-      ) {
-        updates.businessName = trimmed.slice(0, 100);
+      } else {
+        const lowerTrimmed = trimmed.toLowerCase();
+        const countryOnlyPattern = /^(egypt|sudan|saudi arabia|uae|united arab emirates|uk|united kingdom|us|usa|united states)$/i;
+        const priorityOnlyPattern = /^(fast checkout|quick checkout|sales|stock|customers|bookings|team|finance|kitchen)$/i;
+        if (countryOnlyPattern.test(lowerTrimmed) || priorityOnlyPattern.test(lowerTrimmed)) {
+          return updates;
+        }
+        if (
+          trimmed.length > 0 &&
+          trimmed.length <= 100 &&
+          !isSkipMessage(trimmed) &&
+          !isConfirmMessage(trimmed) &&
+          !isChangeMessage(trimmed)
+        ) {
+          updates.businessName = trimmed.slice(0, 100);
+        }
       }
     }
   }
 
-  // Active/direct country answers (e.g. quick replies like "Egypt").
-  if ((field === 'country' || (!setup.country && !field)) && !updates.country) {
+  // Active/direct country answers (e.g. quick replies like "Egypt"). Only recognized
+  // countries and aliases are accepted; arbitrary raw text is never stored as country.
+  if (field === 'country' && !updates.country) {
     const cleaned = trimmed.replace(/[.!?]$/, '');
-    const knownCountries: Record<string, string> = {
-      egypt: 'Egypt',
-      saudiarabia: 'Saudi Arabia',
-      'saudi arabia': 'Saudi Arabia',
-      uae: 'United Arab Emirates',
-      unitedarabemirates: 'United Arab Emirates',
-      uk: 'United Kingdom',
-      unitedkingdom: 'United Kingdom',
-      us: 'United States',
-      usa: 'United States',
-      unitedstates: 'United States',
-    };
-    const key = cleaned.toLowerCase().replace(/[-\s]/g, '');
-    const country = knownCountries[key] || (field === 'country' ? cleaned : undefined);
+    const country = normalizeCountry(cleaned);
     if (country) updates.country = country;
   }
 
@@ -421,22 +475,30 @@ export const parseActiveAnswer = (
     (field === 'serviceMode' || (!setup.serviceMode && !field)) &&
     isRestaurantLike(setup.businessType)
   ) {
-    if (/dine[-_ ]?in only/i.test(message)) updates.serviceMode = 'dine_in';
-    else if (/take[-_ ]?away only|takeout only/i.test(message)) updates.serviceMode = 'takeaway';
-    else if (/\bboth\b/i.test(message) || /dine[-_ ]?in and take[-_ ]?away/i.test(message))
-      updates.serviceMode = 'both';
-    else if (/dine[-_ ]?in/i.test(message) && !/take[-_ ]?away|takeout/i.test(message))
-      updates.serviceMode = 'dine_in';
-    else if (/take[-_ ]?away|takeout/i.test(message) && !/dine[-_ ]?in/i.test(message))
-      updates.serviceMode = 'takeaway';
+    const services = parseServiceCapabilities(message);
+    if (services.length) {
+      updates.serviceMode = serviceModeFromServices(services);
+      updates.services = services;
+      if (!services.includes('dine-in') && setup.tables === undefined) {
+        updates.tables = 0;
+      }
+    }
   }
 
   if (
     (field === 'tables' || (setup.tables === undefined && !field)) &&
     isRestaurantLike(setup.businessType)
   ) {
-    const match = message.match(/(\d{1,4})\s*(?:table|tables)/i);
-    if (match) updates.tables = Number(match[1]);
+    const noTables =
+      /\b(?:no|zero|0)\s+tables|counter service,\s*no\s+tables|\btakeaway\s+only|\bdelivery\s+only|\btakeaway\s+and\s+delivery\s+only/i.test(
+        message,
+      );
+    if (noTables) {
+      updates.tables = 0;
+    } else {
+      const match = message.match(/(\d{1,4})\s*(?:table|tables)/i);
+      if (match) updates.tables = Number(match[1]);
+    }
   }
 
   if (field === 'teamSize' || (setup.employees === undefined && !field)) {
@@ -456,6 +518,7 @@ export const parseActiveAnswer = (
     if (/team|staff|hr/i.test(lower)) add.push('Team');
     if (/finance|accounting/i.test(lower)) add.push('Finance');
     if (/menu|kitchen/i.test(lower)) add.push('Kitchen');
+    if (/\b(?:fast|quick)\s+checkout\b/i.test(lower)) add.push('Fast checkout');
     if (add.length) updates.priorities = [...new Set([...setup.priorities, ...add])];
   }
 
@@ -474,26 +537,55 @@ export const parseActiveAnswer = (
   return updates;
 };
 
-export const fallbackModules = (setup: GuestSetup) => {
-  const modules = new Set<string>(['Dashboard', 'Q Assistant']);
-  const type = (setup.businessType || '').toLowerCase();
+const MODULE_ORDER = [
+  'Dashboard',
+  'Sales',
+  'Kitchen',
+  'Menu',
+  'Tables',
+  'Stock',
+  'Team',
+  'Customers',
+  'Reports',
+  'Finance',
+  'Q Assistant',
+  'Bookings',
+];
 
-  if (/restaurant|cafe|café/.test(type)) {
-    ['Sales', 'Kitchen', 'Menu', 'Stock', 'Orders', 'Finance', 'Customers'].forEach((m) => modules.add(m));
-    if (setup.serviceMode !== 'takeaway') {
-      modules.add('Tables');
-      modules.add('Bookings');
+const RESTAURANT_BASE_MODULES = [
+  'Dashboard',
+  'Sales',
+  'Kitchen',
+  'Menu',
+  'Customers',
+  'Reports',
+  'Finance',
+  'Q Assistant',
+];
+
+export const fallbackModules = (setup: GuestSetup) => {
+  const selected = new Set<string>();
+  const type = (setup.businessType || '').toLowerCase();
+  const isFoodBusiness = /restaurant|cafe|café/.test(type);
+
+  if (isFoodBusiness) {
+    RESTAURANT_BASE_MODULES.forEach((module) => selected.add(module));
+    if (setup.services.includes('dine-in') && setup.tables !== 0) {
+      selected.add('Tables');
+    }
+    if ((setup.employees ?? 1) > 1) {
+      selected.add('Team');
     }
   } else if (/retail|shop|pharmacy/.test(type)) {
-    ['Sales', 'Stock', 'Customers', 'Team', 'Finance'].forEach((m) => modules.add(m));
+    ['Sales', 'Stock', 'Customers', 'Team', 'Finance'].forEach((module) => selected.add(module));
   } else {
-    ['Sales', 'Customers', 'Team', 'Finance', 'Bookings'].forEach((m) => modules.add(m));
+    ['Sales', 'Customers', 'Team', 'Finance', 'Bookings'].forEach((module) => selected.add(module));
   }
 
-  if (setup.stockConcerns) modules.add('Stock');
-  if (setup.bookings) modules.add('Bookings');
+  if (setup.stockConcerns) selected.add('Stock');
+  if (setup.bookings) selected.add('Bookings');
 
-  return Array.from(modules);
+  return MODULE_ORDER.filter((module) => selected.has(module));
 };
 
 export const syncJourney = (
@@ -501,22 +593,134 @@ export const syncJourney = (
   journey: Record<FieldKey, FieldStatus>,
   pendingField: FieldKey | null,
   wasSkip: boolean,
-  markVolunteeredConfirmed: boolean,
+  _markVolunteeredConfirmed?: boolean,
 ): Record<FieldKey, FieldStatus> => {
   const next: Record<FieldKey, FieldStatus> = { ...journey };
   for (const key of FIELD_ORDER) {
     const def = fieldDefByKey[key];
-    if (def.hasValue(nextSetup)) {
-      const shouldConfirm = markVolunteeredConfirmed || (key === pendingField && !wasSkip);
-      if (next[key] === 'missing') {
-        next[key] = shouldConfirm ? 'confirmed' : 'captured';
-      } else if (next[key] === 'captured' && shouldConfirm) {
-        // An explicit answer to the active field must promote a stale captured value to confirmed.
-        next[key] = 'confirmed';
-      } else if (next[key] === 'skipped') {
-        next[key] = 'confirmed';
-      }
+    if (!def.hasValue(nextSetup)) continue;
+
+    // Confirmed and skipped states are authoritative and must never be overwritten.
+    if (next[key] === 'confirmed' || next[key] === 'skipped') continue;
+
+    if (key === pendingField && !wasSkip) {
+      // An explicit answer to the currently active field is treated as confirmed.
+      next[key] = 'confirmed';
+    } else if (next[key] === 'missing') {
+      // Values filled in by backend inference remain captured until explicitly confirmed.
+      next[key] = 'captured';
     }
+    // Existing captured values stay captured.
   }
+
+  // Side-effect: no-table service setups skip the tables question.
+  if (nextSetup.tables === 0 && next.tables !== 'confirmed' && next.tables !== 'skipped') {
+    next.tables = 'skipped';
+  }
+
   return next;
 };
+
+/**
+ * Returns true when the backend prose is asking the given field.
+ * Matches the field's guided question, confirmation question, or a question
+ * that ends with ? and mentions the field label.
+ */
+export const replyAsksField = (reply: string, field: FieldKey, setup: GuestSetup): boolean => {
+  if (!reply) return false;
+  const def = fieldDefByKey[field];
+  const question = def.question(setup).toLowerCase();
+  const confirm = def.confirmQuestion(setup).toLowerCase();
+  const label = def.label.toLowerCase();
+  const normalized = reply.toLowerCase().trim();
+  return (
+    normalized.includes(question) ||
+    normalized.includes(confirm) ||
+    (normalized.includes(label) && normalized.endsWith('?'))
+  );
+};
+
+/**
+ * Classifies a backend reply relative to the current journey:
+ * - 'intended': the reply asks the next field the frontend intends to ask.
+ * - 'stale':    the reply asks a confirmed, skipped, or off-sequence field.
+ * - 'prose':    the reply is an acknowledgement or unrelated prose.
+ */
+export const classifyBackendReply = (
+  reply: string,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): 'intended' | 'stale' | 'prose' => {
+  const trimmed = textOf(reply);
+  if (!trimmed) return 'prose';
+  const intended = nextField(setup, journey);
+  if (intended && replyAsksField(trimmed, intended, setup)) return 'intended';
+  for (const key of FIELD_ORDER) {
+    if (!fieldDefByKey[key].applicable(setup)) continue;
+    if (replyAsksField(trimmed, key, setup)) return 'stale';
+  }
+  return 'prose';
+};
+
+/**
+ * Decides what to render after a backend response:
+ * - If the backend already asked the intended next question, show it and activate
+ *   that field; do not append a duplicate local question.
+ * - If the backend asked a stale/off-sequence question, suppress it and ask the
+ *   intended field locally exactly once.
+ * - Otherwise show the backend prose and ask the intended field once.
+ * - When no intended field remains, move to review-ready.
+ */
+export const determineNextPresentation = (
+  backendReply: string | undefined,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): {
+  backendReply: string | null;
+  next: { type: 'activate'; field: FieldKey } | { type: 'ask'; field: FieldKey } | { type: 'review' };
+} => {
+  const reply = textOf(backendReply);
+  const intended = nextField(setup, journey);
+  const classification = classifyBackendReply(reply, setup, journey);
+
+  if (!intended) {
+    return { backendReply: classification === 'stale' ? null : reply, next: { type: 'review' } };
+  }
+
+  if (classification === 'intended') {
+    return { backendReply: reply, next: { type: 'activate', field: intended } };
+  }
+
+  return {
+    backendReply: classification === 'stale' ? null : reply,
+    next: { type: 'ask', field: intended },
+  };
+};
+
+/** Quick replies derived directly from the current active field and journey state. */
+export const deriveQuickReplies = (
+  field: FieldKey | null,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): string[] => {
+  if (!field) return [];
+  const def = fieldDefByKey[field];
+  const status = journey[field];
+  return status === 'captured' ? ['Yes, that’s right', 'Change it'] : def.quickReplies(setup);
+};
+
+/** Returns true when a quick-reply label does not belong to the active field. */
+export const isStaleQuickReply = (
+  reply: string,
+  field: FieldKey,
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+): boolean => !deriveQuickReplies(field, setup, journey).includes(reply);
+
+/** Returns true when an in-flight response belongs to an older journey revision. */
+export const isStaleRevision = (requestRevision: number, currentRevision: number): boolean =>
+  requestRevision !== currentRevision;
+
+/** Returns true when the field's own quick replies already contain a skip action. */
+export const hasInlineSkip = (field: FieldKey): boolean =>
+  fieldDefByKey[field].quickReplies(initialSetup('')).some((reply) => isSkipMessage(reply));
