@@ -130,6 +130,27 @@ const servicePayload = () => ({
     clientMetadata: { createdFrom: 'guest_concierge' },
 });
 
+const zeroTablePayload = () => ({
+    version: 1,
+    businessSummary: 'A zero-table takeaway restaurant.',
+    recommendation: {
+        intent: 'create_workspace',
+        businessType: 'restaurant',
+        recommendedWorkspace: 'restaurant',
+        recommendedModules: ['pos', 'kds', 'menu'],
+        priorities: ['service_speed'],
+        rationale: 'Zero table verification brief.',
+        requiresApproval: true,
+    },
+    prefill: { businessName: 'Zero Table Bistro', country: 'Germany', currency: 'EUR' },
+    answers: [
+        { question: 'business_type', answer: 'restaurant' },
+        { question: 'table_count', answer: '0' },
+        { question: 'service_modes', answer: 'takeaway' },
+    ],
+    clientMetadata: { createdFrom: 'guest_concierge' },
+});
+
 const cleanup = async () => {
     await db.delete(auditLogs).where(inArray(auditLogs.businessId, businessIds));
     await db.delete(qAssistantMessages).where(inArray(qAssistantMessages.businessId, businessIds));
@@ -602,6 +623,122 @@ try {
         const authMiddleware = readFileSync(path.join(root, 'src', 'middleware', 'auth.ts'), 'utf8');
         for (const [label, source] of [['auth.ts', authRoute], ['middleware/auth.ts', authMiddleware]] as const) {
             assert(!/guestBrief|guest_brief|qGuestBrief/i.test(source), `${label} references the guest-brief feature — login independence violated`);
+        }
+    });
+
+    await check('21: zero-table provisioning succeeds and creates no tables, memory, and welcome message', async () => {
+        const rawToken = generateBriefToken();
+        const created = await createGuestBrief({ rawToken, payload: zeroTablePayload(), visitorKeyHash: null }, { tokenSecret: SECRET });
+        assert(created.ok, 'zero-table brief creation failed');
+        serviceBriefIds.push(created.briefId);
+
+        const claim = await request(tokenH, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken: rawToken }) });
+        assert(claim.status === 200, `claim returned ${claim.status}`);
+
+        const body = JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] });
+        const [responseA, responseB] = await Promise.all([
+            request(tokenH, '/api/q/guest-briefs/current/confirm', { method: 'POST', body }),
+            request(tokenH, '/api/q/guest-briefs/current/confirm', { method: 'POST', body }),
+        ]);
+        assert(responseA.status === 200, `concurrent zero-table confirm A returned ${responseA.status}`);
+        assert(responseB.status === 200, `concurrent zero-table confirm B returned ${responseB.status}`);
+        const bodyA = await responseA.json() as Record<string, unknown>;
+        const bodyB = await responseB.json() as Record<string, unknown>;
+        const outcomeA = bodyA.outcome as string | undefined;
+        const outcomeB = bodyB.outcome as string | undefined;
+        assert(
+            (outcomeA === 'confirmed' && outcomeB === 'already_confirmed')
+            || (outcomeA === 'already_confirmed' && outcomeB === 'confirmed'),
+            `expected one confirmed and one already_confirmed, got ${outcomeA}/${outcomeB}`,
+        );
+        const confirmedBody = outcomeA === 'confirmed' ? bodyA : bodyB;
+        assert(confirmedBody.tablesEnsured === 0 && confirmedBody.tablesCreated === 0, `zero-table counts mismatch: ${JSON.stringify(confirmedBody)}`);
+
+        const tables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_H));
+        assert(tables.length === 0, `expected zero tables, got ${tables.length}`);
+
+        const memories = await db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, BIZ_H));
+        assert(memories.length === 1, `expected exactly one memory row, got ${memories.length}`);
+
+        const conversation = await first(db.select().from(qAssistantConversations).where(eq(qAssistantConversations.id, `qconv_onboarding_${BIZ_H}`)));
+        assert(conversation, 'welcome conversation missing');
+        const messages = await db.select().from(qAssistantMessages).where(eq(qAssistantMessages.conversationId, conversation.id));
+        assert(messages.length === 1 && messages[0].role === 'assistant', 'welcome message mismatch');
+
+        const briefRow = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.id, created.briefId)));
+        assert(briefRow?.state === 'consumed', `expected consumed brief, got ${briefRow?.state}`);
+
+        const user = await first(db.select().from(users).where(eq(users.id, USER_H)));
+        assert(user?.onboardingCompleted === true && user.segment === 'restaurant', 'user not onboarded');
+        assert(user?.primaryWorkspace === '/app/restaurant', 'user primaryWorkspace mismatch');
+    });
+
+    await check('22: zero-table replay creates no rows and no duplicates', async () => {
+        const replay = await request(tokenH, '/api/q/guest-briefs/current/confirm', {
+            method: 'POST', body: JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] }),
+        });
+        assert(replay.status === 200, `replay returned ${replay.status}`);
+        const body = await replay.json() as Record<string, unknown>;
+        assert(body.outcome === 'already_confirmed' && body.tablesCreated === 0 && body.tablesEnsured === 0, `replay mismatch: ${JSON.stringify(body)}`);
+
+        const tables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_H));
+        assert(tables.length === 0, 'replay created tables');
+        const memories = await db.select().from(qBusinessMemories).where(eq(qBusinessMemories.businessId, BIZ_H));
+        assert(memories.length === 1, 'replay duplicated memory');
+        const conversations = await db.select().from(qAssistantConversations).where(eq(qAssistantConversations.businessId, BIZ_H));
+        assert(conversations.length === 1, 'replay duplicated conversation');
+        const messages = await db.select().from(qAssistantMessages).where(eq(qAssistantMessages.businessId, BIZ_H));
+        assert(messages.length === 1, 'replay duplicated messages');
+    });
+
+    await check('23: invalid table counts fail closed', async () => {
+        const baseBrief: QGuestBriefView = {
+            id: 'gbr_verify_invalid',
+            state: 'confirmed',
+            payload: {
+                version: 1,
+                businessSummary: 'Invalid tables.',
+                recommendation: {
+                    intent: 'create_workspace',
+                    businessType: 'restaurant',
+                    recommendedWorkspace: 'restaurant',
+                    recommendedModules: [],
+                    priorities: [],
+                    rationale: 'n/a',
+                    requiresApproval: true,
+                },
+                prefill: { businessName: 'Invalid Tables', country: 'Germany', currency: 'EUR' },
+                answers: [
+                    { question: 'business_type', answer: 'restaurant' },
+                    { question: 'table_count', answer: '2' },
+                    { question: 'service_modes', answer: 'takeaway' },
+                ],
+                clientMetadata: { createdFrom: 'guest_concierge' },
+            },
+            claimedByUserId: USER_H,
+            claimedAt: new Date(),
+            confirmedAt: new Date(),
+            confirmedFields: ['businessName'],
+            activeExpiresAt: new Date(),
+            createdAt: new Date(),
+        };
+        for (const [answer, label] of [
+            ['-1', 'negative'],
+            ['31', 'above max'],
+            ['3.5', 'non-integer decimal'],
+            ['abc', 'non-numeric'],
+            ['', 'missing'],
+        ] as const) {
+            const brief: QGuestBriefView = {
+                ...baseBrief,
+                id: `gbr_verify_invalid_${label}`,
+                payload: {
+                    ...baseBrief.payload,
+                    answers: baseBrief.payload.answers.map(a => a.question === 'table_count' ? { ...a, answer } : a),
+                },
+            };
+            const result = await provisionRestaurantWorkspaceFromBrief({ userId: USER_H, brief });
+            assert(!result.ok && result.code === 'invalid_payload', `${label}: expected invalid_payload, got ${result.ok ? 'ok' : `${result.code}: ${result.message}`}`);
         }
     });
 } catch (error) {
