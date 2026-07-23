@@ -125,7 +125,7 @@ const mockBriefApis = async (page: Page) => {
             rationale: 'Restaurant with dine-in service.',
             requiresApproval: true,
           },
-          prefill: { businessName: 'Noor', country: 'Sudan', currency: 'USD' },
+          prefill: { businessName: 'Noor', country: 'Sudan', currency: 'SDG' },
           answers: [
             { question: 'business_type', answer: 'restaurant' },
             { question: 'service_modes', answer: 'dine-in' },
@@ -249,7 +249,7 @@ test('TEST 7.1 - guided concierge collects service mode, name, country, prioriti
     businessType: 'restaurant',
     businessName: 'Noor',
     country: 'Sudan',
-    currency: 'USD',
+    currency: 'SDG',
     services: ['dine-in'],
     priorities: ['Fast checkout'],
     recommendedModules: expect.arrayContaining(['Dashboard', 'Sales', 'Tables', 'Q Assistant']),

@@ -380,6 +380,9 @@ try {
         assert(body.tablesEnsured === 3 && body.tablesCreated === 3, `table counts ${body.tablesEnsured}/${body.tablesCreated}`);
         assert(!('businessId' in body), 'response must not contain businessId');
 
+        const briefRow = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.id, briefIdA)));
+        assert(briefRow?.state === 'consumed', `expected consumed brief, got ${briefRow?.state}`);
+
         const user = await first(db.select().from(users).where(eq(users.id, USER_A)));
         assert(user?.segment === 'restaurant' && user.onboardingCompleted === true, 'user onboarding state not updated');
         assert(user.primaryWorkspace === '/app/restaurant' && user.userType === 'sme', 'user workspace/userType mismatch');
