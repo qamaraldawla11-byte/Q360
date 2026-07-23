@@ -57,14 +57,18 @@ const USER_C = 'usr_verify_qbrief_c';
 const USER_D = 'usr_verify_qbrief_d';
 const USER_E = 'usr_verify_qbrief_e';
 const USER_F = 'usr_verify_qbrief_f';
+const USER_G = 'usr_verify_qbrief_g';
+const USER_H = 'usr_verify_qbrief_h';
 const BIZ_A = 'biz_verify_qbrief_a';
 const BIZ_B = 'biz_verify_qbrief_b';
 const BIZ_C = 'biz_verify_qbrief_c';
 const BIZ_D = 'biz_verify_qbrief_d';
 const BIZ_E = 'biz_verify_qbrief_e';
 const BIZ_F = 'biz_verify_qbrief_f';
-const userIds = [USER_A, USER_B, USER_C, USER_D, USER_E, USER_F];
-const businessIds = [BIZ_A, BIZ_B, BIZ_C, BIZ_D, BIZ_E, BIZ_F];
+const BIZ_G = 'biz_verify_qbrief_g';
+const BIZ_H = 'biz_verify_qbrief_h';
+const userIds = [USER_A, USER_B, USER_C, USER_D, USER_E, USER_F, USER_G, USER_H];
+const businessIds = [BIZ_A, BIZ_B, BIZ_C, BIZ_D, BIZ_E, BIZ_F, BIZ_G, BIZ_H];
 const httpTokenHashes: string[] = [];
 const serviceBriefIds: string[] = [];
 
@@ -152,6 +156,8 @@ try {
         { id: BIZ_D, name: 'Qbrief D', type: 'restaurant' },
         { id: BIZ_E, name: 'Qbrief E', type: 'restaurant' },
         { id: BIZ_F, name: 'Qbrief F', type: 'restaurant' },
+        { id: BIZ_G, name: 'Qbrief G', type: 'restaurant' },
+        { id: BIZ_H, name: 'Qbrief H', type: 'restaurant' },
     ]);
     await db.insert(users).values([
         { id: USER_A, email: `${USER_A}@example.com`, role: 'owner', businessId: BIZ_A },
@@ -160,6 +166,8 @@ try {
         { id: USER_D, email: `${USER_D}@example.com`, role: 'owner', businessId: BIZ_D },
         { id: USER_E, email: `${USER_E}@example.com`, role: 'owner', businessId: BIZ_E },
         { id: USER_F, email: `${USER_F}@example.com`, role: 'owner', businessId: BIZ_F },
+        { id: USER_G, email: `${USER_G}@example.com`, role: 'owner', businessId: BIZ_G },
+        { id: USER_H, email: `${USER_H}@example.com`, role: 'owner', businessId: BIZ_H },
     ]);
     const tokenA = token(USER_A, BIZ_A);
     const tokenB = token(USER_B, BIZ_B);
@@ -167,6 +175,8 @@ try {
     const tokenD = token(USER_D, BIZ_D);
     const tokenE = token(USER_E, BIZ_E);
     const tokenF = token(USER_F, BIZ_F);
+    const tokenG = token(USER_G, BIZ_G);
+    const tokenH = token(USER_H, BIZ_H);
 
     await check('01: gating is fail-closed (flag off / missing secret / short secret → null)', () => {
         const savedEnabled = process.env.Q_GUEST_BRIEF_ENABLED;
@@ -208,6 +218,67 @@ try {
         const body = await response.json() as { error?: string; message?: string };
         assert(body.error === 'not_implemented', `expected not_implemented, got ${body.error}`);
         assert(body.message === 'Only the Restaurant workspace is supported for Q-guided setup right now.', 'not_implemented message mismatch');
+    });
+
+    await check('03a: create for cafe → 201 and normalizes to restaurant workspace contract', async () => {
+        const response = await createBriefHttp('verify-visitor-03a', validCreateBody({ businessType: 'cafe', businessName: 'Verify Cafe' }));
+        assert(response.status === 201, `expected 201, got ${response.status}`);
+        const body = await response.json() as Record<string, unknown>;
+        assert(typeof body.briefToken === 'string', 'briefToken missing');
+        const tokenHash = hashBriefToken(body.briefToken as string, SECRET);
+        httpTokenHashes.push(tokenHash);
+        const row = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.tokenHash, tokenHash)));
+        assert(row, 'cafe brief row missing after create');
+        const payload = row.payload as Record<string, unknown>;
+        const recommendation = payload.recommendation as Record<string, unknown>;
+        assert(recommendation.businessType === 'restaurant', `cafe businessType not normalized, got ${recommendation.businessType}`);
+        assert(recommendation.recommendedWorkspace === 'restaurant', `cafe recommendedWorkspace not normalized, got ${recommendation.recommendedWorkspace}`);
+        const businessTypeAnswer = (payload.answers as Array<{ question: string; answer: string }>).find(a => a.question === 'business_type');
+        assert(businessTypeAnswer?.answer === 'restaurant', `cafe business_type answer not normalized, got ${businessTypeAnswer?.answer}`);
+    });
+
+    await check('03b: create for café with accent → 201 and normalizes to restaurant workspace contract', async () => {
+        const response = await createBriefHttp('verify-visitor-03b', validCreateBody({ businessType: 'café', businessName: 'Verify Café' }));
+        assert(response.status === 201, `expected 201, got ${response.status}`);
+        const body = await response.json() as Record<string, unknown>;
+        assert(typeof body.briefToken === 'string', 'briefToken missing');
+        const tokenHash = hashBriefToken(body.briefToken as string, SECRET);
+        httpTokenHashes.push(tokenHash);
+        const row = await first(db.select().from(qGuestBriefs).where(eq(qGuestBriefs.tokenHash, tokenHash)));
+        assert(row, 'café brief row missing after create');
+        const payload = row.payload as Record<string, unknown>;
+        const recommendation = payload.recommendation as Record<string, unknown>;
+        assert(recommendation.businessType === 'restaurant', `café businessType not normalized, got ${recommendation.businessType}`);
+        assert(recommendation.recommendedWorkspace === 'restaurant', `café recommendedWorkspace not normalized, got ${recommendation.recommendedWorkspace}`);
+    });
+
+    await check('03c: cafe brief claims and provisions through the restaurant executor to /app/restaurant', async () => {
+        const create = await createBriefHttp('verify-visitor-03c', validCreateBody({ businessType: 'cafe', businessName: 'Cafe Provision Test', tables: 2 }));
+        assert(create.status === 201, `create returned ${create.status}`);
+        const { briefToken } = await create.json() as { briefToken: string };
+        const tokenHash = hashBriefToken(briefToken, SECRET);
+        httpTokenHashes.push(tokenHash);
+
+        const claim = await request(tokenG, '/api/q/guest-briefs/claim', { method: 'POST', body: JSON.stringify({ briefToken }) });
+        assert(claim.status === 200, `claim returned ${claim.status}`);
+
+        const confirm = await request(tokenG, '/api/q/guest-briefs/current/confirm', {
+            method: 'POST', body: JSON.stringify({ acceptedFields: ['businessName', 'country', 'currency'] }),
+        });
+        assert(confirm.status === 200, `confirm returned ${confirm.status}`);
+        const body = await confirm.json() as Record<string, unknown>;
+        assert(body.workspace === 'restaurant' && body.destination === '/app/restaurant', `cafe provisioned to wrong workspace/destination: ${JSON.stringify(body)}`);
+        assert(body.tablesEnsured === 2, `cafe tablesEnsured mismatch: ${body.tablesEnsured}`);
+
+        const user = await first(db.select().from(users).where(eq(users.id, USER_G)));
+        assert(user?.segment === 'restaurant' && user.onboardingCompleted === true, 'cafe user not onboarded as restaurant');
+        assert(user?.primaryWorkspace === '/app/restaurant', 'cafe user primaryWorkspace mismatch');
+
+        const business = await first(db.select().from(businesses).where(eq(businesses.id, BIZ_G)));
+        assert(business?.type === 'restaurant' && business.ownerUserId === USER_G, 'cafe business not restaurant type or ownership mismatch');
+
+        const tables = await db.select().from(restaurantTables).where(eq(restaurantTables.businessId, BIZ_G));
+        assert(tables.length === 2, `expected 2 cafe tables, got ${tables.length}`);
     });
 
     await check('04: create with trusted-layer fields → 422 invalid_payload, zero side effects', async () => {

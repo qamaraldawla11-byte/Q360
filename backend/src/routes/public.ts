@@ -56,9 +56,12 @@ publicRoutes.post('/q-concierge/brief', async (c) => {
         return c.json({ error: 'invalid_payload' }, 422);
     }
 
-    if (body.businessType !== 'restaurant') {
+    const rawBusinessType = typeof body.businessType === 'string' ? body.businessType.trim().toLowerCase() : '';
+    const isRestaurantFamily = rawBusinessType === 'restaurant' || rawBusinessType === 'cafe' || rawBusinessType === 'café';
+    if (!isRestaurantFamily) {
         return c.json({ error: 'not_implemented', message: 'Only the Restaurant workspace is supported for Q-guided setup right now.' }, 422);
     }
+    const normalizedBusinessType = 'restaurant';
     const businessName = typeof body.businessName === 'string' ? body.businessName.trim() : '';
     const country = typeof body.country === 'string' ? body.country.trim() : '';
     const currency = typeof body.currency === 'string' ? body.currency.trim() : undefined;
@@ -84,8 +87,8 @@ publicRoutes.post('/q-concierge/brief', async (c) => {
         businessSummary,
         recommendation: {
             intent: 'create_workspace',
-            businessType: 'restaurant',
-            recommendedWorkspace: 'restaurant',
+            businessType: normalizedBusinessType,
+            recommendedWorkspace: normalizedBusinessType,
             recommendedModules,
             priorities,
             rationale: 'Owner confirmed restaurant onboarding details in the public Q concierge.',
@@ -93,7 +96,7 @@ publicRoutes.post('/q-concierge/brief', async (c) => {
         },
         prefill: { businessName, country, currency: prefillCurrency },
         answers: [
-            { question: 'business_type', answer: 'restaurant' },
+            { question: 'business_type', answer: normalizedBusinessType },
             { question: 'table_count', answer: String(tables) },
             { question: 'service_modes', answer: services.join(', ') },
         ],
