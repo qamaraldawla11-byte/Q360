@@ -1,4 +1,7 @@
 import { http } from './http';
+import { currencyForCountry, normalizeCountry } from '@/utils/countryCurrency.ts';
+
+export { currencyForCountry, normalizeCountry };
 
 export interface QGuestBriefAnswer {
     question: string;
@@ -104,23 +107,3 @@ export const confirmGuestBrief = (input: ConfirmGuestBriefInput): Promise<QGuest
 
 export const dismissGuestBrief = (): Promise<DismissGuestBriefResult> =>
     http.post<DismissGuestBriefResult>('/q/guest-briefs/current/dismiss');
-
-const currencyByCountry: Record<string, string> = {
-    spain: 'EUR',
-    france: 'EUR',
-    germany: 'EUR',
-    uae: 'AED',
-    ae: 'AED',
-    'united arab emirates': 'AED',
-    egypt: 'EGP',
-    eg: 'EGP',
-    uk: 'GBP',
-    gb: 'GBP',
-    'united kingdom': 'GBP',
-    us: 'USD',
-    usa: 'USD',
-    'united states': 'USD',
-};
-
-export const currencyForCountry = (country: string): string =>
-    currencyByCountry[country.trim().toLowerCase()] || 'USD';

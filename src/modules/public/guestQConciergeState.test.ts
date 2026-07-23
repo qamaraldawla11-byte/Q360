@@ -1,3 +1,7 @@
+import {
+  currencyForCountry,
+  normalizeCountry,
+} from '../../utils/countryCurrency.ts';
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
@@ -884,5 +888,101 @@ describe('guestQConciergeState', () => {
       'Q Assistant',
     ];
     assert.deepEqual(fallbackModules(setup), expected);
+  });
+
+  // M7.4C country and currency normalization.
+  it('M7.4C: KSA normalizes to Saudi Arabia and currency SAR', () => {
+    assert.equal(normalizeCountry('KSA'), 'Saudi Arabia');
+    assert.equal(currencyForCountry('KSA'), 'SAR');
+  });
+
+  it('M7.4C: saudi normalizes to Saudi Arabia and currency SAR', () => {
+    assert.equal(normalizeCountry('saudi'), 'Saudi Arabia');
+    assert.equal(currencyForCountry('saudi'), 'SAR');
+  });
+
+  it('M7.4C: UAE normalizes to United Arab Emirates and currency AED', () => {
+    assert.equal(normalizeCountry('UAE'), 'United Arab Emirates');
+    assert.equal(currencyForCountry('UAE'), 'AED');
+  });
+
+  it('M7.4C: Egypt currency is EGP', () => {
+    assert.equal(currencyForCountry('Egypt'), 'EGP');
+  });
+
+  it('M7.4C: Sudan currency is SDG', () => {
+    assert.equal(currencyForCountry('Sudan'), 'SDG');
+  });
+
+  it('M7.4C: Spain currency is EUR', () => {
+    assert.equal(currencyForCountry('Spain'), 'EUR');
+  });
+
+  it('M7.4C: UK normalizes to United Kingdom and currency GBP', () => {
+    assert.equal(normalizeCountry('UK'), 'United Kingdom');
+    assert.equal(currencyForCountry('UK'), 'GBP');
+  });
+
+  it('M7.4C: USA normalizes to United States and currency USD', () => {
+    assert.equal(normalizeCountry('USA'), 'United States');
+    assert.equal(currencyForCountry('USA'), 'USD');
+  });
+
+  it('M7.4C: mixed-case and whitespace aliases normalize correctly', () => {
+    assert.equal(normalizeCountry('  kSa  '), 'Saudi Arabia');
+    assert.equal(normalizeCountry('u.a.e.'), 'United Arab Emirates');
+    assert.equal(normalizeCountry('GREAT BRITAIN'), 'United Kingdom');
+    assert.equal(normalizeCountry('America'), 'United States');
+    assert.equal(currencyForCountry('  saudi arabia  '), 'SAR');
+    assert.equal(currencyForCountry('ae'), 'AED');
+  });
+
+  it('M7.4C: unknown country keeps deterministic USD fallback and is not normalized', () => {
+    assert.equal(normalizeCountry('Mars'), undefined);
+    assert.equal(currencyForCountry('Mars'), 'USD');
+  });
+
+  it('M7.4C: canonical country value survives setup merge', () => {
+    const fromAlias = mergeSetup(initialSetup('Hello'), { country: 'KSA' });
+    assert.equal(fromAlias.country, 'Saudi Arabia');
+
+    const canonicalPreserved = mergeSetup(fromAlias, { country: '' });
+    assert.equal(canonicalPreserved.country, 'Saudi Arabia');
+
+    const overrideToAlias = mergeSetup(fromAlias, { country: 'uk' });
+    assert.equal(overrideToAlias.country, 'United Kingdom');
+  });
+
+  it('M7.4C: currencyForCountry returns the same currency for aliases and canonical names', () => {
+    const cases = [
+      { aliases: ['KSA', 'saudi', 'SA', 'Saudi Arabia'], currency: 'SAR' },
+      { aliases: ['UAE', 'U.A.E.', 'AE', 'United Arab Emirates'], currency: 'AED' },
+      { aliases: ['Egypt', 'EG'], currency: 'EGP' },
+      { aliases: ['Sudan', 'SD'], currency: 'SDG' },
+      { aliases: ['Spain', 'ES'], currency: 'EUR' },
+      { aliases: ['UK', 'Great Britain', 'GB', 'United Kingdom'], currency: 'GBP' },
+      { aliases: ['USA', 'US', 'America', 'United States'], currency: 'USD' },
+    ];
+    for (const { aliases, currency } of cases) {
+      for (const alias of aliases) {
+        assert.equal(
+          currencyForCountry(alias),
+          currency,
+          `expected ${currency} for "${alias}"`,
+        );
+      }
+    }
+  });
+
+  it('M7.4C: parseActiveAnswer stores canonical country for aliases', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      serviceMode: 'dine_in',
+    });
+    const ksa = parseActiveAnswer('KSA', 'country', setup);
+    assert.equal(ksa.country, 'Saudi Arabia');
+    const usa = parseActiveAnswer('  America  ', 'country', setup);
+    assert.equal(usa.country, 'United States');
   });
 });

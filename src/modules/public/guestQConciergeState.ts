@@ -1,3 +1,5 @@
+import { normalizeCountry } from '../../utils/countryCurrency.ts';
+
 export interface GuestSetup {
   initialRequest: string;
   businessType: string;
@@ -191,11 +193,14 @@ export const mergeSetup = (current: GuestSetup, updates?: Partial<GuestSetup>): 
   }
   const services = serviceMode ? servicesFromServiceMode(serviceMode) : nextServices.length ? nextServices : current.services;
 
+  const nextCountryRaw = textOf(updates.country, 80) || current.country;
+  const nextCountry = normalizeCountry(nextCountryRaw) || nextCountryRaw;
+
   return {
     ...current,
     businessType: textOf(updates.businessType, 40) || current.businessType,
     businessName: textOf(updates.businessName, 100) || current.businessName,
-    country: textOf(updates.country, 80) || current.country,
+    country: nextCountry,
     email: textOf(updates.email, 160) || current.email,
     serviceMode,
     services,
@@ -462,21 +467,7 @@ export const parseActiveAnswer = (
   // countries and aliases are accepted; arbitrary raw text is never stored as country.
   if (field === 'country' && !updates.country) {
     const cleaned = trimmed.replace(/[.!?]$/, '');
-    const knownCountries: Record<string, string> = {
-      egypt: 'Egypt',
-      sudan: 'Sudan',
-      saudiarabia: 'Saudi Arabia',
-      'saudi arabia': 'Saudi Arabia',
-      uae: 'United Arab Emirates',
-      unitedarabemirates: 'United Arab Emirates',
-      uk: 'United Kingdom',
-      unitedkingdom: 'United Kingdom',
-      us: 'United States',
-      usa: 'United States',
-      unitedstates: 'United States',
-    };
-    const key = cleaned.toLowerCase().replace(/[-\s]/g, '');
-    const country = knownCountries[key];
+    const country = normalizeCountry(cleaned);
     if (country) updates.country = country;
   }
 
