@@ -75,7 +75,14 @@ describe('guestQConciergeState', () => {
 
   it('requiredComplete is true when required fields are confirmed', () => {
     const setup = baseSetup();
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     assert.equal(requiredComplete(setup, journey), true);
   });
 
@@ -92,7 +99,14 @@ describe('guestQConciergeState', () => {
 
   it('requiredProgress counts only confirmed or skipped required fields', () => {
     const setup = baseSetup();
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     const progress = requiredProgress(setup, journey);
     assert.equal(progress.total, 5); // businessType, serviceMode, businessName, country, email
     assert.equal(progress.done, 5);
@@ -153,14 +167,28 @@ describe('guestQConciergeState', () => {
       services: ['dine-in'],
       email: 'owner@noor.test',
     });
-    const journey = syncJourney(setup, initialJourney(), null, false, true);
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+    };
     assert.equal(requiredComplete(setup, journey), true);
   });
 
   it('skipping an optional field marks it skipped and keeps requiredComplete true', () => {
     const setup = baseSetup();
-    const base = syncJourney(setup, initialJourney(), null, false, true);
-    const journey: Record<FieldKey, FieldStatus> = { ...base, tables: 'skipped' };
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'skipped',
+    };
     assert.equal(requiredComplete(setup, journey), true);
     assert.equal(journey.tables, 'skipped');
   });
@@ -289,5 +317,108 @@ describe('guestQConciergeState', () => {
     };
     const nextJourney = syncJourney(setup, journey, 'businessName', false, false);
     assert.equal(nextJourney.businessName, 'confirmed');
+  });
+
+  // M7.2 regression tests for strict active-field validation and authoritative states.
+  it('Noor becomes businessName when businessName is active', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('Noor', 'businessName', setup);
+    assert.equal(updates.businessName, 'Noor');
+  });
+
+  it('Sudan becomes country when country is active', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', businessName: 'Noor' });
+    const updates = parseActiveAnswer('Sudan', 'country', setup);
+    assert.equal(updates.country, 'Sudan');
+  });
+
+  it('fast checkout becomes a priority when priorities is active', () => {
+    const setup = initialSetup('Hello');
+    const updates = parseActiveAnswer('fast checkout', 'priorities', setup);
+    assert.deepEqual(updates.priorities, ['Fast checkout']);
+  });
+
+  it('active country does not accept fast checkout as country', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', businessName: 'Noor' });
+    const updates = parseActiveAnswer('fast checkout', 'country', setup);
+    assert.equal(updates.country, undefined);
+  });
+
+  it('active businessName does not accept Sudan as businessName', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('Sudan', 'businessName', setup);
+    assert.equal(updates.businessName, undefined);
+  });
+
+  it('confirmed businessName cannot be overwritten by backend inference', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+    };
+    const backendSetup = mergeSetup(setup, { businessName: 'Another Name' });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+  });
+
+  it('confirmed country cannot be overwritten by backend inference', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+    };
+    const backendSetup = mergeSetup(setup, { country: 'Egypt' });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.country, 'confirmed');
+  });
+
+  it('skipped bookings remains skipped after backend returns bookings-related text', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      country: 'Sudan',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      bookings: 'skipped',
+    };
+    const backendSetup = mergeSetup(setup, { bookings: true });
+    const nextJourney = syncJourney(backendSetup, journey, null, false, false);
+    assert.equal(nextJourney.bookings, 'skipped');
+  });
+
+  it('first-response inference becomes captured, not confirmed', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey = syncJourney(setup, initialJourney(), null, false, false);
+    assert.equal(journey.businessType, 'captured');
+  });
+
+  it('explicit correction can replace a confirmed field', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'confirmed',
+    };
+    const correctedSetup = mergeSetup(setup, { businessName: 'Cairo Bites' });
+    const nextJourney = syncJourney(correctedSetup, { ...journey, businessName: 'missing' }, 'businessName', false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+    assert.equal(correctedSetup.businessName, 'Cairo Bites');
   });
 });

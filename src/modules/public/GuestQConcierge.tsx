@@ -88,6 +88,36 @@ const statusText = (mode: 'ai' | 'guided' | 'pending') => {
   return 'Q is preparing your workspace';
 };
 
+const fieldKeyForUpdateKey = (key: keyof GuestSetup): FieldKey | undefined => {
+  switch (key) {
+    case 'businessType':
+      return 'businessType';
+    case 'services':
+    case 'serviceMode':
+      return 'serviceMode';
+    case 'businessName':
+      return 'businessName';
+    case 'country':
+      return 'country';
+    case 'email':
+      return 'email';
+    case 'tables':
+      return 'tables';
+    case 'employees':
+      return 'teamSize';
+    case 'priorities':
+      return 'priorities';
+    case 'stockConcerns':
+      return 'stockConcerns';
+    case 'bookings':
+      return 'bookings';
+    case 'otherPreferences':
+      return 'otherPreferences';
+    default:
+      return undefined;
+  }
+};
+
 const moduleIcon = (moduleName: string) => {
   const key = moduleName.toLowerCase().replace(/[^a-z]/g, '');
   if (key.includes('dashboard')) return LayoutDashboard;
@@ -209,7 +239,6 @@ export function GuestQConcierge({
   const activeFieldRef = useRef<FieldKey | null>(null);
   const reviewReadyRef = useRef(false);
   const startedRef = useRef(false);
-  const firstExchangeRef = useRef(true);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLElement>(null);
@@ -218,18 +247,6 @@ export function GuestQConcierge({
   if (openerRef.current === null) {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }
-
-  useEffect(() => {
-    setupRef.current = setup;
-  }, [setup]);
-
-  useEffect(() => {
-    journeyRef.current = journey;
-  }, [journey]);
-
-  useEffect(() => {
-    activeFieldRef.current = activeField;
-  }, [activeField]);
 
   useEffect(() => {
     reviewReadyRef.current = reviewReady;
@@ -488,11 +505,52 @@ export function GuestQConcierge({
         activeAnswerValue !== undefined &&
         activeAnswerValue !== '' &&
         activeAnswerValue !== null;
-      if (hasActiveAnswer) {
+
+      // If the active field is strict (businessName/country/priorities) and the answer
+      // cannot be parsed for that field, ask for clarification instead of guessing or
+      // sending it to the backend.
+      if (
+        !hasActiveAnswer &&
+        pendingField &&
+        (pendingField === 'businessName' || pendingField === 'country' || pendingField === 'priorities') &&
+        !isSkipMessage(message) &&
+        !isConfirmMessage(message) &&
+        !isChangeMessage(message)
+      ) {
+        let clarification = '';
+        if (pendingField === 'businessName') {
+          clarification = `That doesn't sound like a business name. What is the name of your ${setupRef.current.businessType || 'business'}?`;
+        } else if (pendingField === 'country') {
+          const name = setupRef.current.businessName ? `“${setupRef.current.businessName}”` : 'the business';
+          clarification = `I don't recognize that country. Which country will ${name} operate in?`;
+        } else if (pendingField === 'priorities') {
+          clarification =
+            'Could you tell me what matters most? For example, sales, stock, customers, or fast checkout.';
+        }
+        appendMessage('q', clarification);
+        setIsSending(false);
+        return;
+      }
+
+      // Confirm the active field, or any volunteered facts parsed when no field was active.
+      // Volunteered facts come from reliable local parsers, so they can be confirmed directly.
+      const keysToConfirm = pendingField
+        ? hasActiveAnswer
+          ? [pendingField]
+          : []
+        : (Object.keys(activeFieldAnswer) as FieldKey[]).filter((key) => {
+            const value = (activeFieldAnswer as Record<string, unknown>)[key];
+            return value !== undefined && value !== '' && value !== null && value !== false;
+          });
+
+      if (keysToConfirm.length > 0) {
         const preSetup = mergeSetup(setupRef.current, activeFieldAnswer);
         setupRef.current = preSetup;
         setSetup(preSetup);
-        const preJourney = { ...journeyRef.current, [pendingField]: 'confirmed' };
+        const preJourney = { ...journeyRef.current };
+        for (const key of keysToConfirm) {
+          preJourney[key] = 'confirmed';
+        }
         journeyRef.current = preJourney;
         setJourney(preJourney);
       }
@@ -510,15 +568,26 @@ export function GuestQConcierge({
           },
           { timeout: 45_000 },
         );
-        let nextSetup = mergeSetup(setupRef.current, result.updates);
+        // Backend inference may only fill missing or captured fields; confirmed and
+        // skipped fields are authoritative and must not be overwritten.
+        const backendUpdates: Partial<GuestSetup> = {};
+        if (result.updates) {
+          for (const [key, value] of Object.entries(result.updates) as Array<[keyof GuestSetup, unknown]>) {
+            const fieldKey = fieldKeyForUpdateKey(key);
+            if (!fieldKey) continue;
+            const status = journeyRef.current[fieldKey];
+            if (status !== 'confirmed' && status !== 'skipped') {
+              (backendUpdates as Record<string, unknown>)[key] = value;
+            }
+          }
+        }
+        let nextSetup = mergeSetup(setupRef.current, backendUpdates);
         const localUpdates = parseActiveAnswer(message, pendingField, nextSetup);
         nextSetup = mergeSetup(nextSetup, localUpdates);
         setupRef.current = nextSetup;
         setSetup(nextSetup);
 
-        const markVolunteeredConfirmed = firstExchangeRef.current;
-        firstExchangeRef.current = false;
-        const nextJourney = syncJourney(nextSetup, journeyRef.current, pendingField, false, markVolunteeredConfirmed);
+        const nextJourney = syncJourney(nextSetup, journeyRef.current, pendingField, false);
         journeyRef.current = nextJourney;
         setJourney(nextJourney);
 
@@ -689,7 +758,8 @@ export function GuestQConcierge({
       journey[activeField] !== 'skipped' &&
       journey[activeField] !== 'confirmed'
     : false;
-  const showDefaults = canContinue && !reviewReady;
+  const requiredHaveValues = requiredFields(setup).every((key) => fieldDefByKey[key].hasValue(setup));
+  const showDefaults = requiredHaveValues && !reviewReady;
 
   const handleNext = useCallback(() => {
     if (!activeFieldRef.current) return;
@@ -712,6 +782,21 @@ export function GuestQConcierge({
   }, [advance, markSkipped]);
 
   const handleUseDefaults = useCallback(() => {
+    // The user is explicitly accepting any inferred defaults, so promote captured
+    // applicable fields to confirmed before finishing optional ones.
+    const nextJourney = { ...journeyRef.current };
+    for (const key of FIELD_ORDER) {
+      const def = fieldDefByKey[key];
+      if (
+        def.applicable(setupRef.current) &&
+        nextJourney[key] === 'captured' &&
+        def.hasValue(setupRef.current)
+      ) {
+        nextJourney[key] = 'confirmed';
+      }
+    }
+    journeyRef.current = nextJourney;
+    setJourney(nextJourney);
     finishOptional();
     const modules = recommendedModules.length ? recommendedModules : fallbackModules(setupRef.current);
     onContinue(setupRef.current, modules);

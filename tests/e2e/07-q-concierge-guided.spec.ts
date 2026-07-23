@@ -45,7 +45,7 @@ const mockGuidedConcierge = (page: Page) => {
     if (/dine-in only/i.test(message)) {
       return json(route, {
         mode: 'guided',
-        reply: 'Dine-in only it is. What is the name of your restaurant?',
+        reply: 'Dine-in only it is.',
         updates: { services: ['dine-in'] },
         suggestedReplies: [],
         recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
@@ -59,20 +59,32 @@ const mockGuidedConcierge = (page: Page) => {
         mode: 'guided',
         reply: 'Nice to meet Noor. Which country will it operate in?',
         updates: { businessName: 'Noor' },
-        suggestedReplies: ['Spain', 'Egypt', 'Saudi Arabia'],
+        suggestedReplies: ['Sudan', 'Egypt', 'Saudi Arabia'],
         recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
         readyForSignIn: false,
       });
     }
 
     // Country reply.
-    if (/spain/i.test(message)) {
+    if (/sudan/i.test(message)) {
       return json(route, {
         mode: 'guided',
-        reply: 'Spain noted. Which email should receive the secure sign-in code?',
-        updates: { country: 'Spain' },
+        reply: 'Sudan noted. Which email should receive the secure sign-in code?',
+        updates: { country: 'Sudan' },
         suggestedReplies: [],
         recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
+        readyForSignIn: false,
+      });
+    }
+
+    // Priority reply.
+    if (/fast checkout/i.test(message)) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Fast checkout noted. Any other setup preferences?',
+        updates: { priorities: ['Fast checkout'] },
+        suggestedReplies: [],
+        recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant', 'Customers'],
         readyForSignIn: false,
       });
     }
@@ -103,7 +115,7 @@ const mockBriefApis = async (page: Page) => {
         state: 'claimed',
         payload: {
           version: 1,
-          businessSummary: 'Noor is a restaurant in Spain.',
+          businessSummary: 'Noor is a restaurant in Sudan.',
           recommendation: {
             intent: 'restaurant',
             businessType: 'restaurant',
@@ -113,7 +125,7 @@ const mockBriefApis = async (page: Page) => {
             rationale: 'Restaurant with dine-in service.',
             requiresApproval: true,
           },
-          prefill: { businessName: 'Noor', country: 'Spain', currency: 'EUR' },
+          prefill: { businessName: 'Noor', country: 'Sudan', currency: 'USD' },
           answers: [
             { question: 'business_type', answer: 'restaurant' },
             { question: 'service_modes', answer: 'dine-in' },
@@ -144,7 +156,7 @@ const mockBriefApis = async (page: Page) => {
   return briefRequests;
 };
 
-test('TEST 7.1 - guided concierge collects service mode, name, country and email before unlocking Continue', async ({ page }) => {
+test('TEST 7.1 - guided concierge collects service mode, name, country, priorities and skips bookings before unlocking Continue', async ({ page }) => {
   const user = newUser(USER_EMAIL);
   await mockOtp(page, user);
   await mockGuidedConcierge(page);
@@ -167,18 +179,19 @@ test('TEST 7.1 - guided concierge collects service mode, name, country and email
 
   // Choose service mode.
   await page.getByRole('button', { name: 'Dine-in only' }).click();
-  await expect(page.getByText('Dine-in only it is. What is the name of your restaurant?')).toBeVisible();
+  await expect(page.getByText('Dine-in only it is.')).toBeVisible();
 
   // Continue is still disabled because required fields are not all confirmed.
   await expect(page.getByRole('button', { name: 'Continue securely' })).toBeDisabled();
 
   // Provide business name.
+  await expect(page.getByText('What is the name of your restaurant?')).toBeVisible();
   await page.getByLabel('Message Q').fill('Noor');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('Nice to meet Noor. Which country will it operate in?')).toBeVisible();
 
   // Provide country.
-  await page.getByLabel('Message Q').fill('Spain');
+  await page.getByLabel('Message Q').fill('Sudan');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('Which email should receive the secure sign-in code?')).toBeVisible();
 
@@ -186,6 +199,43 @@ test('TEST 7.1 - guided concierge collects service mode, name, country and email
   await page.getByLabel('Message Q').fill(USER_EMAIL);
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('Thanks — I have everything I need.')).toBeVisible();
+
+  // Skip optional fields until bookings.
+  await expect(page.getByText('How many tables do you expect to manage?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('skip');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  await expect(page.getByText('How many team members do you expect at the start?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('skip');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  await expect(page.getByText('Do you want to track stock and inventory from day one?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('skip');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  // Bookings is asked once, then skipped and never asked again.
+  await expect(page.getByText('Will you take table or appointment bookings?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('skip');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('Will you take table or appointment bookings?')).toHaveCount(1);
+
+  // Provide priority.
+  await expect(page.getByText('What matters most for your setup right now?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('fast checkout');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  // Skip other preferences and finish.
+  await expect(page.getByText('Fast checkout noted. Any other setup preferences?')).toBeVisible();
+  await page.getByLabel('Message Q').fill('skip');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  // Review is ready and plan shows the three required values.
+  await expect(page.getByText('Your Q360 setup brief is ready')).toBeVisible();
+  await expect(page.locator('.guest-q-plan-title')).toContainText('Noor');
+  await expect(page.locator('.guest-q-meta-item').getByText('Sudan')).toBeVisible();
+  await expect(
+    page.locator('.guest-q-draft-row').filter({ hasText: 'Priorities' }).locator('.guest-q-draft-value'),
+  ).toHaveText('Fast checkout');
 
   // Continue securely is enabled and the live summary is ready.
   const continueButton = page.getByRole('button', { name: 'Continue securely' });
@@ -198,9 +248,10 @@ test('TEST 7.1 - guided concierge collects service mode, name, country and email
   expect(briefRequests[0]).toMatchObject({
     businessType: 'restaurant',
     businessName: 'Noor',
-    country: 'Spain',
-    currency: 'EUR',
+    country: 'Sudan',
+    currency: 'USD',
     services: ['dine-in'],
+    priorities: ['Fast checkout'],
     recommendedModules: expect.arrayContaining(['Dashboard', 'Sales', 'Tables', 'Q Assistant']),
     initialRequest: HERO_PROMPT,
   });
@@ -334,7 +385,7 @@ test('TEST 7.4 - owner name is clarified and country quick reply does not repeat
     if (message.includes('dine-in only')) {
       return json(route, {
         mode: 'guided',
-        reply: 'Dine-in only it is. What is the name of your restaurant?',
+        reply: 'Dine-in only it is.',
         updates: { services: ['dine-in'] },
         suggestedReplies: [],
         recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
@@ -391,13 +442,13 @@ test('TEST 7.4 - owner name is clarified and country quick reply does not repeat
   await page.locator('#d2-hero-input').press('Enter');
 
   await expect(page.getByRole('dialog', { name: 'Q Concierge' })).toBeVisible();
-  await expect(page.getByText('How will customers be served?')).toBeVisible();
+  await expect(page.getByText(/How will customers be served/)).toBeVisible();
 
   // Choose service mode.
   await page.getByRole('button', { name: 'Dine-in only' }).click();
-  await expect(page.getByText('What is the name of your restaurant?')).toBeVisible();
 
   // A personal-name answer must not become the business name.
+  await expect(page.getByText('What is the name of your restaurant?')).toBeVisible();
   await page.getByLabel('Message Q').fill('my name is Muhanad');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('Is Muhanad your business name, or your personal name?')).toBeVisible();

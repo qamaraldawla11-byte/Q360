@@ -376,32 +376,42 @@ export const parseActiveAnswer = (
     else if (field === 'businessType' && trimmed) updates.businessType = trimmed.slice(0, 40);
   }
 
-  // Active/direct business name answers. Never treat a personal introduction as the business name.
-  if ((field === 'businessName' || (!setup.businessName && !field)) && !updates.businessName) {
+  // Active/direct business name answers. Strictly accept only when the active field is
+  // businessName, and reject answers that are obviously a country or priority.
+  if (field === 'businessName' && !updates.businessName) {
     if (!isOwnerNameStatement(trimmed)) {
       const explicitName = trimmed.match(
         /(?:my\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+is\s+(?:called|named)|the\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+name\s+is|business\s+name(?:\s+is)?|call\s+(?:the\s+)?(?:my\s+)?(?:shop|business|restaurant|cafe|caf[ée]))\s+([a-z0-9][a-z0-9 '&.-]{0,99})/i,
       );
       if (explicitName) {
         updates.businessName = explicitName[1].trim().replace(/[.,!]+$/, '');
-      } else if (
-        field === 'businessName' &&
-        trimmed.length > 0 &&
-        trimmed.length <= 100 &&
-        !isSkipMessage(trimmed) &&
-        !isConfirmMessage(trimmed) &&
-        !isChangeMessage(trimmed)
-      ) {
-        updates.businessName = trimmed.slice(0, 100);
+      } else {
+        const lowerTrimmed = trimmed.toLowerCase();
+        const countryOnlyPattern = /^(egypt|sudan|saudi arabia|uae|united arab emirates|uk|united kingdom|us|usa|united states)$/i;
+        const priorityOnlyPattern = /^(fast checkout|quick checkout|sales|stock|customers|bookings|team|finance|kitchen)$/i;
+        if (countryOnlyPattern.test(lowerTrimmed) || priorityOnlyPattern.test(lowerTrimmed)) {
+          return updates;
+        }
+        if (
+          trimmed.length > 0 &&
+          trimmed.length <= 100 &&
+          !isSkipMessage(trimmed) &&
+          !isConfirmMessage(trimmed) &&
+          !isChangeMessage(trimmed)
+        ) {
+          updates.businessName = trimmed.slice(0, 100);
+        }
       }
     }
   }
 
-  // Active/direct country answers (e.g. quick replies like "Egypt").
-  if ((field === 'country' || (!setup.country && !field)) && !updates.country) {
+  // Active/direct country answers (e.g. quick replies like "Egypt"). Only recognized
+  // countries and aliases are accepted; arbitrary raw text is never stored as country.
+  if (field === 'country' && !updates.country) {
     const cleaned = trimmed.replace(/[.!?]$/, '');
     const knownCountries: Record<string, string> = {
       egypt: 'Egypt',
+      sudan: 'Sudan',
       saudiarabia: 'Saudi Arabia',
       'saudi arabia': 'Saudi Arabia',
       uae: 'United Arab Emirates',
@@ -413,7 +423,7 @@ export const parseActiveAnswer = (
       unitedstates: 'United States',
     };
     const key = cleaned.toLowerCase().replace(/[-\s]/g, '');
-    const country = knownCountries[key] || (field === 'country' ? cleaned : undefined);
+    const country = knownCountries[key];
     if (country) updates.country = country;
   }
 
@@ -456,6 +466,7 @@ export const parseActiveAnswer = (
     if (/team|staff|hr/i.test(lower)) add.push('Team');
     if (/finance|accounting/i.test(lower)) add.push('Finance');
     if (/menu|kitchen/i.test(lower)) add.push('Kitchen');
+    if (/\b(?:fast|quick)\s+checkout\b/i.test(lower)) add.push('Fast checkout');
     if (add.length) updates.priorities = [...new Set([...setup.priorities, ...add])];
   }
 
@@ -501,22 +512,24 @@ export const syncJourney = (
   journey: Record<FieldKey, FieldStatus>,
   pendingField: FieldKey | null,
   wasSkip: boolean,
-  markVolunteeredConfirmed: boolean,
+  _markVolunteeredConfirmed?: boolean,
 ): Record<FieldKey, FieldStatus> => {
   const next: Record<FieldKey, FieldStatus> = { ...journey };
   for (const key of FIELD_ORDER) {
     const def = fieldDefByKey[key];
-    if (def.hasValue(nextSetup)) {
-      const shouldConfirm = markVolunteeredConfirmed || (key === pendingField && !wasSkip);
-      if (next[key] === 'missing') {
-        next[key] = shouldConfirm ? 'confirmed' : 'captured';
-      } else if (next[key] === 'captured' && shouldConfirm) {
-        // An explicit answer to the active field must promote a stale captured value to confirmed.
-        next[key] = 'confirmed';
-      } else if (next[key] === 'skipped') {
-        next[key] = 'confirmed';
-      }
+    if (!def.hasValue(nextSetup)) continue;
+
+    // Confirmed and skipped states are authoritative and must never be overwritten.
+    if (next[key] === 'confirmed' || next[key] === 'skipped') continue;
+
+    if (key === pendingField && !wasSkip) {
+      // An explicit answer to the currently active field is treated as confirmed.
+      next[key] = 'confirmed';
+    } else if (next[key] === 'missing') {
+      // Values filled in by backend inference remain captured until explicitly confirmed.
+      next[key] = 'captured';
     }
+    // Existing captured values stay captured.
   }
   return next;
 };
