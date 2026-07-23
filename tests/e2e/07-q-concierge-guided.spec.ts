@@ -1,6 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { expectPath, mockOtp, newUser, type MockUser } from './fixtures';
 
+test.describe.configure({ mode: 'serial' });
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -303,4 +305,132 @@ test('TEST 7.3 - repeated backend questions for confirmed fields are not shown a
   await page.getByLabel('Message Q').fill('Restaurant');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('What kind of business do you run?')).toHaveCount(1);
+});
+
+test('TEST 7.4 - owner name is clarified and country quick reply does not repeat the country question', async ({ page }) => {
+  const user = newUser('egypt@noor.test');
+  await mockOtp(page, user);
+  const briefRequests = await mockBriefApis(page);
+
+  await page.route('**/api/public/q-concierge', (route) => {
+    const body = route.request().postDataJSON() as {
+      message?: string;
+      draft?: Record<string, unknown>;
+    };
+    const message = (body.message || '').trim().toLowerCase();
+    const draft = body.draft || {};
+
+    if (message.includes('restaurant') && !draft.businessType) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Great, let us set up your restaurant. How will customers be served?',
+        updates: { businessType: 'restaurant' },
+        suggestedReplies: ['Dine-in only', 'Takeaway only', 'Both'],
+        recommendedModules: ['Dashboard', 'Sales', 'Q Assistant'],
+        readyForSignIn: false,
+      });
+    }
+
+    if (message.includes('dine-in only')) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Dine-in only it is. What is the name of your restaurant?',
+        updates: { services: ['dine-in'] },
+        suggestedReplies: [],
+        recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
+        readyForSignIn: false,
+      });
+    }
+
+    // Email must be checked before name/country text that an email may contain.
+    if (/@/.test(message)) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Thanks — I have everything I need.',
+        updates: { email: user.email },
+        suggestedReplies: [],
+        recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
+        readyForSignIn: true,
+      });
+    }
+
+    if (message.includes('noor')) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Nice to meet Noor. Which country will it operate in?',
+        updates: { businessName: 'Noor' },
+        suggestedReplies: ['Egypt', 'Saudi Arabia', 'United Arab Emirates'],
+        recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
+        readyForSignIn: false,
+      });
+    }
+
+    if (message.includes('egypt')) {
+      return json(route, {
+        mode: 'guided',
+        reply: 'Egypt noted. Which email should receive the secure sign-in code?',
+        updates: { country: 'Egypt' },
+        suggestedReplies: [],
+        recommendedModules: ['Dashboard', 'Sales', 'Tables', 'Q Assistant'],
+        readyForSignIn: false,
+      });
+    }
+
+    return json(route, {
+      mode: 'guided',
+      reply: 'Tell me a bit more, or choose one of the options above.',
+      updates: {},
+      suggestedReplies: [],
+      recommendedModules: ['Dashboard', 'Sales', 'Q Assistant'],
+      readyForSignIn: false,
+    });
+  });
+
+  await page.goto('/');
+  await page.locator('#d2-hero-input').fill('I want to set up a restaurant.');
+  await page.locator('#d2-hero-input').press('Enter');
+
+  await expect(page.getByRole('dialog', { name: 'Q Concierge' })).toBeVisible();
+  await expect(page.getByText('How will customers be served?')).toBeVisible();
+
+  // Choose service mode.
+  await page.getByRole('button', { name: 'Dine-in only' }).click();
+  await expect(page.getByText('What is the name of your restaurant?')).toBeVisible();
+
+  // A personal-name answer must not become the business name.
+  await page.getByLabel('Message Q').fill('my name is Muhanad');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('Is Muhanad your business name, or your personal name?')).toBeVisible();
+  await expect(page.locator('.guest-q-plan-title')).not.toContainText('Muhanad');
+
+  // Provide the real business name.
+  await page.getByLabel('Message Q').fill('Noor');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('Nice to meet Noor. Which country will it operate in?')).toBeVisible();
+  await expect(page.locator('.guest-q-plan-title')).toContainText('Noor');
+
+  // Select Egypt from the quick replies.
+  await page.getByRole('button', { name: 'Egypt' }).click();
+  // The country question must not be asked again.
+  await expect(page.getByText('Which country will it operate in?')).toHaveCount(1);
+  await expect(page.getByText('Which email should receive the secure sign-in code?')).toBeVisible();
+  await expect(page.locator('.guest-q-plan-title')).toContainText('Noor');
+  await expect(page.locator('.guest-q-meta-item').getByText('Egypt')).toBeVisible();
+
+  // Continue to the next required field (email).
+  await page.getByLabel('Message Q').fill(user.email);
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('Thanks — I have everything I need.')).toBeVisible();
+  const continueButton = page.getByRole('button', { name: 'Continue securely' });
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expectPath(page, '/login');
+
+  expect(briefRequests).toHaveLength(1);
+  expect(briefRequests[0]).toMatchObject({
+    businessType: 'restaurant',
+    businessName: 'Noor',
+    country: 'Egypt',
+    services: ['dine-in'],
+  });
 });

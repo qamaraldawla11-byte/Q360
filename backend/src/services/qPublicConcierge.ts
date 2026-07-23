@@ -97,6 +97,9 @@ const isCasualMessage = (message: string) => {
   return /^(?:hi|hello|hey|hi q|hello q|good morning|good afternoon|good evening|how are you|how is it going|what can you do|help|thanks|thank you)$/.test(normalized);
 };
 
+const isOwnerNameStatement = (message: string) =>
+  /^(?:my name is|my name's|i am|i'm|call me)\s+[a-z0-9].*/i.test(message.trim());
+
 const mergeDraft = (current: PublicDraft, updates: Partial<PublicDraft>): PublicDraft => {
   let serviceMode = updates.serviceMode || current.serviceMode;
   const updatedServices = updates.services?.length ? updates.services : current.services;
@@ -215,7 +218,10 @@ const inferFallbackUpdates = (message: string, draft: PublicDraft): Partial<Publ
   const explicitName = message.match(/(?:called|named|name is|my business is)\s+([a-z0-9][a-z0-9 '&.-]{1,80})/i);
   const typedName = message.match(/\b(?:restaurant|resturant|cafe|café|pharmacy|retail(?: shop)?|service business)\s*[,:-]\s*([a-z0-9][a-z0-9 '&.-]{1,80})/i);
   const candidateName = explicitName?.[1] || typedName?.[1];
-  if (candidateName && !draft.businessName) updates.businessName = candidateName.trim().replace(/[.,!]+$/, '');
+  // Never let a clear owner/person introduction become the business name.
+  if (candidateName && !draft.businessName && !isOwnerNameStatement(message)) {
+    updates.businessName = candidateName.trim().replace(/[.,!]+$/, '');
+  }
   return updates;
 };
 

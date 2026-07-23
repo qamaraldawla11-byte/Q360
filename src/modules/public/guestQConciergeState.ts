@@ -61,6 +61,14 @@ export const isConfirmMessage = (message: string) =>
 export const isChangeMessage = (message: string) =>
   /^(no|change|edit|wrong|different|not correct|update it)$/i.test(message.trim());
 
+export const isOwnerNameStatement = (message: string) =>
+  /^(?:my name is|my name's|i am|i'm|call me)\s+[a-z0-9].*/i.test(message.trim());
+
+export const ownerNameFromStatement = (message: string): string | undefined => {
+  const match = message.trim().match(/^(?:my name is|my name's|i am|i'm|call me)\s+([a-z0-9][a-z0-9\s'&.-]{0,80})/i);
+  return match?.[1].trim().replace(/[.,!]+$/, '');
+};
+
 export const serviceModeFromServices = (services: string[]): string => {
   const normalized = services.map((s) => s.toLowerCase().replace(/[-_\s]/g, ''));
   const hasDineIn = normalized.includes('dinein') || normalized.includes('dine');
@@ -358,6 +366,57 @@ export const parseActiveAnswer = (
   const lower = trimmed.toLowerCase();
   const updates: Partial<GuestSetup> = {};
 
+  // Active/direct business type answers (e.g. quick replies).
+  if ((field === 'businessType' || (!setup.businessType && !field)) && !updates.businessType) {
+    if (/restaurant/i.test(lower)) updates.businessType = 'restaurant';
+    else if (/caf[ée]/i.test(lower)) updates.businessType = 'cafe';
+    else if (/pharmacy/i.test(lower)) updates.businessType = 'pharmacy';
+    else if (/retail|shop|store/i.test(lower)) updates.businessType = 'retail shop';
+    else if (/service|salon|agency/i.test(lower)) updates.businessType = 'service business';
+    else if (field === 'businessType' && trimmed) updates.businessType = trimmed.slice(0, 40);
+  }
+
+  // Active/direct business name answers. Never treat a personal introduction as the business name.
+  if ((field === 'businessName' || (!setup.businessName && !field)) && !updates.businessName) {
+    if (!isOwnerNameStatement(trimmed)) {
+      const explicitName = trimmed.match(
+        /(?:my\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+is\s+(?:called|named)|the\s+(?:restaurant|caf[ée]|cafe|business|shop)\s+name\s+is|business\s+name(?:\s+is)?|call\s+(?:the\s+)?(?:my\s+)?(?:shop|business|restaurant|cafe|caf[ée]))\s+([a-z0-9][a-z0-9 '&.-]{0,99})/i,
+      );
+      if (explicitName) {
+        updates.businessName = explicitName[1].trim().replace(/[.,!]+$/, '');
+      } else if (
+        field === 'businessName' &&
+        trimmed.length > 0 &&
+        trimmed.length <= 100 &&
+        !isSkipMessage(trimmed) &&
+        !isConfirmMessage(trimmed) &&
+        !isChangeMessage(trimmed)
+      ) {
+        updates.businessName = trimmed.slice(0, 100);
+      }
+    }
+  }
+
+  // Active/direct country answers (e.g. quick replies like "Egypt").
+  if ((field === 'country' || (!setup.country && !field)) && !updates.country) {
+    const cleaned = trimmed.replace(/[.!?]$/, '');
+    const knownCountries: Record<string, string> = {
+      egypt: 'Egypt',
+      saudiarabia: 'Saudi Arabia',
+      'saudi arabia': 'Saudi Arabia',
+      uae: 'United Arab Emirates',
+      unitedarabemirates: 'United Arab Emirates',
+      uk: 'United Kingdom',
+      unitedkingdom: 'United Kingdom',
+      us: 'United States',
+      usa: 'United States',
+      unitedstates: 'United States',
+    };
+    const key = cleaned.toLowerCase().replace(/[-\s]/g, '');
+    const country = knownCountries[key] || (field === 'country' ? cleaned : undefined);
+    if (country) updates.country = country;
+  }
+
   if (
     (field === 'serviceMode' || (!setup.serviceMode && !field)) &&
     isRestaurantLike(setup.businessType)
@@ -448,14 +507,12 @@ export const syncJourney = (
   for (const key of FIELD_ORDER) {
     const def = fieldDefByKey[key];
     if (def.hasValue(nextSetup)) {
+      const shouldConfirm = markVolunteeredConfirmed || (key === pendingField && !wasSkip);
       if (next[key] === 'missing') {
-        if (markVolunteeredConfirmed) {
-          next[key] = 'confirmed';
-        } else if (key === pendingField && !wasSkip) {
-          next[key] = 'confirmed';
-        } else {
-          next[key] = 'captured';
-        }
+        next[key] = shouldConfirm ? 'confirmed' : 'captured';
+      } else if (next[key] === 'captured' && shouldConfirm) {
+        // An explicit answer to the active field must promote a stale captured value to confirmed.
+        next[key] = 'confirmed';
       } else if (next[key] === 'skipped') {
         next[key] = 'confirmed';
       }

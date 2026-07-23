@@ -218,4 +218,76 @@ describe('guestQConciergeState', () => {
     assert.equal(fieldDefByKey.tables.hasValue(setup), false);
     assert.equal(fieldDefByKey.teamSize.hasValue(setup), false);
   });
+
+  it('country quick reply becomes confirmed and nextField does not return country', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      serviceMode: 'dine_in',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+    };
+    const updates = parseActiveAnswer('Egypt', 'country', setup);
+    assert.equal(updates.country, 'Egypt');
+    const nextSetup = mergeSetup(setup, updates);
+    const nextJourney = syncJourney(nextSetup, journey, 'country', false, false);
+    assert.equal(nextJourney.country, 'confirmed');
+    assert.notEqual(nextField(nextSetup, nextJourney), 'country');
+  });
+
+  it('service-mode quick reply becomes confirmed', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+    };
+    const updates = parseActiveAnswer('Dine-in only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in');
+    const nextSetup = mergeSetup(setup, updates);
+    const nextJourney = syncJourney(nextSetup, journey, 'serviceMode', false, false);
+    assert.equal(nextJourney.serviceMode, 'confirmed');
+  });
+
+  it('"my name is Muhanad" does not set businessName', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('my name is Muhanad', 'businessName', setup);
+    assert.equal(updates.businessName, undefined);
+  });
+
+  it('"my restaurant is called Noor" sets businessName', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('my restaurant is called Noor', 'businessName', setup);
+    assert.equal(updates.businessName, 'Noor');
+  });
+
+  it('direct Noor while businessName is active confirms businessName', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+    };
+    const updates = parseActiveAnswer('Noor', 'businessName', setup);
+    assert.equal(updates.businessName, 'Noor');
+    const nextSetup = mergeSetup(setup, updates);
+    const nextJourney = syncJourney(nextSetup, journey, 'businessName', false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+  });
+
+  it('stale captured state cannot overwrite an explicitly confirmed active answer', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      ...initialJourney(),
+      businessType: 'confirmed',
+      businessName: 'captured',
+    };
+    const nextJourney = syncJourney(setup, journey, 'businessName', false, false);
+    assert.equal(nextJourney.businessName, 'confirmed');
+  });
 });

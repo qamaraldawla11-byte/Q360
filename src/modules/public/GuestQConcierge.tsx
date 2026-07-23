@@ -38,10 +38,12 @@ import {
   isChangeMessage,
   isConfirmMessage,
   isContinueMessage,
+  isOwnerNameStatement,
   isSkipMessage,
   listOf,
   mergeSetup,
   nextField,
+  ownerNameFromStatement,
   parseActiveAnswer,
   requiredComplete,
   requiredFields,
@@ -58,14 +60,11 @@ export type { GuestSetup } from './guestQConciergeState';
 const isQuestionForConfirmedField = (reply: string, fieldKey: FieldKey, setup: GuestSetup) => {
   const def = fieldDefByKey[fieldKey];
   const question = def.question(setup).toLowerCase();
-  const confirmQuestion = def.confirmQuestion(setup).toLowerCase();
   const label = def.label.toLowerCase();
-  const normalized = reply.toLowerCase();
-  return (
-    normalized.includes(question) ||
-    normalized.includes(confirmQuestion) ||
-    normalized.includes(label)
-  );
+  const normalized = reply.toLowerCase().trim();
+  // Only suppress actual re-asks of the field question. A reply that merely mentions
+  // the confirmed value (e.g. "Dine-in only it is...") must still be shown.
+  return normalized.includes(question) || (normalized.includes(label) && normalized.endsWith('?'));
 };
 
 type Message = {
@@ -462,6 +461,41 @@ export function GuestQConcierge({
       setQuickReplies([]);
       setError('');
       setIsSending(true);
+
+      // A personal-name statement while we are asking for the business name must not
+      // be stored as the business name. Ask for clarification instead of inferring.
+      if (pendingField === 'businessName' && isOwnerNameStatement(message)) {
+        const ownerName = ownerNameFromStatement(message);
+        appendMessage(
+          'q',
+          ownerName
+            ? `Is ${ownerName} your business name, or your personal name?`
+            : 'Is that your business name, or your personal name?',
+        );
+        setIsSending(false);
+        return;
+      }
+
+      // Direct answers to the currently active field (e.g. quick replies) should be
+      // written into setup and confirmed immediately so the next question is never
+      // the same field again.
+      const activeFieldAnswer = parseActiveAnswer(message, pendingField, setupRef.current);
+      const activeAnswerValue = pendingField
+        ? (activeFieldAnswer as Record<string, unknown>)[pendingField]
+        : undefined;
+      const hasActiveAnswer =
+        pendingField &&
+        activeAnswerValue !== undefined &&
+        activeAnswerValue !== '' &&
+        activeAnswerValue !== null;
+      if (hasActiveAnswer) {
+        const preSetup = mergeSetup(setupRef.current, activeFieldAnswer);
+        setupRef.current = preSetup;
+        setSetup(preSetup);
+        const preJourney = { ...journeyRef.current, [pendingField]: 'confirmed' };
+        journeyRef.current = preJourney;
+        setJourney(preJourney);
+      }
 
       try {
         const result = await http.post<PublicConciergeResponse>(
