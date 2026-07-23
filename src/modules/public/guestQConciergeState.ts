@@ -47,6 +47,48 @@ export const countOf = (value: unknown) => {
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : undefined;
 };
 
+export const tableCountOf = (value: unknown) => {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 && count < 10000 ? Math.floor(count) : undefined;
+};
+
+export const parseServiceCapabilities = (message: string): string[] => {
+  const lower = message.toLowerCase();
+  const hasDineIn = /dine[-_ ]?in|\bdine\b/.test(lower);
+  const hasTakeaway = /take[-_ ]?away|takeout/.test(lower);
+  const hasDelivery = /delivery|deliveries/.test(lower);
+  const hasBoth = /\bboth\b/.test(lower);
+
+  if (hasBoth) {
+    const services = ['dine-in', 'takeaway'];
+    if (hasDelivery) services.push('delivery');
+    return services;
+  }
+
+  const services: string[] = [];
+  if (hasDineIn) services.push('dine-in');
+  if (hasTakeaway) services.push('takeaway');
+  if (hasDelivery) services.push('delivery');
+  return services;
+};
+
+export const serviceDisplayFromServices = (services: string[]): string => {
+  const normalized = services.map((s) => s.toLowerCase().replace(/[-_\s]/g, ''));
+  const hasDineIn = normalized.includes('dinein') || normalized.includes('dine');
+  const hasTakeaway = normalized.includes('takeaway') || normalized.includes('takeout');
+  const hasDelivery = normalized.includes('delivery');
+
+  const parts: string[] = [];
+  if (hasDineIn) parts.push('Dine-in');
+  if (hasTakeaway) parts.push('Takeaway');
+  if (hasDelivery) parts.push('Delivery');
+
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return `${parts[0]} only`;
+  if (parts.length === 2) return parts.join(' and ');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+};
+
 export const isRestaurantLike = (type: string) => /restaurant|cafe|café/.test((type || '').toLowerCase());
 
 export const isSkipMessage = (message: string) =>
@@ -75,9 +117,14 @@ export const serviceModeFromServices = (services: string[]): string => {
   const normalized = services.map((s) => s.toLowerCase().replace(/[-_\s]/g, ''));
   const hasDineIn = normalized.includes('dinein') || normalized.includes('dine');
   const hasTakeaway = normalized.includes('takeaway') || normalized.includes('takeout');
+  const hasDelivery = normalized.includes('delivery');
+  if (hasDineIn && hasTakeaway && hasDelivery) return 'dine_in_takeaway_delivery';
+  if (hasDineIn && hasDelivery) return 'dine_in_delivery';
+  if (hasTakeaway && hasDelivery) return 'takeaway_delivery';
   if (hasDineIn && hasTakeaway) return 'both';
   if (hasTakeaway) return 'takeaway';
   if (hasDineIn) return 'dine_in';
+  if (hasDelivery) return 'delivery';
   return '';
 };
 
@@ -86,6 +133,10 @@ export const servicesFromServiceMode = (mode: string): string[] => {
   if (normalized === 'both') return ['dine-in', 'takeaway'];
   if (normalized === 'takeaway') return ['takeaway'];
   if (normalized === 'dinein' || normalized === 'dine') return ['dine-in'];
+  if (normalized === 'delivery') return ['delivery'];
+  if (normalized === 'dineindelivery') return ['dine-in', 'delivery'];
+  if (normalized === 'takeawaydelivery') return ['takeaway', 'delivery'];
+  if (normalized === 'dineintakeawaydelivery') return ['dine-in', 'takeaway', 'delivery'];
   return mode ? [mode] : [];
 };
 
@@ -94,6 +145,10 @@ export const canonicalizeServiceMode = (mode: string): string => {
   if (normalized === 'both') return 'both';
   if (normalized === 'takeaway' || normalized === 'takeout') return 'takeaway';
   if (normalized === 'dinein' || normalized === 'dine') return 'dine_in';
+  if (normalized === 'delivery') return 'delivery';
+  if (normalized === 'dineindelivery') return 'dine_in_delivery';
+  if (normalized === 'takeawaydelivery') return 'takeaway_delivery';
+  if (normalized === 'dineintakeawaydelivery') return 'dine_in_takeaway_delivery';
   return mode;
 };
 
@@ -145,7 +200,7 @@ export const mergeSetup = (current: GuestSetup, updates?: Partial<GuestSetup>): 
     serviceMode,
     services,
     priorities: nextPriorities.length ? nextPriorities : current.priorities,
-    tables: countOf(updates.tables) ?? current.tables,
+    tables: tableCountOf(updates.tables) ?? current.tables,
     employees: countOf(updates.employees) ?? current.employees,
   };
 };
@@ -186,13 +241,7 @@ export const formatFieldValue = (key: FieldKey, setup: GuestSetup): string => {
     case 'email':
       return setup.email;
     case 'serviceMode':
-      return (
-        {
-          dine_in: 'Dine-in only',
-          takeaway: 'Takeaway only',
-          both: 'Dine-in and takeaway',
-        }[setup.serviceMode || ''] || setup.serviceMode || ''
-      );
+      return serviceDisplayFromServices(setup.services) || setup.serviceMode || '';
     case 'tables':
       return setup.tables !== undefined ? `${setup.tables} tables` : '';
     case 'teamSize':
@@ -433,22 +482,30 @@ export const parseActiveAnswer = (
     (field === 'serviceMode' || (!setup.serviceMode && !field)) &&
     isRestaurantLike(setup.businessType)
   ) {
-    if (/dine[-_ ]?in only/i.test(message)) updates.serviceMode = 'dine_in';
-    else if (/take[-_ ]?away only|takeout only/i.test(message)) updates.serviceMode = 'takeaway';
-    else if (/\bboth\b/i.test(message) || /dine[-_ ]?in and take[-_ ]?away/i.test(message))
-      updates.serviceMode = 'both';
-    else if (/dine[-_ ]?in/i.test(message) && !/take[-_ ]?away|takeout/i.test(message))
-      updates.serviceMode = 'dine_in';
-    else if (/take[-_ ]?away|takeout/i.test(message) && !/dine[-_ ]?in/i.test(message))
-      updates.serviceMode = 'takeaway';
+    const services = parseServiceCapabilities(message);
+    if (services.length) {
+      updates.serviceMode = serviceModeFromServices(services);
+      updates.services = services;
+      if (!services.includes('dine-in') && setup.tables === undefined) {
+        updates.tables = 0;
+      }
+    }
   }
 
   if (
     (field === 'tables' || (setup.tables === undefined && !field)) &&
     isRestaurantLike(setup.businessType)
   ) {
-    const match = message.match(/(\d{1,4})\s*(?:table|tables)/i);
-    if (match) updates.tables = Number(match[1]);
+    const noTables =
+      /\b(?:no|zero|0)\s+tables|counter service,\s*no\s+tables|\btakeaway\s+only|\bdelivery\s+only|\btakeaway\s+and\s+delivery\s+only/i.test(
+        message,
+      );
+    if (noTables) {
+      updates.tables = 0;
+    } else {
+      const match = message.match(/(\d{1,4})\s*(?:table|tables)/i);
+      if (match) updates.tables = Number(match[1]);
+    }
   }
 
   if (field === 'teamSize' || (setup.employees === undefined && !field)) {
@@ -493,7 +550,7 @@ export const fallbackModules = (setup: GuestSetup) => {
 
   if (/restaurant|cafe|café/.test(type)) {
     ['Sales', 'Kitchen', 'Menu', 'Stock', 'Orders', 'Finance', 'Customers'].forEach((m) => modules.add(m));
-    if (setup.serviceMode !== 'takeaway') {
+    if (setup.services.includes('dine-in')) {
       modules.add('Tables');
       modules.add('Bookings');
     }
@@ -533,6 +590,12 @@ export const syncJourney = (
     }
     // Existing captured values stay captured.
   }
+
+  // Side-effect: no-table service setups skip the tables question.
+  if (nextSetup.tables === 0 && next.tables !== 'confirmed' && next.tables !== 'skipped') {
+    next.tables = 'skipped';
+  }
+
   return next;
 };
 

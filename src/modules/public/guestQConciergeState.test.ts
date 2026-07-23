@@ -603,4 +603,119 @@ describe('guestQConciergeState', () => {
     assert.equal(isSkipMessage('skip'), true);
     assert.equal(isSkipMessage('Egypt'), false);
   });
+
+  // M7.4A regression tests for delivery-aware service parsing and no-tables journey state.
+  it('M7.4A parses dine-in only service capability', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in');
+    assert.deepEqual(updates.services, ['dine-in']);
+  });
+
+  it('M7.4A parses takeaway only service capability and sets tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('takeaway only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'takeaway');
+    assert.deepEqual(updates.services, ['takeaway']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses delivery only service capability and sets tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('delivery only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'delivery');
+    assert.deepEqual(updates.services, ['delivery']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses both dine-in and takeaway', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('both dine-in and takeaway', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'both');
+    assert.deepEqual(updates.services, ['dine-in', 'takeaway']);
+  });
+
+  it('M7.4A parses takeaway and delivery only without dine-in', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('takeaway and delivery only', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'takeaway_delivery');
+    assert.deepEqual(updates.services, ['takeaway', 'delivery']);
+    assert.equal(updates.tables, 0);
+  });
+
+  it('M7.4A parses dine-in and delivery', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in and delivery', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in_delivery');
+    assert.deepEqual(updates.services, ['dine-in', 'delivery']);
+  });
+
+  it('M7.4A parses dine-in, takeaway and delivery', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const updates = parseActiveAnswer('dine-in, takeaway and delivery', 'serviceMode', setup);
+    assert.equal(updates.serviceMode, 'dine_in_takeaway_delivery');
+    assert.deepEqual(updates.services, ['dine-in', 'takeaway', 'delivery']);
+  });
+
+  it('M7.4A "both" guided reply means dine-in and takeaway unless delivery is mentioned', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const bothOnly = parseActiveAnswer('Both', 'serviceMode', setup);
+    assert.equal(bothOnly.serviceMode, 'both');
+    assert.deepEqual(bothOnly.services, ['dine-in', 'takeaway']);
+
+    const bothWithDelivery = parseActiveAnswer('both dine-in, takeaway and delivery', 'serviceMode', setup);
+    assert.equal(bothWithDelivery.serviceMode, 'dine_in_takeaway_delivery');
+    assert.deepEqual(bothWithDelivery.services, ['dine-in', 'takeaway', 'delivery']);
+  });
+
+  it('M7.4A no-tables phrases set tables to zero', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    for (const phrase of ['no tables', 'zero tables', '0 tables', 'counter service, no tables']) {
+      const updates = parseActiveAnswer(phrase, 'tables', setup);
+      assert.equal(updates.tables, 0, `expected tables=0 for "${phrase}"`);
+    }
+  });
+
+  it('M7.4A service mode without dine-in infers tables zero and skips tables question', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    const journey = syncJourney(setup, initialJourney(), null, false, false);
+    for (const phrase of ['takeaway only', 'delivery only', 'takeaway and delivery only']) {
+      const updates = parseActiveAnswer(phrase, 'serviceMode', setup);
+      assert.equal(updates.tables, 0, `expected tables=0 for "${phrase}"`);
+      const nextSetup = mergeSetup(setup, updates);
+      const nextJourney = syncJourney(nextSetup, { ...journey }, 'serviceMode', false, false);
+      assert.equal(nextJourney.tables, 'skipped', `expected tables skipped for "${phrase}"`);
+      assert.equal(fieldDefByKey.tables.hasValue(nextSetup), true);
+      assert.notEqual(nextField(nextSetup, nextJourney), 'tables');
+    }
+  });
+
+  it('M7.4A positive table values 1-30 still parse', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant' });
+    assert.equal(parseActiveAnswer('We have 12 tables', 'tables', setup).tables, 12);
+    assert.equal(parseActiveAnswer('30 tables', 'tables', setup).tables, 30);
+  });
+
+  it('M7.4A fallbackModules adds Tables and Bookings only for dine-in service', () => {
+    const dineIn = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['dine-in'],
+    });
+    assert.ok(fallbackModules(dineIn).includes('Tables'));
+    assert.ok(fallbackModules(dineIn).includes('Bookings'));
+
+    const takeaway = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['takeaway'],
+    });
+    assert.ok(!fallbackModules(takeaway).includes('Tables'));
+    assert.ok(!fallbackModules(takeaway).includes('Bookings'));
+
+    const delivery = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      services: ['delivery'],
+    });
+    assert.ok(!fallbackModules(delivery).includes('Tables'));
+    assert.ok(!fallbackModules(delivery).includes('Bookings'));
+  });
 });
