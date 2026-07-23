@@ -513,6 +513,35 @@ export const qAssistantMessages = pgTable('q_assistant_messages', {
     index('q_assistant_messages_business_created_idx').on(table.businessId, table.createdAt),
 ]);
 
+// Q guest briefs carry a validated, sanitized pre-auth recommendation from the
+// public concierge to a dedicated post-login claim boundary (A2.2, additive).
+// The raw handoff token is NEVER stored — only its HMAC-derived hash.
+// visitor_key_hash is optional, non-authoritative telemetry: it must never be
+// used for authentication, authorization, claim ownership, brief retrieval,
+// or user matching, and only a derived hash may be stored here.
+export type QGuestBriefState = 'active' | 'claimed' | 'confirmed' | 'consumed' | 'expired' | 'dismissed' | 'revoked';
+
+export const qGuestBriefs = pgTable('q_guest_briefs', {
+    id: text('id').primaryKey(),
+    tokenHash: text('token_hash').notNull(),
+    state: text('state').$type<QGuestBriefState>().notNull().default('active'),
+    payload: jsonb('payload').notNull(), // QGuestBriefPayload v1 — sanitized by the A2.1 contract before write
+    visitorKeyHash: text('visitor_key_hash'), // nullable; derived hash only; telemetry context only
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    activeExpiresAt: timestamp('active_expires_at').notNull(), // createdAt + 60 minutes
+    claimedByUserId: text('claimed_by_user_id'), // set exactly once by the atomic claim
+    claimedAt: timestamp('claimed_at'),
+    confirmedAt: timestamp('confirmed_at'),
+    confirmedFields: jsonb('confirmed_fields').$type<string[]>(), // subset of payload.prefill keys accepted by the owner
+    stateUpdatedAt: timestamp('state_updated_at').notNull().defaultNow(),
+    terminalAt: timestamp('terminal_at'), // set on consumed/expired/dismissed/revoked; drives 30-day cleanup
+}, (table) => [
+    uniqueIndex('q_guest_briefs_token_hash_unique').on(table.tokenHash),
+    index('q_guest_briefs_claimed_user_state_idx').on(table.claimedByUserId, table.state),
+    index('q_guest_briefs_state_active_expiry_idx').on(table.state, table.activeExpiresAt),
+    index('q_guest_briefs_terminal_at_idx').on(table.terminalAt),
+]);
+
 // Type exports for use in services
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

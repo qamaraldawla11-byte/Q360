@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GuestQConcierge, type GuestSetup } from './GuestQConcierge';
+import { createGuestBrief, currencyForCountry } from '@/api/qGuestBrief.api';
 import { ArrowRight, Check, Moon, Sun } from 'lucide-react';
 
 type MomentKind = 'inventory' | 'customer' | 'supplier';
@@ -318,6 +319,7 @@ export const LaunchLandingView = () => {
     const [approved, setApproved] = useState<ReadonlySet<string>>(new Set());
     const [departed, setDeparted] = useState<ReadonlySet<string>>(new Set());
     const [signed, setSigned] = useState(false);
+    const continueInFlight = useRef(false);
 
     const daypart = daypartOf(now.getHours());
     const preparedAt = (minutesAgo: number) => clockOf(new Date(now.getTime() - minutesAgo * 60000));
@@ -411,6 +413,35 @@ export const LaunchLandingView = () => {
     const openConcierge = (prompt: string) => {
         setGuestPrompt(prompt);
         setGuestChatOpen(true);
+    };
+
+    const handleGuestContinue = async (setup: GuestSetup, modules: string[]) => {
+        if (continueInFlight.current) return;
+        continueInFlight.current = true;
+        try {
+            sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
+            if (setup.businessType === 'restaurant') {
+                try {
+                    const brief = await createGuestBrief({
+                        businessType: setup.businessType,
+                        businessName: setup.businessName,
+                        country: setup.country,
+                        currency: currencyForCountry(setup.country),
+                        services: setup.services,
+                        tables: setup.tables,
+                        priorities: setup.priorities,
+                        recommendedModules: modules,
+                        initialRequest: setup.initialRequest,
+                    });
+                    sessionStorage.setItem('q360_guest_brief_token', brief.briefToken);
+                } catch {
+                    // Brief creation is best-effort: manual onboarding stays the fallback.
+                }
+            }
+            navigate('/login', { state: { guestSetup: setup } });
+        } finally {
+            continueInFlight.current = false;
+        }
     };
 
     const approveMoment = (id: string) => {
@@ -693,9 +724,8 @@ export const LaunchLandingView = () => {
                     initialPrompt={guestPrompt}
                     theme={theme}
                     onClose={() => setGuestChatOpen(false)}
-                    onContinue={(setup: GuestSetup) => {
-                        sessionStorage.setItem('q360_guest_setup', JSON.stringify(setup));
-                        navigate('/login', { state: { guestSetup: setup } });
+                    onContinue={(setup: GuestSetup, modules: string[]) => {
+                        void handleGuestContinue(setup, modules);
                     }}
                 />
             )}

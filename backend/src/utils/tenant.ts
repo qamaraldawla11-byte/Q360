@@ -5,6 +5,9 @@ import { businesses, users, type User } from '../db/schema.js';
 
 export const DEFAULT_BUSINESS_ID = 'biz_main';
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbClient = typeof db | Tx;
+
 export const isWorkspaceRoute = (value: string | null | undefined) =>
     typeof value === 'string' && value.startsWith('/app/');
 
@@ -16,16 +19,22 @@ export const stableTenantId = (value: string | null | undefined) => {
 export const resolveJwtBusinessId = (user: Pick<User, 'businessId'>) =>
     stableTenantId(user.businessId) ?? DEFAULT_BUSINESS_ID;
 
-export const ensureBusinessRecord = async (businessId: string, name: string, type: string, ownerUserId?: string) => {
-    const existing = await first(db.select().from(businesses).where(eq(businesses.id, businessId)));
+export const ensureBusinessRecord = async (
+    businessId: string,
+    name: string,
+    type: string,
+    ownerUserId?: string,
+    client: DbClient = db,
+) => {
+    const existing = await first(client.select().from(businesses).where(eq(businesses.id, businessId)));
     if (existing) {
-        await db.update(businesses)
+        await client.update(businesses)
             .set({ name, type, ...(ownerUserId && !existing.ownerUserId ? { ownerUserId } : {}) })
             .where(eq(businesses.id, businessId));
         return businessId;
     }
 
-    await db.insert(businesses).values({
+    await client.insert(businesses).values({
         id: businessId,
         name,
         type,
@@ -45,8 +54,9 @@ export class TenantIdentityRequiredError extends Error {
 export const ensureUserBusiness = async (
     userId: string,
     input: { businessName: string; segment: string },
+    client: DbClient = db,
 ) => {
-    const user = await first(db.select().from(users).where(eq(users.id, userId)));
+    const user = await first(client.select().from(users).where(eq(users.id, userId)));
     if (!user) return null;
     if (!user.businessId) throw new TenantIdentityRequiredError();
 
@@ -54,10 +64,10 @@ export const ensureUserBusiness = async (
     // Legacy workspace-route identities migrate to a fresh user-owned tenant,
     // never to the shared demo tenant.
     const businessId = stableId ?? `biz_${randomUUID()}`;
-    await ensureBusinessRecord(businessId, input.businessName, input.segment, stableId ? undefined : userId);
+    await ensureBusinessRecord(businessId, input.businessName, input.segment, stableId ? undefined : userId, client);
 
     if (user.businessId !== businessId) {
-        await db.update(users)
+        await client.update(users)
             .set({ businessId })
             .where(eq(users.id, userId));
     }

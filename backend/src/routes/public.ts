@@ -1,8 +1,14 @@
+import { createHmac } from 'crypto';
 import { Hono } from 'hono';
 import { and, asc, eq } from 'drizzle-orm';
 import { businessAssets, businesses, menuCategories, menuItemAssets, menuItems } from '../db/schema.js';
 import { db, first, supabase } from '../db/client.js';
 import { answerPublicConcierge } from '../services/qPublicConcierge.js';
+import { generateBriefToken, validateGuestBriefPayload } from '../services/qGuestBrief.js';
+import { getQGuestBriefDeps } from '../services/qGuestBriefDeps.js';
+import { takeGuestBriefRateToken } from '../services/qGuestBriefRateLimit.js';
+import { createGuestBrief } from '../services/qGuestBriefService.js';
+import { APPROVED_MODULES } from '../services/qOrchestration.js';
 
 const publicRoutes = new Hono();
 
@@ -18,6 +24,94 @@ publicRoutes.post('/q-concierge', async (c) => {
     visitorKey,
   }));
 });
+
+const GUEST_BRIEF_CREATE_RATE_LIMIT_PER_HOUR = 5;
+
+/** Trusted-layer fields a guest brief request must never carry (A1/A2.1). */
+const FORBIDDEN_BRIEF_REQUEST_FIELDS = [
+    'businessId', 'tenantId', 'tenant', 'userId', 'ownerId', 'role', 'permissions',
+    'jwt', 'token', 'destination', 'route', 'path', 'url', 'success', 'executed', 'enabledModules',
+] as const;
+
+const cleanBriefList = (value: unknown, itemMax: number, maxItems: number): string[] =>
+    (Array.isArray(value) ? value : [])
+        .map(item => (typeof item === 'string' ? item.trim().slice(0, itemMax) : ''))
+        .filter(Boolean)
+        .slice(0, maxItems);
+
+publicRoutes.post('/q-concierge/brief', async (c) => {
+    // Fail closed BEFORE any DB work: flag + ≥32-byte token secret required.
+    const deps = getQGuestBriefDeps();
+    if (!deps) return c.json({ error: 'not_found' }, 404);
+
+    const forwardedFor = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+    const visitorKey = c.req.header('x-real-ip') || forwardedFor || c.req.header('user-agent') || 'anonymous';
+    const rate = takeGuestBriefRateToken(`create:${visitorKey}`, GUEST_BRIEF_CREATE_RATE_LIMIT_PER_HOUR);
+    if (!rate.allowed) {
+        return c.json({ error: 'rate_limited', retryAfterSeconds: rate.retryAfterSeconds }, 429);
+    }
+
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    if (FORBIDDEN_BRIEF_REQUEST_FIELDS.some(field => field in body)) {
+        return c.json({ error: 'invalid_payload' }, 422);
+    }
+
+    if (body.businessType !== 'restaurant') {
+        return c.json({ error: 'not_implemented', message: 'Only the Restaurant workspace is supported for Q-guided setup right now.' }, 422);
+    }
+    const businessName = typeof body.businessName === 'string' ? body.businessName.trim() : '';
+    const country = typeof body.country === 'string' ? body.country.trim() : '';
+    const currency = typeof body.currency === 'string' ? body.currency.trim() : undefined;
+    if (!businessName || businessName.length > 120) return c.json({ error: 'invalid_payload' }, 422);
+    if (!country || country.length > 100) return c.json({ error: 'invalid_payload' }, 422);
+    if (currency !== undefined && !/^[A-Za-z]{3}$/.test(currency)) return c.json({ error: 'invalid_payload' }, 422);
+    const tables = typeof body.tables === 'number' && Number.isSafeInteger(body.tables) ? body.tables : null;
+    if (tables === null || tables < 1 || tables > 30) return c.json({ error: 'invalid_payload' }, 422);
+    const services = cleanBriefList(body.services, 40, 8);
+    if (services.length === 0) return c.json({ error: 'invalid_payload' }, 422);
+    const priorities = cleanBriefList(body.priorities, 60, 8);
+    const requestedModules = cleanBriefList(body.recommendedModules, 60, 24)
+        .filter(moduleKey => (APPROVED_MODULES as readonly string[]).includes(moduleKey));
+    const recommendedModules = requestedModules.length > 0 ? [...new Set(requestedModules)] : [...APPROVED_MODULES];
+
+    const prefillCurrency = currency?.toUpperCase() ?? 'USD';
+    let businessSummary = `Restaurant "${businessName}" in ${country}(${prefillCurrency}). ${tables} tables. Service: ${services.join(', ')}.`;
+    if (priorities.length > 0) businessSummary += ` Priorities: ${priorities.join(', ')}.`;
+    businessSummary = businessSummary.slice(0, 2000);
+
+    const payload = {
+        version: 1,
+        businessSummary,
+        recommendation: {
+            intent: 'create_workspace',
+            businessType: 'restaurant',
+            recommendedWorkspace: 'restaurant',
+            recommendedModules,
+            priorities,
+            rationale: 'Owner confirmed restaurant onboarding details in the public Q concierge.',
+            requiresApproval: true,
+        },
+        prefill: { businessName, country, currency: prefillCurrency },
+        answers: [
+            { question: 'business_type', answer: 'restaurant' },
+            { question: 'table_count', answer: String(tables) },
+            { question: 'service_modes', answer: services.join(', ') },
+        ],
+        clientMetadata: { createdFrom: 'guest_concierge' as const },
+    };
+    const validated = validateGuestBriefPayload(payload);
+    if (!validated.ok) return c.json({ error: 'invalid_payload' }, 422);
+
+    const rawToken = generateBriefToken();
+    const visitorKeyHash = createHmac('sha256', deps.tokenSecret).update(`q-visitor:${visitorKey}`).digest('base64url');
+    const created = await createGuestBrief({ rawToken, payload: validated.value, visitorKeyHash }, deps);
+    if (!created.ok) return c.json({ error: 'invalid_payload' }, 422);
+
+    // The raw token is returned to the guest exactly once here. It is never
+    // logged, never stored, and the derived tokenHash never leaves the server.
+    return c.json({ briefToken: rawToken, activeExpiresAt: created.activeExpiresAt }, 201);
+});
+
 const LOGO_BUCKET = 'business-assets';
 
 publicRoutes.get('/businesses/:publicCode', async (c) => {
