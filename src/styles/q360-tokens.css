@@ -1,0 +1,65 @@
+@layer q360-tokens {
+  :root {
+    /* Q360 Semantic Foundation Tokens — DS-1 */
+
+    /* Canvas & Surfaces */
+    --q-color-canvas: #faf9f6;
+    --q-color-surface: #ffffff;
+    --q-color-surface-muted: #f5f3ef;
+
+    /* Text */
+    --q-color-text: #1a1a1a;
+    --q-color-text-secondary: #6b6b6b;
+    --q-color-text-muted: #9c9c9c;
+
+    /* Borders */
+    --q-color-border: #e8e6e1;
+    --q-color-border-strong: #d4d0c8;
+
+    /* Action */
+    --q-color-action: #000000;
+    --q-color-action-hover: #333333;
+    --q-color-action-text: #ffffff;
+
+    /* Accent — restrained Q360 orange */
+    --q-color-accent: #c45a00;
+    --q-color-accent-soft: #fff5eb;
+
+    /* Information — calm, brand-compatible */
+    --q-color-info: #5c5752;
+    --q-color-info-soft: #f5f3ef;
+
+    /* Danger — accessible semantic red */
+    --q-color-danger: #dc2626;
+    --q-color-danger-soft: #fef2f2;
+
+    /* Focus ring — visible against ivory, white, and black */
+    --q-focus-ring: 0 0 0 2px var(--q-color-canvas), 0 0 0 4px var(--q-color-text);
+
+    /* Geometry */
+    --q-radius-sm: 6px;
+    --q-radius-md: 10px;
+    --q-radius-lg: 16px;
+    --q-radius-pill: 9999px;
+
+    /* Elevation */
+    --q-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.03);
+    --q-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+
+    /* Spacing — limited DS-1 set */
+    --q-space-1: 4px;
+    --q-space-2: 8px;
+    --q-space-3: 12px;
+    --q-space-4: 16px;
+    --q-space-5: 20px;
+    --q-space-6: 24px;
+    --q-space-8: 32px;
+    --q-space-10: 40px;
+    --q-space-12: 48px;
+
+    /* Motion */
+    --q-duration-fast: 150ms;
+    --q-duration-normal: 200ms;
+    --q-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

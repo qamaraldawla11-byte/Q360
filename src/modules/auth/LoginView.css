@@ -1,0 +1,103 @@
+@layer q360-login {
+  .login-view {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--q-space-6) var(--q-space-4);
+    background-color: var(--q-color-canvas);
+    font-family: var(--font-sans);
+  }
+
+  .login-view__card {
+    width: 100%;
+    max-width: 400px;
+    padding: var(--q-space-10);
+  }
+
+  .login-view__header {
+    text-align: center;
+    margin-bottom: var(--q-space-8);
+  }
+
+  .login-view__logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--q-space-4);
+  }
+
+  .login-view__logo img {
+    display: block;
+    object-fit: contain;
+  }
+
+  .login-view__title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--q-color-text);
+    line-height: 1.2;
+  }
+
+  .login-view__subtitle {
+    margin: var(--q-space-2) 0 0;
+    color: var(--q-color-text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+  }
+
+  .login-view__notice {
+    margin: calc(var(--q-space-3) * -1) 0 var(--q-space-6);
+    padding: var(--q-space-3);
+    border-radius: var(--q-radius-md);
+    background: var(--q-color-surface-muted);
+    border: 1px solid var(--q-color-border);
+    color: var(--q-color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .login-view__notice strong {
+    color: var(--q-color-accent);
+    font-weight: 600;
+  }
+
+  .login-view__error {
+    margin-bottom: var(--q-space-4);
+    padding: var(--q-space-2) var(--q-space-3);
+    border-radius: var(--q-radius-md);
+    background: var(--q-color-danger-soft);
+    color: var(--q-color-danger);
+    font-size: 0.875rem;
+  }
+
+  .login-view__dev-hint {
+    margin: var(--q-space-2) 0 0;
+    color: var(--q-color-text-muted);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+
+  .login-view__field-group {
+    margin-bottom: var(--q-space-5);
+  }
+
+  .login-view__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--q-space-4);
+  }
+
+  @media (max-width: 480px) {
+    .login-view__card {
+      padding: var(--q-space-6);
+    }
+  }
+
+  @media (max-height: 600px) {
+    .login-view {
+      align-items: flex-start;
+      padding-top: var(--q-space-8);
+    }
+  }
+}
