@@ -15,6 +15,7 @@ const app = new Hono(); app.route('/api/purchases-expenses', routes);
 const runId = Date.now();
 const businessIds = [`biz_verify_cost_a_${runId}`, `biz_verify_cost_b_${runId}`];
 const userIds = [`usr_verify_cost_a_${runId}`, `usr_verify_cost_b_${runId}`];
+const managerId = 'manager_finance';
 const token = (userId: string, businessId: string, role = 'admin') => {
     const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const now = Math.floor(Date.now() / 1000), header = encode({ alg: 'HS256', typ: 'JWT' });
@@ -29,10 +30,12 @@ try {
     await db.delete(purchaseExpenseRecords).where(inArray(purchaseExpenseRecords.businessId, businessIds));
     await db.delete(restaurantPayments).where(inArray(restaurantPayments.businessId, businessIds));
     await db.delete(inventoryItems).where(inArray(inventoryItems.businessId, businessIds));
-    await db.delete(users).where(inArray(users.id, userIds));
+    await db.delete(users).where(inArray(users.id, [...userIds, managerId]));
     await db.delete(businesses).where(inArray(businesses.id, businessIds));
     await db.insert(businesses).values(businessIds.map((id, index) => ({ id, name: `Finance Test ${index}`, type: 'restaurant', currency: 'USD' })));
     await db.insert(users).values(userIds.map((id, index) => ({ id, email: `${id}@example.com`, role: 'admin', businessId: businessIds[index] })));
+    // Manager fixture: authMiddleware enforces account existence per request.
+    await db.insert(users).values({ id: managerId, email: `${managerId}@example.com`, role: 'manager', status: 'active', businessId: businessIds[0] });
     await db.insert(inventoryItems).values({ id: randomUUID(), businessId: businessIds[0], name: 'Safety Stock', current: 12, min: 2, unit: 'kg', price: 1 });
     await db.insert(restaurantPayments).values({ id: randomUUID(), businessId: businessIds[0], orderId: `order_finance_${runId}`, method: 'cash', amount: 25, status: 'completed', paidAt: new Date() });
     const adminA = token(userIds[0], businessIds[0]), adminB = token(userIds[1], businessIds[1]), managerA = token('manager_finance', businessIds[0], 'manager');
@@ -73,7 +76,7 @@ try {
     await db.delete(purchaseExpenseRecords).where(inArray(purchaseExpenseRecords.businessId, businessIds));
     await db.delete(restaurantPayments).where(inArray(restaurantPayments.businessId, businessIds));
     await db.delete(inventoryItems).where(inArray(inventoryItems.businessId, businessIds));
-    await db.delete(users).where(inArray(users.id, userIds));
+    await db.delete(users).where(inArray(users.id, [...userIds, managerId]));
     await db.delete(businesses).where(inArray(businesses.id, businessIds));
     await closeDatabase();
 }

@@ -10,7 +10,7 @@ process.env.NODE_ENV = 'test';
 const { default: customersRoutes } = await import('../routes/customers.js');
 const { generateToken } = await import('../middleware/auth.js');
 const { db, closeDatabase } = await import('../db/client.js');
-const { businesses, customers } = await import('../db/schema.js');
+const { businesses, customers, users } = await import('../db/schema.js');
 
 const app = new Hono();
 app.route('/api/customers', customersRoutes);
@@ -41,11 +41,17 @@ const requestJson = async <T>(path: string, init: RequestInit = {}, businessId =
 
 try {
     await db.delete(customers).where(inArray(customers.businessId, [businessAId, businessBId]));
+    await db.delete(users).where(inArray(users.id, [`user_${businessAId}`, `user_${businessBId}`]));
     await db.delete(businesses).where(inArray(businesses.id, [businessAId, businessBId]));
 
     await db.insert(businesses).values([
         { id: businessAId, name: 'Customers Verification A', type: 'retail', status: 'active' },
         { id: businessBId, name: 'Customers Verification B', type: 'retail', status: 'active' },
+    ]);
+    // Owner fixtures: authMiddleware enforces account existence per request.
+    await db.insert(users).values([
+        { id: `user_${businessAId}`, email: `${businessAId}@example.com`, role: 'owner', status: 'active', businessId: businessAId },
+        { id: `user_${businessBId}`, email: `${businessBId}@example.com`, role: 'owner', status: 'active', businessId: businessBId },
     ]);
 
     const missingName = await requestJson<{ error?: string }>('/api/customers', {
@@ -174,6 +180,7 @@ try {
     process.exitCode = 1;
 } finally {
     await db.delete(customers).where(inArray(customers.businessId, [businessAId, businessBId]));
+    await db.delete(users).where(inArray(users.id, [`user_${businessAId}`, `user_${businessBId}`]));
     await db.delete(businesses).where(inArray(businesses.id, [businessAId, businessBId]));
     await closeDatabase();
 }
