@@ -17,8 +17,8 @@ export const SegmentView = () => {
     }, [navigate, updateUser]);
 
     return (
-        <div role="status" style={{ color: 'var(--fg-secondary)', fontSize: '14px', textAlign: 'center' }}>
-            Preparing business onboarding...
+        <div role="status" style={{ color: 'var(--q-color-text-secondary)', fontSize: '0.875rem', textAlign: 'center' }}>
+            Preparing business onboarding…
         </div>
     );
 };

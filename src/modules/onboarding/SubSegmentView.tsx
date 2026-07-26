@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState } from 'react';
 import {
     Briefcase,
     Building2,
@@ -14,13 +14,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
+import { Button } from '@/components/design-system';
 import type { UserSegment } from '@/types/user';
 
 interface Segment {
     id: UserSegment;
     name: string;
     icon: LucideIcon;
-    bgColor: string;
     iconColor: string;
     sub: string;
     keywords: string[];
@@ -33,8 +33,7 @@ const segments: Segment[] = [
         id: 'restaurant',
         name: 'Restaurant',
         icon: UtensilsCrossed,
-        bgColor: '#fff7ed',
-        iconColor: '#f97316',
+        iconColor: 'var(--q-color-accent)',
         sub: 'POS, kitchen, tables',
         keywords: ['restaurant', 'cafe', 'food', 'kitchen', 'bar', 'dining', 'bistro', 'takeaway', 'fast food'],
         path: '/app/restaurant',
@@ -44,7 +43,6 @@ const segments: Segment[] = [
         id: 'pharmacy',
         name: 'Pharmacy',
         icon: Pill,
-        bgColor: '#f0fdf4',
         iconColor: '#16a34a',
         sub: 'Prescriptions, compliance',
         keywords: ['pharmacy', 'medicine', 'drugs', 'dispensing', 'chemist', 'health', 'pharmacist'],
@@ -55,7 +53,6 @@ const segments: Segment[] = [
         id: 'supermarket',
         name: 'Supermarket',
         icon: ShoppingCart,
-        bgColor: '#eff6ff',
         iconColor: '#3b82f6',
         sub: 'Barcode, inventory',
         keywords: ['supermarket', 'grocery', 'food store', 'convenience', 'hypermarket', 'mini market'],
@@ -66,7 +63,6 @@ const segments: Segment[] = [
         id: 'retail',
         name: 'Retail',
         icon: ShoppingBag,
-        bgColor: '#faf5ff',
         iconColor: '#8b5cf6',
         sub: 'Products, customers',
         keywords: ['retail', 'shop', 'store', 'fashion', 'clothes', 'electronics', 'products', 'clothing', 'boutique'],
@@ -77,40 +73,36 @@ const segments: Segment[] = [
         id: 'autoparts',
         name: 'Auto Parts',
         icon: Car,
-        bgColor: '#fdf2f8',
         iconColor: '#ec4899',
         sub: 'Multi-POS, B2B accounts',
         keywords: ['auto', 'car', 'spare parts', 'vehicle', 'automotive', 'garage', 'mechanic', 'workshop'],
-        path: '/app/retail', // TODO: Replace with the dedicated auto parts workspace.
+        path: '/app/retail',
         availability: 'coming-soon',
     },
     {
         id: 'clinic',
         name: 'Clinic',
         icon: Stethoscope,
-        bgColor: '#fef9ee',
         iconColor: '#f59e0b',
         sub: 'Patients, appointments',
         keywords: ['clinic', 'doctor', 'medical', 'hospital', 'dentist', 'patient', 'health', 'gp'],
-        path: '/app/pharmacy', // TODO: Replace with the dedicated clinic workspace.
+        path: '/app/pharmacy',
         availability: 'coming-soon',
     },
     {
         id: 'services',
         name: 'Services',
         icon: Briefcase,
-        bgColor: '#f0f9ff',
         iconColor: '#0ea5e9',
         sub: 'Quotes, jobs, invoicing',
         keywords: ['service', 'solar', 'contractor', 'consultant', 'trade', 'agency', 'installation', 'engineer'],
-        path: '/app/personal', // TODO: Replace with the dedicated services workspace.
+        path: '/app/personal',
         availability: 'coming-soon',
     },
     {
         id: 'other',
         name: 'Other',
         icon: Building2,
-        bgColor: '#f8fafc',
         iconColor: '#64748b',
         sub: 'General business',
         keywords: ['other', 'general', 'business'],
@@ -167,18 +159,104 @@ export const SubSegmentView = () => {
                     gap: 10px;
                 }
 
+                .segment-picker-card {
+                    position: relative;
+                    min-height: 116px;
+                    padding: 16px 10px;
+                    text-align: center;
+                    border: 1px solid var(--q-color-border);
+                    border-radius: var(--q-radius-md);
+                    background: var(--q-color-surface);
+                    color: var(--q-color-text);
+                    font-family: inherit;
+                    cursor: pointer;
+                    transition: border-color var(--q-duration-fast) var(--q-ease-standard),
+                        background-color var(--q-duration-fast) var(--q-ease-standard),
+                        box-shadow var(--q-duration-fast) var(--q-ease-standard);
+                }
+
                 .segment-picker-card:not(:disabled):hover {
-                    border-color: #93c5fd !important;
+                    border-color: var(--q-color-border-strong);
+                    box-shadow: var(--q-shadow-sm);
+                }
+
+                .segment-picker-card--selected {
+                    border-color: var(--q-color-accent) !important;
+                    background: var(--q-color-accent-soft) !important;
                 }
 
                 .segment-picker-card:disabled {
-                    opacity: 0.72;
+                    opacity: 0.6;
+                    cursor: not-allowed;
                 }
 
-                .segment-picker-card:focus-visible,
-                .segment-picker-action:focus-visible {
-                    outline: 3px solid rgba(59, 130, 246, 0.25);
-                    outline-offset: 2px;
+                .segment-picker-card:focus-visible {
+                    outline: none;
+                    box-shadow: var(--q-focus-ring);
+                }
+
+                .segment-picker-icon {
+                    width: 40px;
+                    height: 40px;
+                    margin: 0 auto 9px;
+                    border-radius: var(--q-radius-sm);
+                    background: var(--q-color-surface-muted);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .segment-picker-name {
+                    display: block;
+                    color: var(--q-color-text);
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    line-height: 1.3;
+                }
+
+                .segment-picker-sub {
+                    display: block;
+                    color: var(--q-color-text-muted);
+                    font-size: 0.625rem;
+                    line-height: 1.35;
+                    margin-top: 3px;
+                }
+
+                .segment-picker-badge {
+                    display: inline-flex;
+                    margin-top: 8px;
+                    min-height: 20px;
+                    align-items: center;
+                    border-radius: var(--q-radius-pill);
+                    background: var(--q-color-surface-muted);
+                    color: var(--q-color-text-secondary);
+                    font-size: 0.625rem;
+                    font-weight: 700;
+                    padding: 3px 8px;
+                }
+
+                .segment-picker-search {
+                    width: 100%;
+                    border: 1.5px solid var(--q-color-border);
+                    border-radius: var(--q-radius-pill);
+                    box-sizing: border-box;
+                    font-family: inherit;
+                    font-size: 0.875rem;
+                    outline: none;
+                    padding: 12px 16px 12px 44px;
+                    background: var(--q-color-surface);
+                    color: var(--q-color-text);
+                    transition: border-color var(--q-duration-fast) var(--q-ease-standard),
+                        box-shadow var(--q-duration-fast) var(--q-ease-standard);
+                }
+
+                .segment-picker-search::placeholder {
+                    color: var(--q-color-text-muted);
+                }
+
+                .segment-picker-search:focus {
+                    border-color: var(--q-color-text);
+                    box-shadow: var(--q-focus-ring);
                 }
 
                 @media (max-width: 480px) {
@@ -196,28 +274,35 @@ export const SubSegmentView = () => {
                         flex-basis: 100% !important;
                     }
                 }
+
+                @media (prefers-reduced-motion: reduce) {
+                    .segment-picker-card {
+                        transition: none;
+                    }
+                }
             `}</style>
 
             <p style={{
-                color: 'var(--fg-secondary)',
-                fontSize: '14px',
-                margin: '-24px 0 20px',
+                color: 'var(--q-color-text-secondary)',
+                fontSize: '0.875rem',
+                margin: 'calc(var(--q-space-6) * -1) 0 var(--q-space-5)',
                 textAlign: 'center',
             }}>
-                Search or select - we&apos;ll configure your workspace
+                Search or select — we&apos;ll configure your workspace
             </p>
 
-            <div style={{ position: 'relative', marginBottom: '16px' }}>
+            <div style={{ position: 'relative', marginBottom: 'var(--q-space-4)' }}>
                 <Search
                     size={19}
                     aria-hidden="true"
                     style={{
-                        color: isSearchFocused ? '#3b82f6' : '#94a3b8',
+                        color: isSearchFocused ? 'var(--q-color-text)' : 'var(--q-color-text-muted)',
                         left: '14px',
                         pointerEvents: 'none',
                         position: 'absolute',
                         top: '50%',
                         transform: 'translateY(-50%)',
+                        transition: 'color var(--q-duration-fast) var(--q-ease-standard)',
                     }}
                 />
                 <input
@@ -228,51 +313,31 @@ export const SubSegmentView = () => {
                     onBlur={() => setIsSearchFocused(false)}
                     placeholder="Search your business type..."
                     aria-label="Search business types"
-                    style={{
-                        width: '100%',
-                        border: `1.5px solid ${isSearchFocused ? '#3b82f6' : '#cbd5e1'}`,
-                        borderRadius: '50px',
-                        boxSizing: 'border-box',
-                        fontFamily: 'inherit',
-                        fontSize: '14px',
-                        outline: 'none',
-                        padding: '12px 16px 12px 44px',
-                        transition: 'border-color 0.2s, box-shadow 0.2s',
-                        boxShadow: isSearchFocused ? '0 0 0 3px rgba(59, 130, 246, 0.1)' : 'none',
-                    }}
+                    className="segment-picker-search"
                 />
             </div>
 
             {filteredSegments.length > 0 ? (
-                <div className="segment-picker-grid">
+                <div className="segment-picker-grid" role="list" aria-label="Business types">
                     {filteredSegments.map((segment) => {
                         const Icon = segment.icon;
                         const isSelected = selected === segment.id;
                         const isActive = segment.availability === 'active';
-                        const cardStyle: CSSProperties = {
-                            position: 'relative',
-                            minHeight: '116px',
-                            padding: '16px 10px',
-                            textAlign: 'center',
-                            border: isSelected ? '2px solid #3b82f6' : '0.5px solid #cbd5e1',
-                            borderRadius: '12px',
-                            background: isSelected ? '#eff6ff' : isActive ? '#ffffff' : '#f8fafc',
-                            cursor: isActive ? 'pointer' : 'not-allowed',
-                            fontFamily: 'inherit',
-                            transition: 'border-color 0.2s, background-color 0.2s, transform 0.2s',
-                        };
 
                         return (
                             <button
                                 key={segment.id}
                                 type="button"
-                                className="segment-picker-card"
+                                className={[
+                                    'segment-picker-card',
+                                    isSelected ? 'segment-picker-card--selected' : '',
+                                ].filter(Boolean).join(' ')}
                                 onClick={() => {
                                     if (isActive) setSelected(segment.id);
                                 }}
                                 disabled={!isActive}
                                 aria-pressed={isSelected}
-                                style={cardStyle}
+                                role="listitem"
                             >
                                 {isSelected && (
                                     <span style={{
@@ -282,7 +347,7 @@ export const SubSegmentView = () => {
                                         width: '18px',
                                         height: '18px',
                                         borderRadius: '50%',
-                                        background: '#3b82f6',
+                                        background: 'var(--q-color-accent)',
                                         color: '#ffffff',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -291,50 +356,17 @@ export const SubSegmentView = () => {
                                         <Check size={12} strokeWidth={3} aria-hidden="true" />
                                     </span>
                                 )}
-                                <span style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    margin: '0 auto 9px',
-                                    borderRadius: '10px',
-                                    background: segment.bgColor,
-                                    color: segment.iconColor,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                }}>
+                                <span className="segment-picker-icon" style={{ color: segment.iconColor }}>
                                     <Icon size={20} aria-hidden="true" />
                                 </span>
-                                <span style={{
-                                    display: 'block',
-                                    color: '#1e293b',
-                                    fontSize: '12px',
-                                    fontWeight: 500,
-                                    lineHeight: 1.3,
-                                }}>
+                                <span className="segment-picker-name">
                                     {segment.name}
                                 </span>
-                                <span style={{
-                                    display: 'block',
-                                    color: '#94a3b8',
-                                    fontSize: '10px',
-                                    lineHeight: 1.35,
-                                    marginTop: '3px',
-                                }}>
+                                <span className="segment-picker-sub">
                                     {segment.sub}
                                 </span>
                                 {!isActive && (
-                                    <span style={{
-                                        display: 'inline-flex',
-                                        marginTop: '8px',
-                                        minHeight: '20px',
-                                        alignItems: 'center',
-                                        borderRadius: '999px',
-                                        background: segment.availability === 'internal-preview' ? '#fef3c7' : '#e2e8f0',
-                                        color: segment.availability === 'internal-preview' ? '#92400e' : '#475569',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        padding: '3px 8px',
-                                    }}>
+                                    <span className="segment-picker-badge">
                                         {availabilityLabels[segment.availability]}
                                     </span>
                                 )}
@@ -348,63 +380,40 @@ export const SubSegmentView = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#64748b',
-                    fontSize: '14px',
+                    color: 'var(--q-color-text-secondary)',
+                    fontSize: '0.875rem',
                     textAlign: 'center',
                 }}>
-                    No match - try a different term
+                    No match — try a different term
                 </div>
             )}
 
-            <button
+            <Button
                 type="button"
-                className="segment-picker-action segment-picker-continue"
+                variant="primary"
+                fullWidth
                 onClick={handleContinue}
                 disabled={!selectedSegment}
-                style={{
-                    width: '100%',
-                    marginTop: '24px',
-                    padding: '14px 20px',
-                    border: 'none',
-                    borderRadius: '50px',
-                    background: selectedSegment ? '#3b82f6' : '#cbd5e1',
-                    color: '#ffffff',
-                    cursor: selectedSegment ? 'pointer' : 'not-allowed',
-                    fontFamily: 'inherit',
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    transition: 'background-color 0.2s',
-                }}
+                className="segment-picker-continue"
+                style={{ marginTop: 'var(--q-space-6)' }}
             >
-                {selectedSegment ? `Continue with ${selectedSegment.name} ->` : 'Select a business type to continue'}
-            </button>
+                {selectedSegment ? `Continue with ${selectedSegment.name}` : 'Select a business type to continue'}
+            </Button>
 
             <div className="segment-picker-actions" style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginTop: '18px',
+                marginTop: 'var(--q-space-4)',
             }}>
-                <button
+                <Button
                     type="button"
-                    className="segment-picker-action"
+                    variant="secondary"
                     onClick={() => navigate('/onboarding/identity')}
-                    style={linkButtonStyle}
                 >
                     Back
-                </button>
+                </Button>
             </div>
         </div>
     );
-};
-
-const linkButtonStyle: CSSProperties = {
-    padding: '4px',
-    border: 'none',
-    background: 'none',
-    color: '#64748b',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    fontSize: '13px',
-    fontWeight: 600,
 };

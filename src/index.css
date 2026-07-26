@@ -1,4 +1,5 @@
 @import './styles/theme.css';
+@import './styles/q360-tokens.css';
 
 :root {
   /* Q360 Design System - Enterprise SaaS Light Theme */
@@ -55,37 +56,6 @@ body {
 
 * {
   box-sizing: border-box;
-}
-
-.onboarding-canvas {
-  background-color: #edf2f7;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(100, 116, 139, 0.2) 1px, transparent 0),
-    radial-gradient(circle at 20% 10%, rgba(59, 130, 246, 0.12), transparent 32%),
-    radial-gradient(circle at 80% 90%, rgba(16, 185, 129, 0.1), transparent 30%);
-  background-size: 24px 24px, 100% 100%, 100% 100%;
-}
-
-.onboarding-surface {
-  --fg-primary: #0f172a;
-  --fg-secondary: #475569;
-  --fg-muted: #64748b;
-  --border-subtle: #cbd5e1;
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--fg-primary);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(16px);
-}
-
-.onboarding-option:hover {
-  border-color: #94a3b8 !important;
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px -14px rgba(15, 23, 42, 0.45);
-}
-
-.onboarding-option:focus-visible {
-  outline: 3px solid rgba(59, 130, 246, 0.25);
-  outline-offset: 3px;
 }
 
 /* Scrollbar */

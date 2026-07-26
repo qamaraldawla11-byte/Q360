@@ -9,6 +9,7 @@ import {
 } from '@/api/qGuestBrief.api';
 import { userApi } from '@/api/user.api';
 import { useAuthStore } from '@/store/auth.store';
+import { Button } from '@/components/design-system';
 
 type Corrections = {
     businessName?: string;
@@ -21,19 +22,24 @@ const answerOf = (brief: QGuestBriefView, question: string) =>
 
 const labelStyle: React.CSSProperties = {
     display: 'block',
-    marginBottom: '8px',
-    fontSize: '14px',
-    fontWeight: 600,
-    color: 'var(--fg-primary)',
+    marginBottom: 'var(--q-space-2)',
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    color: 'var(--q-color-text-secondary)',
 };
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
-    padding: '12px 14px',
-    borderRadius: '12px',
-    border: '1px solid var(--border-subtle)',
-    fontSize: '15px',
+    padding: 'var(--q-space-3) var(--q-space-3)',
+    borderRadius: 'var(--q-radius-md)',
+    border: '1px solid var(--q-color-border)',
+    background: 'var(--q-color-surface-muted)',
+    color: 'var(--q-color-text)',
+    fontFamily: 'inherit',
+    fontSize: '1rem',
+    lineHeight: '1.5rem',
     outline: 'none',
+    transition: 'border-color var(--q-duration-fast) var(--q-ease-standard), box-shadow var(--q-duration-fast) var(--q-ease-standard)',
 };
 
 export const GuestBriefReviewView = () => {
@@ -76,31 +82,24 @@ export const GuestBriefReviewView = () => {
     }, [navigate]);
 
     if (isLoading) {
-        return <div style={{ color: 'var(--fg-secondary)', fontSize: '15px', textAlign: 'center' }}>Q is loading your workspace plan…</div>;
+        return <div style={{ color: 'var(--q-color-text-secondary)', fontSize: '0.9375rem', textAlign: 'center' }}>Q is loading your workspace plan…</div>;
     }
 
     if (loadError || !brief) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div role="alert" style={{ padding: '12px', borderRadius: '10px', background: '#fef2f2', color: '#b91c1c', fontSize: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--q-space-4)' }}>
+                <div role="alert" style={{
+                    padding: 'var(--q-space-3)',
+                    borderRadius: 'var(--q-radius-md)',
+                    background: 'var(--q-color-danger-soft)',
+                    color: 'var(--q-color-danger)',
+                    fontSize: '0.875rem',
+                }}>
                     {loadError || 'This plan is no longer available.'}
                 </div>
-                <button
-                    type="button"
-                    onClick={() => navigate('/onboarding/identity')}
-                    style={{
-                        width: '100%',
-                        padding: '14px',
-                        background: 'var(--accent-primary)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 'var(--radius-md)',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                    }}
-                >
+                <Button variant="primary" fullWidth onClick={() => navigate('/onboarding/identity')}>
                     Continue with manual setup
-                </button>
+                </Button>
             </div>
         );
     }
@@ -190,37 +189,37 @@ export const GuestBriefReviewView = () => {
     if (serviceModes) facts.push({ label: 'Service modes', value: serviceModes });
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <p style={{
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--q-space-5)' }}>
+            <div style={{
                 margin: 0,
-                padding: '12px 14px',
-                borderRadius: '12px',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                color: '#1e40af',
-                fontSize: '14px',
-                fontWeight: 700,
+                padding: 'var(--q-space-3) var(--q-space-4)',
+                borderRadius: 'var(--q-radius-md)',
+                background: 'var(--q-color-info-soft)',
+                border: '1px solid var(--q-color-border)',
+                color: 'var(--q-color-info)',
+                fontSize: '0.875rem',
+                fontWeight: 600,
                 lineHeight: 1.45,
             }}>
                 Prepared by Q. Nothing happens without you.
-            </p>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--q-space-2)' }}>
                 {facts.map((fact) => (
-                    <div key={fact.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '14px' }}>
-                        <span style={{ color: 'var(--fg-muted)' }}>{fact.label}</span>
-                        <span style={{ fontWeight: 600, color: 'var(--fg-primary)', textAlign: 'right' }}>{fact.value}</span>
+                    <div key={fact.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--q-space-3)', fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--q-color-text-muted)' }}>{fact.label}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--q-color-text)', textAlign: 'right' }}>{fact.value}</span>
                     </div>
                 ))}
                 {recommendation.recommendedModules.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', marginTop: 'var(--q-space-1)' }}>
                         {recommendation.recommendedModules.map((module) => (
                             <span key={module} style={{
                                 padding: '7px 9px',
-                                borderRadius: '999px',
-                                background: '#fff2e4',
-                                color: '#b85200',
-                                fontSize: '13px',
+                                borderRadius: 'var(--q-radius-pill)',
+                                background: 'var(--q-color-accent-soft)',
+                                color: 'var(--q-color-accent)',
+                                fontSize: '0.8125rem',
                                 fontWeight: 700,
                             }}>
                                 {module}
@@ -230,26 +229,36 @@ export const GuestBriefReviewView = () => {
                 )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                <div style={{ padding: '14px', background: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
-                    <div style={{ fontSize: '13px', color: '#166534', fontWeight: 700, marginBottom: '6px' }}>What Q will create</div>
-                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#15803d', lineHeight: 1.6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--q-space-3)' }}>
+                <div style={{
+                    padding: 'var(--q-space-3) var(--q-space-4)',
+                    borderRadius: 'var(--q-radius-md)',
+                    background: 'var(--q-color-accent-soft)',
+                    border: '1px solid var(--q-color-border)',
+                }}>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--q-color-accent)', fontWeight: 700, marginBottom: '6px' }}>What Q will create</div>
+                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8125rem', color: 'var(--q-color-text-secondary)', lineHeight: 1.6 }}>
                         <li>{businessTypeLabel} workspace for {businessName.trim() || prefill.businessName || 'your business'}</li>
                         {tableCount > 0 && <li>{tableCount} tables (Table 1–Table {tableCount})</li>}
                         <li>{businessTypeLabel} modules</li>
                         <li>Your Q onboarding context</li>
                     </ul>
                 </div>
-                <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--fg-primary)', fontWeight: 700, marginBottom: '6px' }}>What Q will not do</div>
-                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: 'var(--fg-secondary)', lineHeight: 1.6 }}>
+                <div style={{
+                    padding: 'var(--q-space-3) var(--q-space-4)',
+                    borderRadius: 'var(--q-radius-md)',
+                    background: 'var(--q-color-surface-muted)',
+                    border: '1px solid var(--q-color-border)',
+                }}>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--q-color-text)', fontWeight: 700, marginBottom: '6px' }}>What Q will not do</div>
+                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8125rem', color: 'var(--q-color-text-secondary)', lineHeight: 1.6 }}>
                         <li>Create menu items, orders, customers, staff or payments</li>
                         <li>Change anything else without you</li>
                     </ul>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--q-space-3)' }}>
                 <div>
                     <label htmlFor="brief-business-name" style={labelStyle}>Business name</label>
                     <input
@@ -260,9 +269,11 @@ export const GuestBriefReviewView = () => {
                         maxLength={120}
                         required
                         style={inputStyle}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-text)'; e.currentTarget.style.boxShadow = 'var(--q-focus-ring)'; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-border)'; e.currentTarget.style.boxShadow = 'none'; }}
                     />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 'var(--q-space-3)' }}>
                     <div>
                         <label htmlFor="brief-country" style={labelStyle}>Country</label>
                         <input
@@ -273,6 +284,8 @@ export const GuestBriefReviewView = () => {
                             maxLength={100}
                             required
                             style={inputStyle}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-text)'; e.currentTarget.style.boxShadow = 'var(--q-focus-ring)'; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-border)'; e.currentTarget.style.boxShadow = 'none'; }}
                         />
                     </div>
                     <div>
@@ -285,78 +298,67 @@ export const GuestBriefReviewView = () => {
                             maxLength={3}
                             required
                             style={inputStyle}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-text)'; e.currentTarget.style.boxShadow = 'var(--q-focus-ring)'; }}
+                            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--q-color-border)'; e.currentTarget.style.boxShadow = 'none'; }}
                         />
                     </div>
                 </div>
             </div>
 
             {notice && (
-                <div role="status" style={{ padding: '12px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', fontSize: '14px' }}>
+                <div role="status" style={{
+                    padding: 'var(--q-space-3)',
+                    borderRadius: 'var(--q-radius-md)',
+                    background: 'var(--q-color-info-soft)',
+                    border: '1px solid var(--q-color-border)',
+                    color: 'var(--q-color-info)',
+                    fontSize: '0.875rem',
+                }}>
                     {notice}
                 </div>
             )}
             {errorMessage && (
-                <div role="alert" style={{ padding: '12px', borderRadius: '10px', background: '#fef2f2', color: '#b91c1c', fontSize: '14px' }}>
+                <div role="alert" style={{
+                    padding: 'var(--q-space-3)',
+                    borderRadius: 'var(--q-radius-md)',
+                    background: 'var(--q-color-danger-soft)',
+                    color: 'var(--q-color-danger)',
+                    fontSize: '0.875rem',
+                }}>
                     {errorMessage}
                 </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--q-space-2)' }}>
+                <Button
                     type="button"
+                    variant="primary"
+                    fullWidth
                     onClick={() => void handleConfirm()}
+                    isLoading={isSubmitting}
                     disabled={!isValid || isSubmitting || Boolean(notice)}
-                    style={{
-                        width: '100%',
-                        padding: '16px',
-                        background: isValid && !isSubmitting && !notice ? 'var(--accent-primary)' : '#cbd5e1',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 'var(--radius-md)',
-                        fontWeight: 700,
-                        fontSize: '15px',
-                        cursor: isValid && !isSubmitting && !notice ? 'pointer' : 'not-allowed',
-                    }}
                 >
                     {isSubmitting ? 'Creating your workspace…' : 'Confirm and create workspace'}
-                </button>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button
+                </Button>
+                <div style={{ display: 'flex', gap: 'var(--q-space-2)' }}>
+                    <Button
                         type="button"
+                        variant="secondary"
+                        fullWidth
                         onClick={() => void handleEditFullDetails()}
                         disabled={isSubmitting}
-                        style={{
-                            flex: 1,
-                            padding: '12px',
-                            background: 'transparent',
-                            color: 'var(--fg-primary)',
-                            border: '1px solid var(--border-subtle)',
-                            borderRadius: 'var(--radius-md)',
-                            fontWeight: 600,
-                            fontSize: '14px',
-                            cursor: 'pointer',
-                        }}
                     >
                         Edit full details
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="button"
+                        variant="secondary"
+                        fullWidth
                         onClick={() => void handleDismiss()}
                         disabled={isSubmitting}
-                        style={{
-                            flex: 1,
-                            padding: '12px',
-                            background: 'transparent',
-                            color: '#b91c1c',
-                            border: 'none',
-                            borderRadius: 'var(--radius-md)',
-                            fontWeight: 600,
-                            fontSize: '14px',
-                            cursor: 'pointer',
-                        }}
                     >
                         Dismiss plan
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>
