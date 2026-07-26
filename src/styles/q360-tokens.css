@@ -37,6 +37,10 @@
     --q-color-success: #047857;
     --q-color-success-soft: #ecfdf5;
 
+    /* Warning — accessible semantic amber */
+    --q-color-warning: #92400e;
+    --q-color-warning-soft: #fef3c7;
+
     /* Focus ring — visible against ivory, white, and black */
     --q-focus-ring: 0 0 0 2px var(--q-color-canvas), 0 0 0 4px var(--q-color-text);
 
