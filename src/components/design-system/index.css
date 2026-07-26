@@ -218,9 +218,9 @@
   }
 
   .q-badge--success {
-    background-color: #ecfdf5;
-    color: #047857;
-    border-color: #a7f3d0;
+    background-color: var(--q-color-success-soft);
+    color: var(--q-color-success);
+    border-color: var(--q-color-success);
   }
 
   .q-badge--warning {
@@ -259,9 +259,9 @@
   }
 
   .q-alert--success {
-    background-color: #ecfdf5;
-    color: #047857;
-    border-color: #a7f3d0;
+    background-color: var(--q-color-success-soft);
+    color: var(--q-color-success);
+    border-color: var(--q-color-success);
   }
 
   .q-alert--info {

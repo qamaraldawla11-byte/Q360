@@ -33,6 +33,10 @@
     --q-color-danger: #dc2626;
     --q-color-danger-soft: #fef2f2;
 
+    /* Success — accessible semantic green */
+    --q-color-success: #047857;
+    --q-color-success-soft: #ecfdf5;
+
     /* Focus ring — visible against ivory, white, and black */
     --q-focus-ring: 0 0 0 2px var(--q-color-canvas), 0 0 0 4px var(--q-color-text);
 
