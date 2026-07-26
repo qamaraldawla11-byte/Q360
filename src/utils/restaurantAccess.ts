@@ -22,5 +22,8 @@ export const hasRestaurantModuleAccess = (
 ) => {
     if (!user) return false;
     if (isRestaurantManager(user)) return true;
+    // M5.8: align with the backend contract — null/undefined moduleAccess marks
+    // a legacy account with unrestricted access; [] is the explicit deny-all.
+    if (user.moduleAccess === null || user.moduleAccess === undefined) return true;
     return Array.isArray(user.moduleAccess) && user.moduleAccess.includes(accessKey);
 };
