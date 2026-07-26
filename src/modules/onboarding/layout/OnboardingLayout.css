@@ -1,0 +1,126 @@
+@layer q360-onboarding {
+  .onboarding-canvas {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--q-space-6) var(--q-space-4);
+    background-color: var(--q-color-canvas);
+    font-family: var(--font-sans);
+  }
+
+  .onboarding-surface {
+    width: 100%;
+    max-width: 520px;
+    padding: var(--q-space-10) var(--q-space-8);
+  }
+
+  .onboarding-header {
+    text-align: center;
+    margin-bottom: var(--q-space-8);
+  }
+
+  .onboarding-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--q-space-4);
+  }
+
+  .onboarding-step-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--q-space-2);
+    margin-bottom: var(--q-space-6);
+  }
+
+  .onboarding-step {
+    display: flex;
+    align-items: center;
+    gap: var(--q-space-2);
+  }
+
+  .onboarding-step__dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: background-color var(--q-duration-fast) var(--q-ease-standard),
+      color var(--q-duration-fast) var(--q-ease-standard);
+  }
+
+  .onboarding-step__dot--complete {
+    background-color: var(--q-color-text);
+    color: var(--q-color-surface);
+  }
+
+  .onboarding-step__dot--current {
+    background-color: var(--q-color-action);
+    color: var(--q-color-action-text);
+  }
+
+  .onboarding-step__dot--pending {
+    background-color: var(--q-color-surface-muted);
+    color: var(--q-color-text-muted);
+  }
+
+  .onboarding-step__line {
+    width: 40px;
+    height: 2px;
+    border-radius: 1px;
+    flex-shrink: 0;
+    transition: background-color var(--q-duration-fast) var(--q-ease-standard);
+  }
+
+  .onboarding-step__line--complete {
+    background-color: var(--q-color-text);
+  }
+
+  .onboarding-step__line--pending {
+    background-color: var(--q-color-border);
+  }
+
+  .onboarding-title {
+    margin: 0 0 var(--q-space-2);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--q-color-text);
+    line-height: 1.2;
+  }
+
+  .onboarding-subtitle {
+    margin: 0;
+    color: var(--q-color-text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+  }
+
+  .onboarding-footer {
+    margin-top: var(--q-space-8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  @media (max-width: 480px) {
+    .onboarding-surface {
+      padding: var(--q-space-6) var(--q-space-4);
+    }
+
+    .onboarding-step__line {
+      width: 24px;
+    }
+  }
+
+  @media (max-height: 600px) {
+    .onboarding-canvas {
+      align-items: flex-start;
+      padding-top: var(--q-space-8);
+    }
+  }
+}
