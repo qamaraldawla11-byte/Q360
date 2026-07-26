@@ -184,6 +184,99 @@
   }
 
   /* ------------------------------------------------------------------
+     Card — padded content surface (DS-3)
+     ------------------------------------------------------------------ */
+  .q-card {
+    background-color: var(--q-color-surface);
+    border: 1px solid var(--q-color-border);
+    border-radius: var(--q-radius-lg);
+    box-shadow: var(--q-shadow-sm);
+    padding: var(--q-space-6);
+    color: var(--q-color-text);
+  }
+
+  /* ------------------------------------------------------------------
+     Badge — compact status pill (DS-3)
+     ------------------------------------------------------------------ */
+  .q-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--q-space-1);
+    padding: 2px var(--q-space-2);
+    border: 1px solid transparent;
+    border-radius: var(--q-radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+
+  .q-badge--default {
+    background-color: var(--q-color-surface-muted);
+    color: var(--q-color-text-secondary);
+    border-color: var(--q-color-border);
+  }
+
+  .q-badge--success {
+    background-color: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+  }
+
+  .q-badge--warning {
+    background-color: var(--q-color-accent-soft);
+    color: var(--q-color-accent);
+    border-color: var(--q-color-accent);
+  }
+
+  .q-badge--danger {
+    background-color: var(--q-color-danger-soft);
+    color: var(--q-color-danger);
+    border-color: var(--q-color-danger);
+  }
+
+  .q-badge--info {
+    background-color: var(--q-color-info-soft);
+    color: var(--q-color-info);
+    border-color: var(--q-color-border-strong);
+  }
+
+  /* ------------------------------------------------------------------
+     Alert — inline notice banner (DS-3)
+     ------------------------------------------------------------------ */
+  .q-alert {
+    padding: var(--q-space-3) var(--q-space-4);
+    border: 1px solid transparent;
+    border-radius: var(--q-radius-md);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .q-alert--error {
+    background-color: var(--q-color-danger-soft);
+    color: var(--q-color-danger);
+    border-color: var(--q-color-danger);
+  }
+
+  .q-alert--success {
+    background-color: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+  }
+
+  .q-alert--info {
+    background-color: var(--q-color-info-soft);
+    color: var(--q-color-info);
+    border-color: var(--q-color-border-strong);
+  }
+
+  .q-alert--warning {
+    background-color: var(--q-color-accent-soft);
+    color: var(--q-color-accent);
+    border-color: var(--q-color-accent);
+  }
+
+  /* ------------------------------------------------------------------
      Reduced motion
      ------------------------------------------------------------------ */
   @media (prefers-reduced-motion: reduce) {
