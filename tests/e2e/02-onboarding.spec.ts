@@ -34,9 +34,10 @@ test('TEST 2 - onboarding SME to Restaurant selection', async ({ page }) => {
   await completeOtpLogin(page, user.email);
   await page.getByLabel('Full Name').fill('Taylor Owner');
   await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: /Business Restaurant/ }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: /Restaurant POS, kitchen, tables/ }).click();
+  // Current flow: identity → business-type picker directly (the legacy
+  // "Business Restaurant" user-type step no longer exists). The picker cards
+  // expose role="listitem" with the segment name + sub-label as accessible name.
+  await page.getByRole('list', { name: 'Business types' }).getByRole('listitem').filter({ hasText: 'Restaurant' }).click();
   await page.getByRole('button', { name: 'Continue with Restaurant' }).click();
   await page.getByLabel('Business Name').fill('Taylor Test Bistro');
   await page.getByRole('button', { name: 'Launch My Workspace' }).click();
