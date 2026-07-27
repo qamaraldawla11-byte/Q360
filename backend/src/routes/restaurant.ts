@@ -1751,6 +1751,11 @@ restaurant.post('/menu/items/:id/image', async (c) => {
 });
 
 restaurant.get('/tables', async (c) => {
+    // M5.8: align with the other tables endpoints — a disabled Tables module
+    // must not serve table data either.
+    if (!await isBusinessModuleEnabled(c.get('businessId'), 'restaurant', 'tables')) {
+        return c.json({ error: 'Tables module is disabled for this business' }, 409);
+    }
     return c.json(await db.select().from(restaurantTables)
         .where(eq(restaurantTables.businessId, c.get('businessId')))
         .orderBy(asc(restaurantTables.label)));

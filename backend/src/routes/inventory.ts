@@ -4,6 +4,7 @@ import { inventoryItems, products, stockMovements } from '../db/schema.js';
 import { randomUUID } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { requireModule } from '../middleware/moduleAuthorization.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
 
@@ -11,6 +12,8 @@ const inventory = new Hono<AppEnv>();
 
 // All inventory routes require authentication
 inventory.use('/*', authMiddleware);
+// M5.8: module activation + moduleAccess enforcement (non-management roles)
+inventory.use('/*', requireModule('inventory'));
 
 // GET /api/inventory
 inventory.get('/', async (c) => {

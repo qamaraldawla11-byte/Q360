@@ -4,12 +4,16 @@ import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import { businesses, purchaseExpenseRecords, restaurantPayments, suppliers } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { requireModule } from '../middleware/moduleAuthorization.js';
 import { duplicateKeysFor, isWithinDateWindow, normalizeDuplicateText, type PurchaseExpenseInput } from '../services/purchaseExpenses.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 
 const router = new Hono<AppEnv>();
 router.use('*', authMiddleware);
+// M5.8: finance module activation enforcement (owner/admin role gate below already
+// implies the management bypass, so no per-user moduleAccess query is needed here)
+router.use('*', requireModule('finance'));
 router.use('*', requireRole(['owner', 'admin']));
 
 type InputBody = Partial<PurchaseExpenseInput> & { confirmDuplicate?: unknown; businessId?: unknown };

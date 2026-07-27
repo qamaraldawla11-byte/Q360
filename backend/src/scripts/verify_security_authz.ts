@@ -53,6 +53,7 @@ const categoryId = `secz_cat_${suffix}`;
 const itemId = `secz_item_${suffix}`;
 const tableId = `secz_table_${suffix}`;
 const customerId = `cust_secz_${suffix}`;
+const roleFixtureIds: string[] = [];
 const migratedBusinessIds = new Set<string>();
 
 let failures = 0;
@@ -194,6 +195,21 @@ try {
         id: tableId, businessId, label: 'SZ1', capacity: 2, status: 'available',
     });
     await db.insert(customers).values({ id: customerId, businessId, name: 'SecZ Customer' });
+
+    // Role fixtures: authMiddleware enforces account existence per request, so
+    // every signed role token needs a matching users row.
+    for (const role of ['waiter', 'kitchen', 'staff', 'owner', 'manager', 'admin'] as const) {
+        const id = `usr_secz_${role}_${suffix}`;
+        roleFixtureIds.push(id);
+        await db.insert(users).values({
+            id,
+            email: `${id}@example.com`,
+            name: `SecZ ${role}`,
+            role,
+            status: 'active',
+            businessId,
+        });
+    }
 
     const waiter = createRoleToken('waiter');
     const kitchen = createRoleToken('kitchen');
@@ -493,7 +509,7 @@ try {
     }
     await db.delete(users).where(eq(users.email, adminCreatedEmail));
     await db.delete(users).where(eq(users.email, staffCreatedEmail));
-    for (const id of [legacyUserId, nullTenantUserId, controlUserId, wsUserAId, wsUserBId]) {
+    for (const id of [legacyUserId, nullTenantUserId, controlUserId, wsUserAId, wsUserBId, ...roleFixtureIds]) {
         await db.delete(users).where(eq(users.id, id));
     }
     await db.delete(businesses).where(eq(businesses.id, businessId));

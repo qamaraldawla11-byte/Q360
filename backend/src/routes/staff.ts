@@ -4,11 +4,12 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
 import { businesses, staffInvitations, staffMembers, users } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { requireModule } from '../middleware/moduleAuthorization.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 import { sendStaffInvitationEmail } from '../services/email.js';
 
-const staff=new Hono<AppEnv>(); staff.use('*',authMiddleware); const roles=['manager','waiter','cashier','kitchen','staff'] as const; const modules=new Set(['dashboard','pos','kds','menu','tables','inventory','payments','daily-report','staff']);
+const staff=new Hono<AppEnv>(); staff.use('*',authMiddleware); staff.use('*',requireModule('staff')); const roles=['manager','waiter','cashier','kitchen','staff'] as const; const modules=new Set(['dashboard','pos','kds','menu','tables','inventory','payments','daily-report','staff','finance','customers']);
 staff.get('/',requireRole(['user','owner','admin','manager']),async c=>c.json(await db.select().from(staffMembers).where(eq(staffMembers.businessId,c.get('businessId'))).orderBy(desc(staffMembers.createdAt))));
 staff.post('/invite',requireRole(['user','owner','admin','manager']),async c=>{let body:{name?:unknown;email?:unknown;role?:unknown;moduleAccess?:unknown;shiftName?:unknown;shiftStart?:unknown;shiftEnd?:unknown};try{body=await c.req.json()}catch{return c.json({error:'Invalid JSON body'},400)}
  const name=typeof body.name==='string'?body.name.trim():'',email=typeof body.email==='string'?body.email.trim().toLowerCase():'',role=typeof body.role==='string'?body.role:'';if(!name||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!roles.includes(role as typeof roles[number]))return c.json({error:'Name, valid email, and staff role are required'},400);if(!Array.isArray(body.moduleAccess)||body.moduleAccess.some(x=>typeof x!=='string'||!modules.has(x)))return c.json({error:'Invalid module access'},400);
