@@ -10,7 +10,7 @@ process.env.NODE_ENV = 'test';
 const { default: quotesRoutes } = await import('../routes/quotes.js');
 const { generateToken } = await import('../middleware/auth.js');
 const { db, closeDatabase, first } = await import('../db/client.js');
-const { auditLogs, businesses, customers, inventoryItems, orders, products, quoteItems, quotes } = await import('../db/schema.js');
+const { auditLogs, businesses, businessModules, customers, inventoryItems, orders, products, quoteItems, quotes, users } = await import('../db/schema.js');
 
 type QuoteResponse = {
     id: string;
@@ -45,6 +45,18 @@ const customerAId = `cust_verify_quotes_a_${runId}`;
 const customerBId = `cust_verify_quotes_b_${runId}`;
 const productAId = `prod_verify_quotes_a_${runId}`;
 const productBId = `prod_verify_quotes_b_${runId}`;
+const staffQuotesId = `staff_quotes_${runId}`;
+const moduleRowId = (workspaceKey: string, businessId: string) => `bmod_${workspaceKey}_${businessId}`;
+
+const setModuleRow = async (businessId: string, workspaceKey: string, moduleKey: string, enabled: boolean) => {
+    const id = moduleRowId(workspaceKey, businessId);
+    const existing = await first(db.select().from(businessModules).where(eq(businessModules.id, id)));
+    if (existing) {
+        await db.update(businessModules).set({ enabled, updatedAt: new Date() }).where(eq(businessModules.id, id));
+    } else {
+        await db.insert(businessModules).values({ id, businessId, workspaceKey, moduleKey, enabled, updatedAt: new Date() });
+    }
+};
 
 const tokenFor = async (businessId: string, primaryWorkspace = `/workspace/${businessId}`) => generateToken({
     sub: `user_${businessId}`,
@@ -80,11 +92,19 @@ try {
     await db.delete(customers).where(inArray(customers.businessId, [businessAId, businessBId]));
     await db.delete(products).where(inArray(products.businessId, [businessAId, businessBId]));
     await db.delete(inventoryItems).where(inArray(inventoryItems.businessId, [businessAId, businessBId]));
+    await db.delete(businessModules).where(inArray(businessModules.businessId, [businessAId, businessBId]));
+    await db.delete(users).where(inArray(users.id, [`user_${businessAId}`, `user_${businessBId}`, staffQuotesId]));
     await db.delete(businesses).where(inArray(businesses.id, [businessAId, businessBId]));
 
     await db.insert(businesses).values([
         { id: businessAId, name: 'Quotes Verification A', type: 'services', status: 'active' },
         { id: businessBId, name: 'Quotes Verification B', type: 'services', status: 'active' },
+    ]);
+    // Owner/staff fixtures: authMiddleware enforces account existence per request.
+    await db.insert(users).values([
+        { id: `user_${businessAId}`, email: `${businessAId}@example.com`, role: 'owner', status: 'active', businessId: businessAId },
+        { id: `user_${businessBId}`, email: `${businessBId}@example.com`, role: 'owner', status: 'active', businessId: businessBId },
+        { id: staffQuotesId, email: `${staffQuotesId}@example.com`, role: 'staff', status: 'active', businessId: businessAId, moduleAccess: ['quotes'] },
     ]);
     await db.insert(customers).values([
         { id: customerAId, businessId: businessAId, name: 'Tenant A Customer' },
@@ -300,7 +320,80 @@ try {
         throw new Error('Quote CRUD changed inventory unexpectedly');
     }
 
-    console.log('Quotes verification passed: create/list/detail/update, server-side totals, validation, draft-only updates, tenant isolation, and primaryWorkspace rejection.');
+    // ── CORE-M1: shared quotes entitlement ───────────────────────────────
+    // State so far: NO module rows exist for Business A → the canonical
+    // shared/quotes row is absent and the approved defaultEnabled=true applied
+    // (all CRUD checks above passed in this state).
+
+    const staffQuotesToken = await generateToken({
+        sub: staffQuotesId,
+        email: `${staffQuotesId}@example.com`,
+        role: 'staff',
+        businessId: businessAId,
+    });
+    const staffRequest = (path: string, init: RequestInit = {}) => app.request(path, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', ...(init.headers || {}), Authorization: `Bearer ${staffQuotesToken}` },
+    });
+
+    // 1. Explicit shared enabled → permitted for owner and staff-with-access.
+    await setModuleRow(businessAId, 'shared', 'quotes', true);
+    const sharedEnabledOwner = await requestJson('/api/quotes');
+    assertStatus(sharedEnabledOwner.response.status, 200, 'Shared enabled quotes must permit the owner');
+    const sharedEnabledStaff = await staffRequest('/api/quotes');
+    assertStatus(sharedEnabledStaff.status, 200, 'Shared enabled quotes must permit staff with quotes access');
+
+    // 2. Explicit shared disabled blocks ALL roles (owner included) — the
+    //    business entitlement precedes any role or module-access check.
+    await setModuleRow(businessAId, 'shared', 'quotes', false);
+    const sharedDisabledOwner = await requestJson<{ error?: string }>('/api/quotes');
+    assertStatus(sharedDisabledOwner.response.status, 409, 'Shared disabled quotes must block the owner');
+    if (!sharedDisabledOwner.body.error?.includes("Module 'quotes' is disabled")) {
+        throw new Error('Shared disabled did not return the business-module-disabled response');
+    }
+    const sharedDisabledOwnerWrite = await requestJson<{ error?: string }>('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: customerAId, items: [{ description: 'Blocked', quantity: 1, unitPrice: 1 }] }),
+    });
+    assertStatus(sharedDisabledOwnerWrite.response.status, 409, 'Shared disabled quotes must block owner writes');
+    const sharedDisabledStaff = await staffRequest('/api/quotes');
+    assertStatus(sharedDisabledStaff.status, 409, 'Shared disabled quotes must block staff before access checks');
+
+    // 3. Staff without quotes module-access is denied (403) once entitled.
+    await setModuleRow(businessAId, 'shared', 'quotes', true);
+    await db.update(users).set({ moduleAccess: ['pos'] }).where(eq(users.id, staffQuotesId));
+    const staffDenied = await staffRequest('/api/quotes');
+    assertStatus(staffDenied.status, 403, 'Staff without quotes moduleAccess must be denied');
+    await db.update(users).set({ moduleAccess: null }).where(eq(users.id, staffQuotesId));
+    const staffLegacyNull = await staffRequest('/api/quotes');
+    assertStatus(staffLegacyNull.status, 200, 'Staff with legacy-null moduleAccess must be allowed');
+    await db.update(users).set({ moduleAccess: ['quotes'] }).where(eq(users.id, staffQuotesId));
+
+    // 4. No legacy workspace fallback: a 'restaurant/quotes' row has no effect
+    //    (shared policies never resolve under workspace-specific scopes, and
+    //    quotes has no legacy fallback — shared row absent → defaultEnabled).
+    await db.delete(businessModules).where(eq(businessModules.id, moduleRowId('shared', businessAId)));
+    await setModuleRow(businessAId, 'restaurant', 'quotes', false);
+    const legacyRowIgnored = await requestJson('/api/quotes');
+    assertStatus(legacyRowIgnored.response.status, 200, 'A restaurant-scope quotes row must not disable shared quotes');
+    await db.delete(businessModules).where(eq(businessModules.id, moduleRowId('restaurant', businessAId)));
+
+    // 5. Cross-tenant isolation: Business B shared disabled blocks only B.
+    await setModuleRow(businessBId, 'shared', 'quotes', false);
+    const tenantBBlocked = await requestJson<{ error?: string }>('/api/quotes', {}, businessBId);
+    assertStatus(tenantBBlocked.response.status, 409, 'Business B shared disabled must block Business B');
+    const tenantAUnaffected = await requestJson('/api/quotes');
+    assertStatus(tenantAUnaffected.response.status, 200, 'Business B module state must not affect Business A');
+
+    // 6. primaryWorkspace has no authorization effect.
+    const tenantBCrossWorkspaceToken = await tokenFor(businessBId, `/workspace/${businessAId}`);
+    const tenantBPrimaryWorkspace = await app.request('/api/quotes', {
+        headers: { Authorization: `Bearer ${tenantBCrossWorkspaceToken}` },
+    });
+    assertStatus(tenantBPrimaryWorkspace.status, 409, 'primaryWorkspace must not bypass a disabled shared module');
+
+    console.log('Quotes verification passed: create/list/detail/update, server-side totals, validation, draft-only updates, tenant isolation, primaryWorkspace rejection, and shared entitlement (default-enabled, explicit enable/disable for all roles, staff access layering, no legacy fallback, cross-tenant isolation).');
 } catch (error) {
     console.error('Quotes verification failed:', error);
     process.exitCode = 1;
@@ -311,6 +404,8 @@ try {
     await db.delete(customers).where(inArray(customers.businessId, [businessAId, businessBId]));
     await db.delete(products).where(inArray(products.businessId, [businessAId, businessBId]));
     await db.delete(inventoryItems).where(inArray(inventoryItems.businessId, [businessAId, businessBId]));
+    await db.delete(businessModules).where(inArray(businessModules.businessId, [businessAId, businessBId]));
+    await db.delete(users).where(inArray(users.id, [`user_${businessAId}`, `user_${businessBId}`, staffQuotesId]));
     await db.delete(businesses).where(inArray(businesses.id, [businessAId, businessBId]));
     await closeDatabase();
 }

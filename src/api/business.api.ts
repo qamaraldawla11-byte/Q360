@@ -58,7 +58,8 @@ export const businessApi = {
     },
     setPublicMenuEnabled: (enabled: boolean) => http.patch<BusinessProfile>('/business/public-menu', { enabled }),
     getModules: () => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=restaurant'),
-    setModuleEnabled: (moduleKey: string, enabled: boolean) => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
-        workspaceKey: 'restaurant', enabled,
+    getSharedModules: () => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=shared'),
+    setModuleEnabled: (moduleKey: string, enabled: boolean, workspaceKey = 'restaurant') => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
+        workspaceKey, enabled,
     }),
 };

@@ -4,12 +4,18 @@ import { randomUUID } from 'node:crypto';
 import { db, first } from '../db/client.js';
 import { customers, products, quoteItems, quotes } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { requireModule } from '../middleware/moduleAuthorization.js';
+import { SHARED_WORKSPACE_KEY } from '../services/businessModules.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
 
 const quotesRouter = new Hono<AppEnv>();
 
 quotesRouter.use('/*', authMiddleware);
+// CORE-M1: Quotes is a tenant-wide shared module enforced under the canonical
+// 'shared' scope. Missing shared row uses the approved defaultEnabled=true;
+// an explicit disabled state blocks all roles; no legacy workspace fallback.
+quotesRouter.use('/*', requireModule('quotes', SHARED_WORKSPACE_KEY));
 
 type QuoteItemInput = {
     productId?: unknown;
