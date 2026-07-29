@@ -65,6 +65,16 @@ describe('isUnsupportedWorkspaceResponse predicate', () => {
         assert.equal(isUnsupportedWorkspaceResponse(makeAxiosError(400, null)), false);
         assert.equal(isUnsupportedWorkspaceResponse(makeAxiosError(400, undefined)), false);
     });
+
+    it('rejects bodies with extra properties', () => {
+        assert.equal(isUnsupportedWorkspaceResponse(makeAxiosError(400, { error: 'Unsupported workspace', extra: 'x' })), false);
+        assert.equal(isUnsupportedWorkspaceResponse(makeAxiosError(400, { extra: 'x', error: 'Unsupported workspace' })), false);
+    });
+
+    it('rejects objects that inherit error without owning it', () => {
+        const data = Object.create({ error: 'Unsupported workspace' });
+        assert.equal(isUnsupportedWorkspaceResponse(makeAxiosError(400, data)), false);
+    });
 });
 
 describe('withSharedModuleFallback wrapper', () => {

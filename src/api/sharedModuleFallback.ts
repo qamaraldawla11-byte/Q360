@@ -12,6 +12,9 @@ export const isUnsupportedWorkspaceResponse = (error: unknown): error is AxiosEr
     if (error.response?.status !== 400) return false;
     const data = error.response.data;
     if (typeof data !== 'object' || data === null || Array.isArray(data)) return false;
+    const keys = Object.keys(data);
+    if (keys.length !== 1) return false;
+    if (!Object.prototype.hasOwnProperty.call(data, 'error')) return false;
     return (data as Record<string, unknown>).error === 'Unsupported workspace';
 };
 
