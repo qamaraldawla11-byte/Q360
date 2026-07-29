@@ -6,7 +6,7 @@ import { businessAssets, businessModules, businesses, users } from '../db/schema
 import { authMiddleware } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
-import { getModulePolicy, isBusinessModuleEnabled, restaurantModulePolicies } from '../services/businessModules.js';
+import { getModulePolicy, isBusinessModuleEnabled, restaurantModulePolicies, SHARED_MANAGED_MODULE_KEYS, SHARED_WORKSPACE_KEY, sharedModulePolicies } from '../services/businessModules.js';
 
 const businessRoutes = new Hono<AppEnv>();
 const EDIT_ROLES = new Set(['user', 'owner', 'admin', 'manager']);
@@ -158,11 +158,18 @@ businessRoutes.patch('/public-menu', async (c) => {
     return c.json(serializeBusiness(updated[0], new URL(c.req.url).origin));
 });
 
+// Workspace-scoped listing excludes shared-managed modules (customers) so a
+// module never appears in both the shared and workspace sections.
+const listablePolicies = (workspaceKey: string) => {
+    if (workspaceKey === SHARED_WORKSPACE_KEY) return sharedModulePolicies;
+    return restaurantModulePolicies.filter(policy => !SHARED_MANAGED_MODULE_KEYS.has(policy.moduleKey));
+};
+
 businessRoutes.get('/modules', async (c) => {
     const workspaceKey = c.req.query('workspace') || 'restaurant';
-    if (workspaceKey !== 'restaurant') return c.json({ error: 'Unsupported workspace' }, 400);
+    if (workspaceKey !== 'restaurant' && workspaceKey !== SHARED_WORKSPACE_KEY) return c.json({ error: 'Unsupported workspace' }, 400);
     const businessId = c.get('businessId');
-    const modules = await Promise.all(restaurantModulePolicies.map(async policy => ({
+    const modules = await Promise.all(listablePolicies(workspaceKey).map(async policy => ({
         ...policy,
         workspaceKey,
         enabled: await isBusinessModuleEnabled(businessId, workspaceKey, policy.moduleKey),
@@ -176,6 +183,12 @@ businessRoutes.patch('/modules/:moduleKey', async (c) => {
     try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
     const workspaceKey = typeof body.workspaceKey === 'string' ? body.workspaceKey : 'restaurant';
     const moduleKey = c.req.param('moduleKey');
+    // CORE-M1: shared-managed modules (customers, quotes) are writable ONLY
+    // under the canonical shared scope. Writes under Restaurant or any other
+    // workspace scope are rejected (fail closed, no row is written).
+    if (SHARED_MANAGED_MODULE_KEYS.has(moduleKey) && workspaceKey !== SHARED_WORKSPACE_KEY) {
+        return c.json({ error: `Module '${moduleKey}' is managed under the shared scope` }, 400);
+    }
     const policy = getModulePolicy(workspaceKey, moduleKey);
     if (!policy) return c.json({ error: 'Unknown module' }, 404);
     if (!policy.configurable) return c.json({ error: policy.availability === 'preview' ? 'Module is not available yet' : 'Protected modules cannot be disabled' }, 409);

@@ -5,14 +5,18 @@ import { db, first } from '../db/client.js';
 import { customers } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { requireModule } from '../middleware/moduleAuthorization.js';
+import { SHARED_WORKSPACE_KEY } from '../services/businessModules.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
 
 const customersRouter = new Hono<AppEnv>();
 
 customersRouter.use('/*', authMiddleware);
-// M5.8: module activation + moduleAccess enforcement (non-management roles)
-customersRouter.use('/*', requireModule('customers'));
+// CORE-M1: Customers is a tenant-wide shared module. Business entitlement
+// resolves under the canonical 'shared' scope (server-controlled), with the
+// temporary legacy 'restaurant/customers' fallback only when the canonical
+// shared row is absent. Role/moduleAccess checks run after entitlement.
+customersRouter.use('/*', requireModule('customers', SHARED_WORKSPACE_KEY));
 
 type CustomerInput = {
     name?: unknown;

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { http } from './http';
+import { withSharedModuleFallback } from './sharedModuleFallback';
 
 export type RestaurantBusinessType = 'dine_in' | 'takeaway' | 'both';
 
@@ -58,7 +59,8 @@ export const businessApi = {
     },
     setPublicMenuEnabled: (enabled: boolean) => http.patch<BusinessProfile>('/business/public-menu', { enabled }),
     getModules: () => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=restaurant'),
-    setModuleEnabled: (moduleKey: string, enabled: boolean) => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
-        workspaceKey: 'restaurant', enabled,
+    getSharedModules: () => withSharedModuleFallback(() => http.get<{ workspaceKey: string; modules: BusinessModule[] }>('/business/modules?workspace=shared')),
+    setModuleEnabled: (moduleKey: string, enabled: boolean, workspaceKey = 'restaurant') => http.patch<BusinessModule>(`/business/modules/${moduleKey}`, {
+        workspaceKey, enabled,
     }),
 };
