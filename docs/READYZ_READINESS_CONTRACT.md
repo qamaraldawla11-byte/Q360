@@ -1,70 +1,34 @@
 # Q360 `/readyz` Readiness Contract
 
-Task ID: Q360-PS-M6-S3
-
 ## Purpose
 
-The existing `/health` endpoint is a liveness probe: it confirms the Node process is running and can respond to HTTP requests. It does not confirm that the process can serve traffic successfully.
+`/readyz` is the Kubernetes-style readiness probe for the Q360 backend. It returns HTTP 200 only when the process is able to serve traffic against a database that has reached the approved migration baseline. `/health` remains a liveness-only endpoint.
 
-The new `/readyz` endpoint is a readiness probe: it confirms the backend has everything it needs to handle requests, starting with a working database connection.
+## Endpoint
 
-## Contract
+- `GET /readyz`
+- No authentication required.
+- Response contains no credentials, connection strings, or hostnames.
 
-### Endpoint
+## Success criteria
 
-```text
-GET /readyz
-```
+`/readyz` returns HTTP 200 with `status: ready` only when **all** of the following checks pass:
 
-### Success Response (HTTP 200)
+1. **Database connectivity** – a `SELECT 1` round-trip succeeds.
+2. **Migration journal exists** – `drizzle.__drizzle_migrations` exists and contains rows.
+3. **Migration 0000 hash is correct** – the journal contains a row whose hash matches the SHA-256 of `backend/drizzle/0000_wave0_initial.sql`.
+4. **Migration 0001 is present** – the journal contains a row whose hash matches the SHA-256 of `backend/drizzle/0001_restaurant_partial_index_adoption.sql`.
+5. **Critical tables exist** – `users`, `businesses`, `audit_logs`, `staff_invitations`, `staff_members`, `business_modules`, `customers`, `quotes`, `quote_items`, `restaurant_orders`, `restaurant_payments`, `kds_tickets`, `orders`, `products`, `inventory_items`.
+6. **Critical columns exist** – `businesses.public_code`, `users.module_access`, `restaurant_orders.idempotency_key`, `restaurant_orders.visible_order_number`, `restaurant_orders.order_number_date`.
+7. **Canonical Restaurant partial unique indexes exist with exact predicates**:
+   - `restaurant_orders_business_idempotency_key_idx` on `(business_id, idempotency_key) WHERE idempotency_key IS NOT NULL`
+   - `restaurant_orders_business_daily_visible_number_idx` on `(business_id, order_number_date, visible_order_number) WHERE visible_order_number IS NOT NULL AND order_number_date IS NOT NULL`
+8. **Baseline provenance exists** – `public.q360_baseline_provenance` has at least one row.
 
-```json
-{
-  "status": "ready",
-  "timestamp": "2026-07-31T15:59:41.517Z",
-  "checks": {
-    "database": {
-      "status": "pass",
-      "responseMs": 12
-    }
-  }
-}
-```
+## Failure behavior
 
-### Failure Response (HTTP 503)
+If any check fails, `/readyz` returns HTTP 503 with `status: not_ready`, a `timestamp`, `responseMs`, and a `checks` array. Each check reports `pass` or `fail`; failing checks include a sanitized `error` string. The response never includes the database URL, password, or other secrets.
 
-```json
-{
-  "status": "not_ready",
-  "timestamp": "2026-07-31T15:59:41.517Z",
-  "checks": {
-    "database": {
-      "status": "fail",
-      "error": "connection refused"
-    }
-  }
-}
-```
+## Implementation
 
-## Checks
-
-| Check | Pass Criteria | Fail Criteria |
-|-------|---------------|---------------|
-| `database` | A simple `SELECT 1` query completes within the configured timeout. | Query throws, times out, or returns no row. |
-
-## Behavior Rules
-
-1. `/readyz` must not crash the process if the database is unavailable; it returns 503.
-2. `/readyz` must not expose credentials, connection strings, or stack traces in the response.
-3. `/readyz` must return quickly; the database query uses a short timeout.
-4. `/readyz` is additive: `/health` remains unchanged and continues to serve liveness checks.
-
-## Deployment Usage
-
-- **Liveness probe**: use `/health`.
-- **Readiness probe**: use `/readyz`.
-- **Startup probe**: use `/health` initially, then `/readyz` once the container is expected to be ready.
-
-## Future Extensions
-
-Additional readiness checks may be added later (for example, external provider health, migration version alignment). Each new check must follow the same pass/fail shape and must not expose secrets.
+The readiness logic lives in `backend/src/services/readiness.ts` and is wired to `/readyz` in `backend/src/index.ts`. It compares the live PostgreSQL catalog against the committed 0000 and 0001 Drizzle snapshots using `backend/src/services/baseline_catalog.ts`.
