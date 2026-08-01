@@ -322,6 +322,7 @@ Verification: `git status --short` returns no output and no plaintext dump or cr
 | Original HEAD | `253786c0b55b8dc6900b6a6caa0f345a955a56a6` |
 | Implementation commit | `c1c0648` — `feat(baseline): verified migration baseline + forward delta (Q360-PS-M6-S3F)` |
 | Evidence commit | `0a7009c` — `docs(evidence): Q360-PS-M6-S3F final report and manifest` |
+| Report-finalization commit | `644c744` — `docs(evidence): finalize Q360-PS-M6-S3F report cleanup and git state` |
 | `git status --short` | clean (no modified or untracked files) |
 | Final manifest SHA-256 | `3f6a55ac5dc34ac9bd8f7724e3660272103b2b107237a8acc12f23633213b7b7` |
 
