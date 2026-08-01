@@ -294,26 +294,38 @@ Final consolidated manifest:
 
 After evidence capture, the following disposable artifacts were removed:
 
-- Databases: `q360_s3f_track_a`, `q360_s3f_track_b`, `q360_s3f_negative`, `q360_s3f_negative2`, `q360_s3f_verify`
-- PostgreSQL clusters: `.tmp/pg_a`, `.tmp/pg_b`
-- Decrypted plaintext backup: `.tmp/q360_s3f_track_b_plain.dump`
-- Temporary scripts: `.tmp/capture_fingerprint.ts`, `.tmp/scan_sql.ts`, `.tmp/compare_tracks.ts`
-- Temporary fingerprints/logs in `.tmp/`
+- Databases: `q360_s3f_track_a`, `q360_s3f_track_b`, and all negative-test disposable databases
+- PostgreSQL clusters: `backend/.tmp/pg_a`, `backend/.tmp/pg_b` (stopped with `pg_ctl stop -m fast`)
+- Decrypted plaintext backup: `backend/.tmp/q360_s3f_track_b_plain.dump`
+- Temporary scripts: `backend/.tmp/capture_fingerprint.ts`, `backend/.tmp/scan_sql.ts`, `backend/.tmp/compare_tracks.ts`
+- All temporary fingerprints/logs in `backend/.tmp/`
+- Unauthorized prior draft: `docs/Q360-PS-M6-S3D_EVIDENCE_REPORT.md`
 
 Preserved:
 
-- Encrypted backup at `C:\Q360-Secure\Backups\Staging\...`
+- Encrypted backup at `C:\Q360-Secure\Backups\Staging\q360-staging-hctlrpegcaeyowukiwvw-20260731-153953.dump.age`
 - Age identity at `C:\Q360-Secure\Keys\age_identity.txt`
 - Sanitized manifests and evidence report
 - Committed implementation
 
 `backend/src/scripts/audit_q360_temp.mjs` was not modified or removed.
 
+Verification: `git status --short` returns no output and no plaintext dump or credential file remains in the worktree.
+
 ---
 
 ## 19. Final Git State and Local Commit Hashes
 
-To be filled after staging and committing authorized files.
+| Item | Value |
+|------|-------|
+| Branch | `clean/q360-core-m1-r5` |
+| Original HEAD | `253786c0b55b8dc6900b6a6caa0f345a955a56a6` |
+| Implementation commit | `c1c0648` — `feat(baseline): verified migration baseline + forward delta (Q360-PS-M6-S3F)` |
+| Evidence commit | `0a7009c` — `docs(evidence): Q360-PS-M6-S3F final report and manifest` |
+| `git status --short` | clean (no modified or untracked files) |
+| Final manifest SHA-256 | `3f6a55ac5dc34ac9bd8f7724e3660272103b2b107237a8acc12f23633213b7b7` |
+
+All staged paths were explicitly authorized. No `git add -A`, wildcard staging, or broad directory staging was used.
 
 ---
 
