@@ -247,16 +247,24 @@ export const captureActualCatalog = async (sql: postgres.Sql): Promise<Catalog> 
         ORDER BY table_name
     `;
 
-    const tables: CatalogTable[] = [];
-    for (const row of tablesResult) {
-        const name = String(row.table_name);
-        const columns = await captureColumns(sql, name);
-        const primaryKey = await capturePrimaryKey(sql, name);
-        tables.push({ name, columns, primaryKey });
-    }
+    // Each table's column and primary-key queries are independent, and tables
+    // are independent of one another. Run them in parallel to keep catalog
+    // capture from becoming the sequential bottleneck in readiness probes.
+    const tableNames = tablesResult.map((row) => String(row.table_name));
+    const tables = await Promise.all(
+        tableNames.map(async (name) => {
+            const [columns, primaryKey] = await Promise.all([
+                captureColumns(sql, name),
+                capturePrimaryKey(sql, name),
+            ]);
+            return { name, columns, primaryKey };
+        }),
+    );
 
-    const uniqueConstraints = await captureUniqueConstraints(sql);
-    const indexes = await captureIndexes(sql);
+    const [uniqueConstraints, indexes] = await Promise.all([
+        captureUniqueConstraints(sql),
+        captureIndexes(sql),
+    ]);
 
     return { tables, uniqueConstraints, indexes };
 };

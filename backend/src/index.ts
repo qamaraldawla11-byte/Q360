@@ -23,6 +23,7 @@ import staffRoutes from './routes/staff.js';
 import publicRoutes from './routes/public.js';
 import purchasesExpensesRoutes from './routes/purchasesExpenses.js';
 import { getQGuestBriefDeps, qGuestBriefRoutes } from './routes/qGuestBriefs.js';
+import { resolveReadinessTimeout } from './services/readiness.js';
 
 const app = new Hono();
 
@@ -69,52 +70,89 @@ const healthResponse = () => ({
 app.get('/', (c) => c.json(healthResponse()));
 app.get('/health', (c) => c.json(healthResponse()));
 
+// Sanitize any error text that will be returned from /readyz. We must never
+// leak connection URLs, secrets, or stack traces in the public response.
+const sanitizePublicError = (message: string): string => {
+    let sanitized = String(message ?? '');
+    // Redact URL-like connection strings and any URL with credentials.
+    sanitized = sanitized.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi, '[redacted-url]');
+    // Redact multi-line stack indicators.
+    sanitized = sanitized.replace(/\s+at\s+.*$/gm, '');
+    return sanitized.slice(0, 200);
+};
+
+const sanitizeCheck = (check: { name: string; status: 'pass' | 'fail'; error?: string; durationMs: number }) => ({
+    name: check.name,
+    status: check.status,
+    durationMs: check.durationMs,
+    ...(check.status === 'fail' && check.error ? { error: sanitizePublicError(check.error) } : {}),
+});
+
 // Readiness probe: confirms the backend can serve traffic (e.g., database is reachable
 // and the migration baseline is present). This is intentionally separate from /health,
 // which only confirms the process is alive.
 app.get('/readyz', async (c) => {
     const started = Date.now();
+    let timeoutMs: number;
+    try {
+        timeoutMs = resolveReadinessTimeout(process.env.READINESS_TIMEOUT_MS);
+    } catch (configError) {
+        const message = configError instanceof Error ? configError.message : String(configError);
+        return c.json(
+            {
+                status: 'not_ready',
+                timestamp: new Date().toISOString(),
+                responseMs: Date.now() - started,
+                timeoutMs: null,
+                failedChecks: ['readiness_config'],
+                checks: [{ name: 'readiness_config', status: 'fail', error: sanitizePublicError(message), durationMs: 0 }],
+            },
+            503,
+        );
+    }
+
     try {
         const { queryClient } = await import('./db/client.js');
         const { performReadinessChecks } = await import('./services/readiness.js');
         const { defaultSnapshotPaths } = await import('./services/baseline_catalog.js');
         const paths = defaultSnapshotPaths(process.cwd());
 
-        const timeout = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('readiness check timed out')), 5000);
+        const result = await performReadinessChecks(queryClient, {
+            snapshot0000Path: paths.snapshot0000Path,
+            snapshot0001Path: paths.snapshot0001Path,
+            migration0000SqlPath: paths.migration0000SqlPath,
+            migration0001SqlPath: path.join(paths.migration0000SqlPath, '..', '0001_restaurant_partial_index_adoption.sql'),
+            journalPath: path.join(paths.snapshot0000Path, '..', '_journal.json'),
+            timeoutMs,
         });
-
-        const result = await Promise.race([
-            performReadinessChecks(queryClient, {
-                snapshot0000Path: paths.snapshot0000Path,
-                snapshot0001Path: paths.snapshot0001Path,
-                migration0000SqlPath: paths.migration0000SqlPath,
-                migration0001SqlPath: path.join(paths.migration0000SqlPath, '..', '0001_restaurant_partial_index_adoption.sql'),
-                journalPath: path.join(paths.snapshot0000Path, '..', '_journal.json'),
-            }),
-            timeout,
-        ]);
 
         const responseMs = Date.now() - started;
         const status = result.ok ? 'ready' : 'not_ready';
         const code = result.ok ? 200 : 503;
+        const failedChecks = result.checks.filter((c) => c.status === 'fail').map((c) => c.name);
+
         return c.json(
             {
                 status,
                 timestamp: new Date().toISOString(),
                 responseMs,
-                checks: result.checks,
+                timeoutMs,
+                ...(failedChecks.length > 0 ? { failedChecks } : {}),
+                checks: result.checks.map(sanitizeCheck),
             },
             code,
         );
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        // Stack traces and raw URLs are stripped before the public response.
         return c.json(
             {
                 status: 'not_ready',
                 timestamp: new Date().toISOString(),
                 responseMs: Date.now() - started,
-                checks: [{ name: 'readiness', status: 'fail', error: message }],
+                timeoutMs,
+                failedChecks: ['readiness'],
+                checks: [{ name: 'readiness', status: 'fail', error: sanitizePublicError(message), durationMs: 0 }],
             },
             503,
         );
