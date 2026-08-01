@@ -1,6 +1,7 @@
 // Load environment variables from .env file
 import 'dotenv/config';
 
+import path from 'path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -68,23 +69,55 @@ const healthResponse = () => ({
 app.get('/', (c) => c.json(healthResponse()));
 app.get('/health', (c) => c.json(healthResponse()));
 
-// Readiness probe: confirms the backend can serve traffic (e.g., database is reachable).
-// This is intentionally separate from /health, which only confirms the process is alive.
+// Readiness probe: confirms the backend can serve traffic (e.g., database is reachable
+// and the migration baseline is present). This is intentionally separate from /health,
+// which only confirms the process is alive.
 app.get('/readyz', async (c) => {
     const started = Date.now();
-    const checks: Record<string, { status: 'pass' | 'fail'; responseMs?: number; error?: string }> = {};
     try {
         const { queryClient } = await import('./db/client.js');
+        const { performReadinessChecks } = await import('./services/readiness.js');
+        const { defaultSnapshotPaths } = await import('./services/baseline_catalog.js');
+        const paths = defaultSnapshotPaths(process.cwd());
+
         const timeout = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('database readiness check timed out')), 3000);
+            setTimeout(() => reject(new Error('readiness check timed out')), 5000);
         });
-        await Promise.race([queryClient`SELECT 1`, timeout]);
-        checks.database = { status: 'pass', responseMs: Date.now() - started };
-        return c.json({ status: 'ready', timestamp: new Date().toISOString(), checks });
+
+        const result = await Promise.race([
+            performReadinessChecks(queryClient, {
+                snapshot0000Path: paths.snapshot0000Path,
+                snapshot0001Path: paths.snapshot0001Path,
+                migration0000SqlPath: paths.migration0000SqlPath,
+                migration0001SqlPath: path.join(paths.migration0000SqlPath, '..', '0001_restaurant_partial_index_adoption.sql'),
+                journalPath: path.join(paths.snapshot0000Path, '..', '_journal.json'),
+            }),
+            timeout,
+        ]);
+
+        const responseMs = Date.now() - started;
+        const status = result.ok ? 'ready' : 'not_ready';
+        const code = result.ok ? 200 : 503;
+        return c.json(
+            {
+                status,
+                timestamp: new Date().toISOString(),
+                responseMs,
+                checks: result.checks,
+            },
+            code,
+        );
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        checks.database = { status: 'fail', error: message };
-        return c.json({ status: 'not_ready', timestamp: new Date().toISOString(), checks }, 503);
+        return c.json(
+            {
+                status: 'not_ready',
+                timestamp: new Date().toISOString(),
+                responseMs: Date.now() - started,
+                checks: [{ name: 'readiness', status: 'fail', error: message }],
+            },
+            503,
+        );
     }
 });
 

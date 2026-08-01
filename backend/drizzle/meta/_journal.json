@@ -8,6 +8,13 @@
       "when": 1785544124981,
       "tag": "0000_wave0_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785572873655,
+      "tag": "0001_restaurant_partial_index_adoption",
+      "breakpoints": true
     }
   ]
 }

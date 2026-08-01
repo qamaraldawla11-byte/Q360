@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
     boolean,
     doublePrecision,
@@ -239,7 +240,14 @@ export const restaurantOrders = pgTable('restaurant_orders', {
     total: integer('total').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => [
+    uniqueIndex('restaurant_orders_business_idempotency_key_idx')
+        .on(table.businessId, table.idempotencyKey)
+        .where(sql`${table.idempotencyKey} IS NOT NULL`),
+    uniqueIndex('restaurant_orders_business_daily_visible_number_idx')
+        .on(table.businessId, table.orderNumberDate, table.visibleOrderNumber)
+        .where(sql`${table.visibleOrderNumber} IS NOT NULL AND ${table.orderNumberDate} IS NOT NULL`),
+]);
 
 export const restaurantOrderItems = pgTable('restaurant_order_items', {
     id: text('id').primaryKey(),
