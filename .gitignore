@@ -31,6 +31,10 @@ backend/data/*.db-wal
 # Backup files
 backend/backups/
 
+# Generated migration evidence (manifests, fingerprints, disposable dumps)
+backend/migration-manifests/
+backend/wave0-temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

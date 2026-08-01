@@ -68,6 +68,26 @@ const healthResponse = () => ({
 app.get('/', (c) => c.json(healthResponse()));
 app.get('/health', (c) => c.json(healthResponse()));
 
+// Readiness probe: confirms the backend can serve traffic (e.g., database is reachable).
+// This is intentionally separate from /health, which only confirms the process is alive.
+app.get('/readyz', async (c) => {
+    const started = Date.now();
+    const checks: Record<string, { status: 'pass' | 'fail'; responseMs?: number; error?: string }> = {};
+    try {
+        const { queryClient } = await import('./db/client.js');
+        const timeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('database readiness check timed out')), 3000);
+        });
+        await Promise.race([queryClient`SELECT 1`, timeout]);
+        checks.database = { status: 'pass', responseMs: Date.now() - started };
+        return c.json({ status: 'ready', timestamp: new Date().toISOString(), checks });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        checks.database = { status: 'fail', error: message };
+        return c.json({ status: 'not_ready', timestamp: new Date().toISOString(), checks }, 503);
+    }
+});
+
 // Mount routes
 app.route('/api/public', publicRoutes);
 app.route('/api/auth', authRoutes);
