@@ -8,6 +8,7 @@ import { requireModule } from '../middleware/moduleAuthorization.js';
 import { SHARED_WORKSPACE_KEY } from '../services/businessModules.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
+import type { Customer, Quote } from '../db/schema.js';
 
 const quotesRouter = new Hono<AppEnv>();
 
@@ -86,7 +87,7 @@ const validateCustomer = async (
     customerId: unknown,
     businessId: string,
     required = false,
-) => {
+): Promise<Customer | null> => {
     if (customerId === undefined || customerId === null || customerId === '') {
         if (required) {
             throw new QuoteValidationError('customerId is required', 400);
@@ -103,7 +104,13 @@ const validateCustomer = async (
     if (!customer) {
         throw new QuoteValidationError('Customer not found', 404);
     }
-    return customerId;
+    return customer;
+};
+
+const assertCustomerNotArchived = (customer: Customer | null) => {
+    if (customer && customer.status === 'archived') {
+        throw new QuoteValidationError('Cannot create or modify a quote for an archived customer', 400);
+    }
 };
 
 const canonicalizeItems = async (
@@ -229,14 +236,15 @@ quotesRouter.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => 
     try {
         const validUntil = parseValidUntil(body.validUntil);
         const currency = parseCurrency(body.currency) || 'USD';
-        const customerId = await validateCustomer(body.customerId, businessId, true);
+        const customer = await validateCustomer(body.customerId, businessId, true);
+        assertCustomerNotArchived(customer);
         const totals = await canonicalizeItems(body.items, businessId);
 
         await db.transaction(async (tx) => {
             await tx.insert(quotes).values({
                 id: quoteId,
                 businessId,
-                customerId,
+                customerId: customer?.id ?? null,
                 quoteNumber,
                 status: 'draft',
                 subtotal: totals.subtotal,
@@ -304,7 +312,9 @@ quotesRouter.patch('/:id', requireRole(['owner', 'admin', 'manager']), async (c)
         let replacementItems: CanonicalQuoteItem[] | undefined;
 
         if ('customerId' in body) {
-            updates.customerId = await validateCustomer(body.customerId, businessId);
+            const customer = await validateCustomer(body.customerId, businessId);
+            assertCustomerNotArchived(customer);
+            updates.customerId = customer?.id ?? null;
         }
         if ('validUntil' in body) {
             updates.validUntil = parseValidUntil(body.validUntil);
@@ -364,6 +374,89 @@ quotesRouter.patch('/:id', requireRole(['owner', 'admin', 'manager']), async (c)
         }
         console.error('[QUOTES] Failed to update quote:', error);
         return c.json({ error: 'Failed to update quote' }, 500);
+    }
+});
+
+type LifecycleQuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+
+const LIFECYCLE_STATUSES: readonly string[] = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
+
+const ALLOWED_TRANSITIONS: Record<LifecycleQuoteStatus, readonly LifecycleQuoteStatus[]> = {
+    draft: ['sent'],
+    sent: ['accepted', 'rejected', 'expired'],
+    accepted: [],
+    rejected: [],
+    expired: [],
+};
+
+const isLifecycleStatus = (value: unknown): value is LifecycleQuoteStatus =>
+    typeof value === 'string' && LIFECYCLE_STATUSES.includes(value);
+
+const validateStatusTransition = (current: Quote['status'], next: LifecycleQuoteStatus) => {
+    // Any status outside the explicit lifecycle map (e.g. legacy 'converted') is treated as terminal.
+    if (!isLifecycleStatus(current)) {
+        throw new QuoteValidationError(`Cannot transition from ${current}: status is terminal`, 400);
+    }
+    const allowed = ALLOWED_TRANSITIONS[current];
+    if (!allowed.includes(next)) {
+        throw new QuoteValidationError(
+            `Invalid status transition: ${current} -> ${next}`,
+            400,
+        );
+    }
+};
+
+// PATCH /api/quotes/:id/status
+quotesRouter.patch('/:id/status', requireRole(['owner', 'admin', 'manager']), async (c) => {
+    let body: { status?: unknown };
+
+    try {
+        body = await c.req.json<{ status?: unknown }>();
+    } catch {
+        return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Quote id is required' }, 400);
+    const businessId = c.get('businessId');
+
+    try {
+        const existingQuote = await first(db.select()
+            .from(quotes)
+            .where(and(eq(quotes.id, id), eq(quotes.businessId, businessId)))
+        );
+
+        if (!existingQuote) {
+            throw new QuoteValidationError('Quote not found', 404);
+        }
+
+        if (!isLifecycleStatus(body.status)) {
+            throw new QuoteValidationError(
+                `status must be one of: ${LIFECYCLE_STATUSES.join(', ')}`,
+                400,
+            );
+        }
+
+        validateStatusTransition(existingQuote.status, body.status);
+
+        await db.update(quotes)
+            .set({ status: body.status, updatedAt: new Date() })
+            .where(and(eq(quotes.id, id), eq(quotes.businessId, businessId)));
+
+        const updatedQuote = await quoteWithItems(id, businessId);
+        if (!updatedQuote) {
+            throw new QuoteValidationError('Quote not found', 404);
+        }
+
+        await logAudit(c, 'UPDATE', 'QUOTE', id, { status: body.status });
+
+        return c.json(updatedQuote);
+    } catch (error) {
+        if (error instanceof QuoteValidationError) {
+            return c.json({ error: error.message }, error.status);
+        }
+        console.error('[QUOTES] Failed to update quote status:', error);
+        return c.json({ error: 'Failed to update quote status' }, 500);
     }
 });
 

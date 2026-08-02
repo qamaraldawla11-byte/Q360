@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { requireDatabaseUrl } from '../utils/env.js';
 
 requireDatabaseUrl();
@@ -43,6 +43,8 @@ const businessAId = `biz_verify_quotes_a_${runId}`;
 const businessBId = `biz_verify_quotes_b_${runId}`;
 const customerAId = `cust_verify_quotes_a_${runId}`;
 const customerBId = `cust_verify_quotes_b_${runId}`;
+const customerAArchivedId = `cust_verify_quotes_archived_${runId}`;
+const customerAArchiveAfterQuoteId = `cust_verify_quotes_archive_after_${runId}`;
 const productAId = `prod_verify_quotes_a_${runId}`;
 const productBId = `prod_verify_quotes_b_${runId}`;
 const staffQuotesId = `staff_quotes_${runId}`;
@@ -85,6 +87,29 @@ const assertStatus = (actual: number, expected: number, message: string) => {
     }
 };
 
+const createQuoteFixture = async (customerId: string, description: string, unitPrice = 10) => {
+    const result = await requestJson<QuoteResponse>('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            customerId,
+            items: [{ description, quantity: 1, unitPrice }],
+        }),
+    });
+    assertStatus(result.response.status, 201, `Lifecycle fixture creation failed: ${description}`);
+    return result.body;
+};
+
+const transitionStatus = async (quoteId: string, status: string, expectedStatus: number, message: string) => {
+    const result = await requestJson<{ error?: string }>(`/api/quotes/${quoteId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+    });
+    assertStatus(result.response.status, expectedStatus, message);
+    return result.body;
+};
+
 try {
     await db.delete(quoteItems).where(inArray(quoteItems.businessId, [businessAId, businessBId]));
     await db.delete(quotes).where(inArray(quotes.businessId, [businessAId, businessBId]));
@@ -109,6 +134,8 @@ try {
     await db.insert(customers).values([
         { id: customerAId, businessId: businessAId, name: 'Tenant A Customer' },
         { id: customerBId, businessId: businessBId, name: 'Tenant B Customer' },
+        { id: customerAArchivedId, businessId: businessAId, name: 'Tenant A Archived Customer', status: 'archived', archivedAt: new Date() },
+        { id: customerAArchiveAfterQuoteId, businessId: businessAId, name: 'Tenant A To Archive Customer' },
     ]);
     await db.insert(products).values([
         { id: productAId, businessId: businessAId, name: 'Tenant A Product', barcode: `qa-${runId}`, price: 12.5, category: 'verify' },
@@ -233,6 +260,47 @@ try {
         throw new Error('Created quote items were not persisted with expected tenant and line totals');
     }
 
+    // ── CORE-M2: archived customer protection ────────────────────────────
+    const archivedCustomerCreate = await requestJson<{ error?: string }>('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            customerId: customerAArchivedId,
+            items: [{ description: 'Archived customer work', quantity: 1, unitPrice: 100 }],
+        }),
+    });
+    assertStatus(archivedCustomerCreate.response.status, 400, 'Archived customer quote creation was not rejected');
+    if (!archivedCustomerCreate.body.error?.includes('archived')) {
+        throw new Error(`Archived customer rejection did not mention archived status: ${archivedCustomerCreate.body.error}`);
+    }
+
+    // Existing quote with archived customer remains visible.
+    const quoteForArchivedCustomer = await requestJson<QuoteResponse>('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            customerId: customerAArchiveAfterQuoteId,
+            items: [{ description: 'Pre-archive work', quantity: 1, unitPrice: 50 }],
+        }),
+    });
+    assertStatus(quoteForArchivedCustomer.response.status, 201, 'Quote for active customer failed');
+    await db.update(customers)
+        .set({ status: 'archived', archivedAt: new Date() })
+        .where(and(eq(customers.id, customerAArchiveAfterQuoteId), eq(customers.businessId, businessAId)));
+    const visibleAfterArchive = await requestJson<QuoteResponse>(`/api/quotes/${quoteForArchivedCustomer.body.id}`);
+    assertStatus(visibleAfterArchive.response.status, 200, 'Quote with archived customer was not visible');
+    if (visibleAfterArchive.body.customerId !== customerAArchiveAfterQuoteId) {
+        throw new Error('Archived customer quote detail returned wrong customer');
+    }
+
+    // PATCH cannot move a draft quote to an archived customer.
+    const patchToArchivedCustomer = await requestJson<{ error?: string }>(`/api/quotes/${create.body.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: customerAArchivedId }),
+    });
+    assertStatus(patchToArchivedCustomer.response.status, 400, 'PATCH to archived customer was not rejected');
+
     const listA = await requestJson<QuoteResponse[]>('/api/quotes');
     assertStatus(listA.response.status, 200, 'List quotes failed');
     if (!listA.body.some(quote => quote.id === create.body.id) || !listA.body.every(quote => quote.businessId === businessAId)) {
@@ -284,6 +352,40 @@ try {
         body: JSON.stringify({ notes: 'Should fail' }),
     });
     assertStatus(nonDraftUpdate.response.status, 400, 'Non-draft quote update was not rejected');
+
+    // ── CORE-M2: quote lifecycle foundation ──────────────────────────────
+    // Allowed transitions.
+    const lifecycleDraft = await createQuoteFixture(customerAId, 'Lifecycle draft', 20);
+    await transitionStatus(lifecycleDraft.id, 'sent', 200, 'draft -> sent failed');
+    const sentToAccepted = await createQuoteFixture(customerAId, 'Lifecycle sent accepted', 21);
+    await transitionStatus(sentToAccepted.id, 'sent', 200, 'sent setup failed');
+    await transitionStatus(sentToAccepted.id, 'accepted', 200, 'sent -> accepted failed');
+    const sentToRejected = await createQuoteFixture(customerAId, 'Lifecycle sent rejected', 22);
+    await transitionStatus(sentToRejected.id, 'sent', 200, 'sent setup failed');
+    await transitionStatus(sentToRejected.id, 'rejected', 200, 'sent -> rejected failed');
+    const sentToExpired = await createQuoteFixture(customerAId, 'Lifecycle sent expired', 23);
+    await transitionStatus(sentToExpired.id, 'sent', 200, 'sent setup failed');
+    await transitionStatus(sentToExpired.id, 'expired', 200, 'sent -> expired failed');
+
+    // Blocked reverse transitions.
+    const blockedAccepted = await createQuoteFixture(customerAId, 'Blocked accepted draft', 24);
+    await transitionStatus(blockedAccepted.id, 'sent', 200, 'blocked accepted setup failed');
+    await transitionStatus(blockedAccepted.id, 'accepted', 200, 'blocked accepted setup failed');
+    await transitionStatus(blockedAccepted.id, 'draft', 400, 'accepted -> draft was not rejected');
+
+    const blockedRejected = await createQuoteFixture(customerAId, 'Blocked rejected draft', 25);
+    await transitionStatus(blockedRejected.id, 'sent', 200, 'blocked rejected setup failed');
+    await transitionStatus(blockedRejected.id, 'rejected', 200, 'blocked rejected setup failed');
+    await transitionStatus(blockedRejected.id, 'draft', 400, 'rejected -> draft was not rejected');
+
+    const blockedExpired = await createQuoteFixture(customerAId, 'Blocked expired draft', 26);
+    await transitionStatus(blockedExpired.id, 'sent', 200, 'blocked expired setup failed');
+    await transitionStatus(blockedExpired.id, 'expired', 200, 'blocked expired setup failed');
+    await transitionStatus(blockedExpired.id, 'draft', 400, 'expired -> draft was not rejected');
+
+    // Invalid transitions not explicitly allowed.
+    const invalidDraftAccepted = await createQuoteFixture(customerAId, 'Invalid draft accepted', 27);
+    await transitionStatus(invalidDraftAccepted.id, 'accepted', 400, 'draft -> accepted was not rejected');
 
     const routeTenantToken = await tokenFor('/app/restaurant');
     const routeTenantResponse = await app.request('/api/quotes', {
@@ -393,7 +495,31 @@ try {
     });
     assertStatus(tenantBPrimaryWorkspace.status, 409, 'primaryWorkspace must not bypass a disabled shared module');
 
-    console.log('Quotes verification passed: create/list/detail/update, server-side totals, validation, draft-only updates, tenant isolation, primaryWorkspace rejection, and shared entitlement (default-enabled, explicit enable/disable for all roles, staff access layering, no legacy fallback, cross-tenant isolation).');
+    // ── CORE-M2: quote number safety investigation ───────────────────────
+    const totalQuotes = await db.execute<{ total: number }>(sql`SELECT COUNT(*)::int AS total FROM quotes`);
+    const nullQuotes = await db.execute<{ null_count: number }>(sql`SELECT COUNT(*)::int AS null_count FROM quotes WHERE quote_number IS NULL`);
+    const duplicateQuotes = await db.execute<{ quote_number: string; count: number }>(
+        sql`SELECT quote_number, COUNT(*)::int AS count FROM quotes GROUP BY quote_number HAVING COUNT(*) > 1`
+    );
+    const sampleQuotes = await db.execute<{ quote_number: string }>(
+        sql`SELECT quote_number FROM quotes ORDER BY created_at DESC LIMIT 5`
+    );
+
+    const quoteNumberReport = {
+        totalQuotes: totalQuotes[0]?.total ?? 0,
+        nullQuoteNumbers: nullQuotes[0]?.null_count ?? 0,
+        duplicateQuoteNumberGroups: duplicateQuotes.length,
+        duplicateQuoteNumbers: duplicateQuotes.map((row) => ({ quoteNumber: row.quote_number, count: row.count })),
+        recentFormats: [...new Set(sampleQuotes.map((row) => row.quote_number))],
+    };
+
+    console.log('Quote number safety investigation:', JSON.stringify(quoteNumberReport, null, 2));
+
+    if (quoteNumberReport.nullQuoteNumbers > 0) {
+        throw new Error(`Found ${quoteNumberReport.nullQuoteNumbers} quotes with null quoteNumber; schema safety review required`);
+    }
+
+    console.log('Quotes verification passed: create/list/detail/update, server-side totals, validation, draft-only updates, archived customer protection, lifecycle transitions, tenant isolation, primaryWorkspace rejection, and shared entitlement (default-enabled, explicit enable/disable for all roles, staff access layering, no legacy fallback, cross-tenant isolation).');
 } catch (error) {
     console.error('Quotes verification failed:', error);
     process.exitCode = 1;
