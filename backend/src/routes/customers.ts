@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ilike, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db, first } from '../db/client.js';
 import { customers } from '../db/schema.js';
@@ -39,9 +39,31 @@ const optionalUpdateText = (value: unknown) => {
 // GET /api/customers
 customersRouter.get('/', async (c) => {
     const businessId = c.get('businessId');
+    const { search, includeArchived } = c.req.query();
+
+    const filters: (ReturnType<typeof eq> | ReturnType<typeof and> | ReturnType<typeof or>)[] = [
+        eq(customers.businessId, businessId),
+    ];
+
+    if (includeArchived !== 'true') {
+        filters.push(eq(customers.status, 'active'));
+    }
+
+    if (search && search.trim()) {
+        const pattern = `%${search.trim()}%`;
+        filters.push(or(
+            ilike(customers.name, pattern),
+            ilike(customers.phone, pattern),
+            ilike(customers.email, pattern),
+            ilike(customers.companyName, pattern),
+            ilike(customers.address, pattern),
+            ilike(customers.notes, pattern),
+        ));
+    }
+
     const customerRows = await db.select()
         .from(customers)
-        .where(eq(customers.businessId, businessId));
+        .where(and(...filters));
 
     return c.json(customerRows);
 });
@@ -152,6 +174,36 @@ customersRouter.patch('/:id', requireRole(['owner', 'admin', 'manager']), async 
     await logAudit(c, 'UPDATE', 'CUSTOMER', id, { fields: Object.keys(updates) });
 
     return c.json(updatedCustomer);
+});
+
+// PATCH /api/customers/:id/archive
+customersRouter.patch('/:id/archive', requireRole(['owner', 'admin', 'manager']), async (c) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'Customer id is required' }, 400);
+    const businessId = c.get('businessId');
+
+    const existingCustomer = await first(db.select()
+        .from(customers)
+        .where(and(eq(customers.id, id), eq(customers.businessId, businessId)))
+    );
+
+    if (!existingCustomer) {
+        return c.json({ error: 'Customer not found' }, 404);
+    }
+
+    if (existingCustomer.status === 'archived') {
+        return c.json(existingCustomer);
+    }
+
+    const archivedCustomer = await first(db.update(customers)
+        .set({ status: 'archived', archivedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(customers.id, id), eq(customers.businessId, businessId)))
+        .returning()
+    );
+
+    await logAudit(c, 'UPDATE', 'CUSTOMER', id, { status: 'archived' });
+
+    return c.json(archivedCustomer);
 });
 
 export default customersRouter;

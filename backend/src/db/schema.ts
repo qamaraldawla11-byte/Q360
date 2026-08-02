@@ -102,6 +102,8 @@ export const customers = pgTable('customers', {
     companyName: text('company_name'),
     address: text('address'),
     notes: text('notes'),
+    status: text('status').$type<'active' | 'archived'>().default('active').notNull(),
+    archivedAt: timestamp('archived_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => [
