@@ -15,6 +15,13 @@
       "when": 1785572873655,
       "tag": "0001_restaurant_partial_index_adoption",
       "breakpoints": true
-    }
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785691953662,
+      "tag": "0002_sudden_lionheart",
+      "breakpoints": true
+    },
   ]
 }
