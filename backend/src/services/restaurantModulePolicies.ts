@@ -57,6 +57,7 @@ export const restaurantModulePolicies: readonly BusinessModulePolicy[] = [
 export const sharedModulePolicies: readonly BusinessModulePolicy[] = [
     { moduleKey: 'customers', label: 'Customers', description: 'Shared customer/client records for Commerce and future Services.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
     { moduleKey: 'quotes', label: 'Quotes', description: 'Shared estimates and quote documents for Commerce and future Services.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
+    { moduleKey: 'products', label: 'Products', description: 'Canonical shared product identity: what this business sells or provides.', category: 'Management', defaultEnabled: true, configurable: true, availability: 'ready' },
 ];
 
 /**
