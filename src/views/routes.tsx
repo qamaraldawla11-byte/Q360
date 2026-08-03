@@ -92,6 +92,7 @@ const PharmacyStaff = lazy(() => import('@/modules/commerce/pharmacy/views/Staff
 const RetailDashboard = lazy(() => import('@/modules/commerce/retail/views/DashboardView').then(m => ({ default: m.DashboardView })));
 const RetailPos = lazy(() => import('@/modules/commerce/retail/views/PosView').then(m => ({ default: m.PosView })));
 const RetailCatalog = lazy(() => import('@/modules/commerce/retail/views/CatalogView').then(m => ({ default: m.CatalogView })));
+const RetailProducts = lazy(() => import('@/modules/commerce/retail/views/ProductsView').then(m => ({ default: m.ProductsView })));
 const RetailInventory = lazy(() => import('@/modules/commerce/retail/views/InventoryView').then(m => ({ default: m.InventoryView })));
 const RetailCustomers = lazy(() => import('@/modules/commerce/retail/views/CustomersView').then(m => ({ default: m.CustomersView })));
 const RetailQuotes = lazy(() => import('@/modules/commerce/retail/views/QuotesView').then(m => ({ default: m.QuotesView })));
@@ -273,6 +274,7 @@ export const appRoutes: RouteObject[] = [
                     { index: true, element: <RetailDashboard /> },
                     { path: 'pos', element: <RetailPos /> },
                     { path: 'catalog', element: <RetailCatalog /> },
+                    { path: 'products', element: <RetailProducts /> },
                     { path: 'inventory', element: <RetailInventory /> },
                     { path: 'customers', element: <RetailCustomers /> },
                     { path: 'quotes', element: <RetailQuotes /> },

@@ -8,7 +8,8 @@ import {
     Package,
     Settings,
     ShoppingBag,
-    ShoppingCart
+    ShoppingCart,
+    Tag
 } from 'lucide-react';
 
 export const retailManifest: VerticalManifest = {
@@ -24,6 +25,7 @@ export const retailManifest: VerticalManifest = {
         { id: 'dashboard', label: 'Dashboard', path: '', icon: LayoutDashboard },
         { id: 'pos', label: 'Point of Sale', path: '/pos', icon: ShoppingBag },
         { id: 'catalog', label: 'Product Catalog', path: '/catalog', icon: Package },
+        { id: 'products', label: 'Products', path: '/products', icon: Tag },
         { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Boxes },
         { id: 'customers', label: 'Customers', path: '/customers', icon: Contact },
         { id: 'quotes', label: 'Quotes', path: '/quotes', icon: FileText },
