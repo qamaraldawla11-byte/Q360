@@ -310,20 +310,40 @@ const buildBusinessHealthSection = async (
 const buildCustomerSignalsSection = async (ctx: BriefContext, since30d: Date): Promise<FounderBriefSection> => {
     const section = newSection('customer_signals', 'Customer Signals');
     try {
-        // Explicit non-PII columns only: identifiers and timestamps.
+        // Explicit non-PII columns only: identifiers, lifecycle status and timestamps.
+        // status is the single source of truth for active vs archived; archivedAt is
+        // not used as a count filter because status already captures the lifecycle.
         const rows = await db.select({
             id: customers.id,
+            status: customers.status,
             createdAt: customers.createdAt,
         }).from(customers).where(eq(customers.businessId, ctx.businessId));
+
+        const activeRows = rows.filter((row) => row.status === 'active');
+        const archivedRows = rows.filter((row) => row.status === 'archived');
+        const unrecognizedRows = rows.filter(
+            (row) => row.status !== 'active' && row.status !== 'archived',
+        );
+
         section.facts.push(makeEvidence(ctx, {
-            sourceType: 'customers', fact: 'customers_total', value: rows.length, provenance: 'db:customers.count',
+            sourceType: 'customers', fact: 'customers_active_total', value: activeRows.length, provenance: 'db:customers.count',
+        }));
+        section.facts.push(makeEvidence(ctx, {
+            sourceType: 'customers', fact: 'customers_archived_total', value: archivedRows.length, provenance: 'db:customers.count',
         }));
         section.facts.push(makeEvidence(ctx, {
             sourceType: 'customers',
-            fact: 'customers_new_last_30d',
-            value: rows.filter((row) => row.createdAt >= since30d).length,
+            fact: 'customers_new_active_last_30d',
+            value: activeRows.filter((row) => row.createdAt >= since30d).length,
             provenance: 'db:customers.count',
         }));
+
+        if (unrecognizedRows.length > 0) {
+            section.unknowns.push({
+                fact: 'customers_status_unrecognized',
+                unknownReason: `${unrecognizedRows.length} customer(s) have a missing or unrecognized status and were excluded from active/archived counts.`,
+            });
+        }
     } catch (error) {
         noteSourceFailure(section, 'customers', error);
     }

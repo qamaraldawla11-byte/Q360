@@ -63,6 +63,7 @@ const assertEqual = (actual: unknown, expected: unknown, message: string) => {
 const runId = `fbv${Date.now().toString(36)}`;
 const BIZ_A = `${runId}_biz_a`; // retail tenant
 const BIZ_B = `${runId}_biz_b`; // restaurant tenant
+const BIZ_C = `${runId}_biz_c`; // suspended retail tenant
 const GHOST_BIZ = `${runId}_biz_ghost`; // never inserted: missing-source checks
 
 const ZWSP = String.fromCodePoint(0x200B); // zero-width space
@@ -101,6 +102,7 @@ const USER_FIXTURES: UserFixture[] = [
     { label: 'locked_owner_a', businessId: BIZ_A, role: 'owner', isLocked: true },
     { label: 'inactive_owner_a', businessId: BIZ_A, role: 'owner', status: 'inactive' },
     { label: 'owner_b', businessId: BIZ_B, role: 'owner' },
+    { label: 'owner_c', businessId: BIZ_C, role: 'owner' },
 ];
 
 const tokenFor = async (fixture: UserFixture) => generateToken({
@@ -173,6 +175,15 @@ const insertFixtures = async () => {
             timezone: 'UTC',
             status: 'active',
         },
+        {
+            id: BIZ_C,
+            ownerUserId: userId('owner_c'),
+            name: 'Suspended Retail C',
+            type: 'retail',
+            currency: 'USD',
+            timezone: 'UTC',
+            status: 'suspended',
+        },
     ]);
 
     await db.insert(users).values(USER_FIXTURES.map((fixture) => ({
@@ -188,16 +199,22 @@ const insertFixtures = async () => {
 
     await db.insert(customers).values([
         // Malicious customer names must never reach the brief (PII is not selected).
-        { id: `${runId}_cust_a1`, businessId: BIZ_A, name: `${INJECTION_PHRASE} ${HTML_PAYLOAD} ${MALICIOUS_CUSTOMER_MARKER}${ZWSP}${'Y'.repeat(300)}`, createdAt: daysAgo(1), updatedAt: daysAgo(1) },
-        { id: `${runId}_cust_a2`, businessId: BIZ_A, name: 'Customer A2', createdAt: daysAgo(10), updatedAt: daysAgo(10) },
-        { id: `${runId}_cust_a3`, businessId: BIZ_A, name: 'Customer A3', createdAt: daysAgo(40), updatedAt: daysAgo(40) },
+        { id: `${runId}_cust_a1`, businessId: BIZ_A, name: `${INJECTION_PHRASE} ${HTML_PAYLOAD} ${MALICIOUS_CUSTOMER_MARKER}${ZWSP}${'Y'.repeat(300)}`, status: 'active', createdAt: daysAgo(1), updatedAt: daysAgo(1) },
+        { id: `${runId}_cust_a2`, businessId: BIZ_A, name: 'Customer A2', status: 'active', createdAt: daysAgo(10), updatedAt: daysAgo(10) },
+        { id: `${runId}_cust_a3`, businessId: BIZ_A, name: 'Customer A3', status: 'active', createdAt: daysAgo(40), updatedAt: daysAgo(40) },
+        { id: `${runId}_cust_a4`, businessId: BIZ_A, name: 'Customer A4 Archived', status: 'archived', createdAt: daysAgo(5), updatedAt: daysAgo(5), archivedAt: daysAgo(5) },
+        { id: `${runId}_cust_a5`, businessId: BIZ_A, name: 'Customer A5 Archived Old', status: 'archived', createdAt: daysAgo(60), updatedAt: daysAgo(60), archivedAt: daysAgo(60) },
         ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({
             id: `${runId}_cust_b${n}`,
             businessId: BIZ_B,
             name: `Customer B${n}`,
+            status: 'active' as const,
             createdAt: daysAgo(1),
             updatedAt: daysAgo(1),
         })),
+        { id: `${runId}_cust_b8`, businessId: BIZ_B, name: 'Customer B8 Archived', status: 'archived', createdAt: daysAgo(1), updatedAt: daysAgo(1), archivedAt: daysAgo(1) },
+        { id: `${runId}_cust_c1`, businessId: BIZ_C, name: 'Customer C1', status: 'active', createdAt: daysAgo(1), updatedAt: daysAgo(1) },
+        { id: `${runId}_cust_c2`, businessId: BIZ_C, name: 'Customer C2 Archived', status: 'archived', createdAt: daysAgo(1), updatedAt: daysAgo(1), archivedAt: daysAgo(1) },
     ]);
 
     await db.insert(quotes).values([
@@ -278,7 +295,7 @@ const insertFixtures = async () => {
 };
 
 const cleanupFixtures = async () => {
-    const bizIds = [BIZ_A, BIZ_B];
+    const bizIds = [BIZ_A, BIZ_B, BIZ_C];
     await db.delete(auditLogs).where(inArray(auditLogs.businessId, bizIds));
     await db.delete(qAssistantDrafts).where(inArray(qAssistantDrafts.businessId, bizIds));
     await db.delete(qUsageEvents).where(inArray(qUsageEvents.businessId, bizIds));
@@ -354,6 +371,7 @@ const main = async () => {
 
     const ownerAToken = await tokenFor(USER_FIXTURES[0]);
     const ownerBToken = await tokenFor(USER_FIXTURES[9]);
+    const ownerCToken = await tokenFor(USER_FIXTURES[10]);
 
     const countsBefore = await tableCounts();
     const auditBefore = await auditCount();
@@ -399,10 +417,12 @@ const main = async () => {
     assertEqual(briefB.businessId, BIZ_B, 'brief B scope');
 
     const customersA = sectionOf(briefA, 'customer_signals');
-    assertEqual(factOf(customersA, 'customers_total')?.value, 3, 'tenant A customers_total');
-    assertEqual(factOf(customersA, 'customers_new_last_30d')?.value, 2, 'tenant A customers_new_last_30d');
+    assertEqual(factOf(customersA, 'customers_active_total')?.value, 3, 'tenant A customers_active_total');
+    assertEqual(factOf(customersA, 'customers_archived_total')?.value, 2, 'tenant A customers_archived_total');
+    assertEqual(factOf(customersA, 'customers_new_active_last_30d')?.value, 2, 'tenant A customers_new_active_last_30d');
     const customersB = sectionOf(briefB, 'customer_signals');
-    assertEqual(factOf(customersB, 'customers_total')?.value, 7, 'tenant B customers_total');
+    assertEqual(factOf(customersB, 'customers_active_total')?.value, 7, 'tenant B customers_active_total');
+    assertEqual(factOf(customersB, 'customers_archived_total')?.value, 1, 'tenant B customers_archived_total');
 
     const briefAJson = JSON.stringify(briefA);
     const briefBJson = JSON.stringify(briefB);
@@ -410,8 +430,10 @@ const main = async () => {
     assert(!briefAJson.includes('Restock invoices'), 'brief A must not contain tenant B draft title');
     assert(!briefAJson.includes('8888.88'), 'brief A must not contain tenant B quote totals');
     assert(!briefAJson.includes('-QB-'), 'brief A must not contain tenant B quote numbers');
+    assert(!briefAJson.includes('Suspended Retail'), 'brief A must not contain tenant C business name');
     assert(!briefBJson.includes('Founder Verify') || briefBJson.includes('Bistro B'), 'brief B sanity');
     assert(!briefBJson.includes('-QA-'), 'brief B must not contain tenant A quote numbers');
+    assert(!briefBJson.includes('Suspended Retail'), 'brief B must not contain tenant C business name');
 
     // Client-supplied businessId can never alter scope.
     const queryAttempt = await request(`/api/founder/daily-brief?businessId=${BIZ_B}`, ownerAToken);
@@ -431,6 +453,27 @@ const main = async () => {
         body: JSON.stringify({ businessId: BIZ_B }),
     });
     assertEqual(bodyAttempt.status, 404, 'POST with businessId body is not a registered route');
+
+    // ---- Suspended-business access ----
+    const ownerCResponse = await request('/api/founder/daily-brief', ownerCToken);
+    assertEqual(ownerCResponse.status, 200, 'suspended-business owner must be 200');
+    const briefC = await ownerCResponse.json() as Brief;
+    assertEqual(briefC.businessId, BIZ_C, 'suspended brief scope');
+    const healthC = sectionOf(briefC, 'business_platform_health');
+    assertEqual(factOf(healthC, 'business_status')?.value, 'suspended', 'suspended business status is visibly reported');
+    assert(factOf(healthC, 'business_name')?.displayText === 'Suspended Retail C', 'suspended business name present');
+    const customersC = sectionOf(briefC, 'customer_signals');
+    assertEqual(factOf(customersC, 'customers_active_total')?.value, 1, 'suspended tenant active customers');
+    assertEqual(factOf(customersC, 'customers_archived_total')?.value, 1, 'suspended tenant archived customers');
+    // The brief is read-only: no action/execution/approve capability is exposed.
+    const briefCJson = JSON.stringify(briefC);
+    assert(!briefCJson.includes('Founder Verify'), 'suspended tenant must not contain tenant A data');
+    assert(!briefCJson.includes('Bistro B'), 'suspended tenant must not contain tenant B data');
+    assert(!briefCJson.includes('actionCapability'), 'brief carries no action capability field');
+    assert(!briefCJson.includes('execute'), 'brief carries no execution capability');
+    assert(!briefCJson.includes('approve'), 'brief carries no approval capability');
+    console.log('[suspended] suspended-business owner receives read-only brief');
+
     console.log('[tenant] isolation and businessId immunity passed');
 
     // ---- 3. Source safety ----
@@ -467,7 +510,7 @@ const main = async () => {
     console.log('[safety] prompt-injection and source safety passed');
 
     // ---- 4. Output integrity ----
-    for (const brief of [briefA, briefB]) {
+    for (const brief of [briefA, briefB, briefC]) {
         for (const section of brief.sections) {
             for (const fact of section.facts) {
                 assert(typeof fact.provenance === 'string' && fact.provenance.length > 0, `fact ${fact.fact} must carry provenance`);
@@ -576,8 +619,8 @@ const main = async () => {
     for (const [name] of BUSINESS_TABLES) {
         assertEqual(countsAfter[name], countsBefore[name], `${name} row count must be unchanged`);
     }
-    // audit delta = 4 owner-A views + 1 owner-B view.
-    assertEqual(await auditCount(), auditBefore + 5, 'audit_logs grows only by successful view metadata rows');
+    // audit delta = 4 owner-A views + 1 owner-B view + 1 suspended owner-C view.
+    assertEqual(await auditCount(), auditBefore + 6, 'audit_logs grows only by successful view metadata rows');
     console.log('[readonly] business tables unchanged');
 };
 
