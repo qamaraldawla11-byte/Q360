@@ -36,12 +36,14 @@ Health Check Path: /health
 Run these from `backend/` after `DATABASE_URL` points to Supabase:
 
 ```bash
-npm run db:push
+npm run db:migrate:staging
 npm run db:seed
 npm run verify:restaurant
 ```
 
-`db:push` creates/updates tables from `src/db/schema.ts`. `db:seed` inserts the admin/demo inventory and restaurant data idempotently.
+`db:migrate:staging` applies only unapplied committed journal migrations, captures before/after fingerprints, and writes a migration manifest. `db:seed` inserts the admin/demo inventory and restaurant data idempotently.
+
+Database schema mutation must never be part of the Railway deployment command.
 
 ## Frontend: Vercel
 
@@ -70,8 +72,9 @@ Q360 no longer stores production data in a SQLite file. Use Supabase Postgres ba
 - `npm run build` passes from the repository root.
 - `npm run lint` passes from the repository root.
 - `npm run build` passes from `backend/`.
-- `npm run db:push` succeeds against Supabase.
+- `npm run db:migrate:staging` succeeds against Supabase (run separately from deployment).
 - `npm run db:seed` succeeds against Supabase.
 - `npm run verify:restaurant` succeeds against Supabase.
 - `GET /health` returns `status: "running"` from Railway.
+- `GET /readyz` returns `status: "ready"` from Railway.
 - Vercel app can login and call Railway without CORS errors.

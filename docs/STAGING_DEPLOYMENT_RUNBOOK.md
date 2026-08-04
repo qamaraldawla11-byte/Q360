@@ -22,6 +22,13 @@ Backend Railway variables:
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
 
+Backend migration-only variables (not used by the running app):
+
+- `Q360_DATABASE_ENV=staging`
+- `Q360_DATABASE_NAME=q360-staging`
+- `Q360_DATABASE_HOST_ALLOWLIST` — comma-separated approved Postgres hosts
+- `Q360_WAVE0_BACKUP_ARTIFACT_PATH` — required when migrating a non-empty legacy schema
+
 Railway supplies `PORT`; do not configure it unless Railway support requires an override.
 
 ## Railway Service Configuration
@@ -29,8 +36,27 @@ Railway supplies `PORT`; do not configure it unless Railway support requires an 
 - Root directory: repository root
 - Build command: `cd backend && npm ci --include=dev && npm run build && npm prune --omit=dev`
 - Start command: `cd backend && npm start`
+- **No pre-deploy database command.** Schema migration is a separate, authorized operation.
 - Required port behavior: the backend reads `process.env.PORT` and falls back to `3001` only for local development. Railway should provide `PORT`.
 - Health-check endpoint: `/health`
+
+## Migration Procedure
+
+Migrations are **not** run by Railway during deployment. Apply them manually from a controlled environment before deploying:
+
+```bash
+cd backend
+npm run db:migrate:staging
+```
+
+Required checks before running the command:
+
+1. Confirm `Q360_DATABASE_ENV=staging` and `Q360_DATABASE_NAME=q360-staging`.
+2. Confirm `Q360_DATABASE_HOST_ALLOWLIST` contains the staging database host.
+3. For a non-empty legacy schema, confirm `Q360_WAVE0_BACKUP_ARTIFACT_PATH` points to the verified backup and a checksum is recorded.
+4. Review the generated manifest in `backend/migration-manifests/` before approving the deployment.
+
+Only after the migration succeeds and `/readyz` reports `ready` should the backend deployment proceed.
 
 The backend production startup entry point is the compiled `backend/dist/index.js`. It loads `dotenv/config`, configures CORS, mounts API routes under `/api`, exposes `/` and `/health`, and starts Hono using the Railway-provided port.
 

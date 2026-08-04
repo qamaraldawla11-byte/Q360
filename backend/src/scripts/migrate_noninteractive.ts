@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { config as loadDotenv } from 'dotenv';
 import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import postgres from 'postgres';
 import { requireDatabaseUrl, requireQ360StagingDatabaseGuard } from '../utils/env.js';
@@ -27,6 +27,80 @@ requireQ360StagingDatabaseGuard(COMMAND_NAME);
 
 const databaseUrl = requireDatabaseUrl();
 
+// --- database identity guard -------------------------------------------------
+// The staging guard above confirms intent. This guard confirms the exact host
+// so the operator cannot accidentally target the wrong database through a
+// shared connection string or environment mix-up.
+const requireDatabaseIdentity = (url: string): void => {
+    const allowlist = process.env.Q360_DATABASE_HOST_ALLOWLIST?.trim();
+    if (!allowlist) {
+        throw new Error(`${COMMAND_NAME} is blocked: Q360_DATABASE_HOST_ALLOWLIST is not configured.`);
+    }
+    const allowed = allowlist
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean);
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!allowed.some((a) => a.toLowerCase() === host)) {
+        throw new Error(`${COMMAND_NAME} is blocked: database host "${host}" is not in Q360_DATABASE_HOST_ALLOWLIST.`);
+    }
+};
+
+requireDatabaseIdentity(databaseUrl);
+
+// --- journal handling --------------------------------------------------------
+interface JournalEntry {
+    idx: number;
+    version: string;
+    when: number;
+    tag: string;
+    breakpoints: boolean;
+}
+
+interface JournalFile {
+    version: string;
+    dialect: string;
+    entries: JournalEntry[];
+}
+
+const loadJournal = async (journalPath: string): Promise<JournalFile> => {
+    const content = await readFile(journalPath, 'utf8');
+    return JSON.parse(content) as JournalFile;
+};
+
+interface MigrationPaths {
+    firstBaselineEntry: JournalEntry;
+    finalEntry: JournalEntry;
+    firstBaselinePaths: {
+        snapshot0000Path: string;
+        migration0000SqlPath: string;
+        journalPath: string;
+    };
+    finalSnapshotPath: string;
+}
+
+const getMigrationPaths = (cwd: string, entries: JournalEntry[]): MigrationPaths => {
+    if (entries.length === 0) {
+        throw new Error('Drizzle journal contains no entries; nothing to migrate.');
+    }
+    const first = entries[0];
+    const last = entries[entries.length - 1];
+    const snapshotPath = (idx: number) =>
+        path.join(cwd, 'drizzle', 'meta', `${String(idx).padStart(4, '0')}_snapshot.json`);
+    return {
+        firstBaselineEntry: first,
+        finalEntry: last,
+        firstBaselinePaths: {
+            snapshot0000Path: snapshotPath(first.idx),
+            migration0000SqlPath: path.join(cwd, 'drizzle', `${first.tag}.sql`),
+            journalPath: path.join(cwd, 'drizzle', 'meta', '_journal.json'),
+        },
+        finalSnapshotPath: snapshotPath(last.idx),
+    };
+};
+
+// --- helpers -----------------------------------------------------------------
 const runCommand = (
     command: string,
     args: string[],
@@ -50,7 +124,6 @@ const runCommand = (
     });
 
 const sha256Hex = async (filePath: string): Promise<string> => {
-    const { readFile } = await import('fs/promises');
     const bytes = await readFile(filePath);
     return createHash('sha256').update(bytes).digest('hex');
 };
@@ -101,14 +174,17 @@ const writeReconcileFile = async (baseDir: string, sqlText: string): Promise<str
     return filePath;
 };
 
+// --- migration tracks --------------------------------------------------------
 const runEmptyPath = async ({
     cwd,
     sql,
     fingerprintClient,
+    paths,
 }: {
     cwd: string;
     sql: postgres.Sql;
     fingerprintClient: postgres.Sql;
+    paths: MigrationPaths;
 }): Promise<{
     beforeFingerprint: any;
     afterFingerprint: any;
@@ -120,26 +196,26 @@ const runEmptyPath = async ({
     const migrateResult = await drizzleMigrate(cwd);
     const verificationResults: VerificationResult[] = [migrateResult];
 
-    // Empty path must land on the exact 0000 + 0001 target.
+    // Empty path must land on the exact final snapshot target.
     const strictVerification = await verifyCatalogEquivalence(sql, {
-        snapshot0000Path: path.join(cwd, 'drizzle', 'meta', '0000_snapshot.json'),
-        snapshot0001Path: path.join(cwd, 'drizzle', 'meta', '0001_snapshot.json'),
+        snapshot0000Path: paths.finalSnapshotPath,
         mode: 'strict',
         allowExtraTableNames: ['q360_baseline_provenance'],
     });
     if (!strictVerification.ok) {
         console.error(JSON.stringify(strictVerification.diffs, null, 2));
-        throw new Error('Track A final catalog does not match expected 0000 + 0001 target.');
+        throw new Error(`Track A final catalog does not match expected ${paths.finalEntry.tag} target.`);
     }
 
-    // Record genesis baseline provenance for /readyz. 0000 journal row is already
-    // present from drizzle-kit migrate, so seedJournal will skip the insert.
+    // Record genesis baseline provenance for /readyz. The first baseline journal
+    // row is already present from drizzle-kit migrate, so seedJournal will skip
+    // the insert if it already exists.
     const { execSync } = await import('child_process');
     const repositoryCommit = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
     await seedJournal(sql, {
-        migration0000SqlPath: path.join(cwd, 'drizzle', '0000_wave0_initial.sql'),
-        journalPath: path.join(cwd, 'drizzle', 'meta', '_journal.json'),
-        tag: '0000_wave0_initial',
+        migration0000SqlPath: paths.firstBaselinePaths.migration0000SqlPath,
+        journalPath: paths.firstBaselinePaths.journalPath,
+        tag: paths.firstBaselineEntry.tag,
         provenance: {
             backup_checksum: '',
             repository_commit: repositoryCommit,
@@ -161,11 +237,13 @@ const runLegacyPath = async ({
     sql,
     fingerprintClient,
     backupChecksum,
+    paths,
 }: {
     cwd: string;
     sql: postgres.Sql;
     fingerprintClient: postgres.Sql;
     backupChecksum: string | null;
+    paths: MigrationPaths;
 }): Promise<{
     beforeFingerprint: any;
     afterFingerprint: any;
@@ -174,8 +252,36 @@ const runLegacyPath = async ({
     const beforeFingerprint = await captureSchemaFingerprint(fingerprintClient);
     console.log(`[migrate_noninteractive] Non-empty legacy schema detected. Running Track B restored-baseline migration...`);
 
-    const paths = defaultSnapshotPaths(cwd);
-    const expected = await loadExpectedCatalog(paths);
+    // Idempotent re-run: if the schema already matches the final committed
+    // target, skip the reconcile step and just let drizzle-kit migrate confirm
+    // there is nothing left to apply.
+    const finalExpected = await loadExpectedCatalog({ snapshot0000Path: paths.finalSnapshotPath });
+    const actualCatalog = await captureActualCatalog(sql);
+    const finalPreCheck = compareCatalogs(finalExpected, actualCatalog, {
+        mode: 'strict',
+        allowExtraTableNames: ['q360_baseline_provenance'],
+    });
+    if (finalPreCheck.ok) {
+        console.log('[migrate_noninteractive] Schema already matches final target; skipping reconcile.');
+        const migrateResult = await drizzleMigrate(cwd);
+        const verificationResults: VerificationResult[] = [migrateResult];
+        const finalVerification = await verifyCatalogEquivalence(sql, {
+            snapshot0000Path: paths.finalSnapshotPath,
+            mode: 'strict',
+            allowExtraTableNames: ['q360_baseline_provenance'],
+        });
+        if (!finalVerification.ok) {
+            console.error(JSON.stringify(finalVerification.diffs, null, 2));
+            throw new Error('Final catalog verification failed after idempotent drizzle-kit migrate.');
+        }
+        const afterFingerprint = await captureSchemaFingerprint(fingerprintClient);
+        return { beforeFingerprint, afterFingerprint, verificationResults };
+    }
+
+    // Reconcile the legacy schema to the first baseline, then apply the full
+    // committed journal via drizzle-kit migrate.
+    const firstPaths = defaultSnapshotPaths(cwd);
+    const expected = await loadExpectedCatalog(firstPaths);
     const actual = await captureActualCatalog(sql);
 
     // Pre-reconcile: no unexpected or drifted objects; missing objects are allowed.
@@ -188,11 +294,11 @@ const runLegacyPath = async ({
         throw new Error('Pre-reconcile catalog check failed: legacy schema contains unexpected or drifted objects.');
     }
 
-    const migration0000Hash = await sha256Hex(paths.migration0000SqlPath);
+    const migration0000Hash = await sha256Hex(firstPaths.migration0000SqlPath);
     const alreadySeeded = await hasJournalRowForHash(sql, migration0000Hash);
     const alreadyEquivalent = (await verifyCatalogEquivalence(sql, {
-        snapshot0000Path: paths.snapshot0000Path,
-        snapshot0001Path: paths.snapshot0001Path,
+        snapshot0000Path: firstPaths.snapshot0000Path,
+        snapshot0001Path: firstPaths.snapshot0001Path,
         mode: 'strict',
         allowExtraTableNames: ['q360_baseline_provenance'],
     })).ok;
@@ -200,7 +306,7 @@ const runLegacyPath = async ({
     const verificationResults: VerificationResult[] = [];
 
     if (!alreadySeeded || !alreadyEquivalent) {
-        const reconcile = await generateAdditiveReconcileSql(sql, paths);
+        const reconcile = await generateAdditiveReconcileSql(sql, firstPaths);
         const reconcileFilePath = await writeReconcileFile(cwd, reconcile.sql);
         console.log(`[migrate_noninteractive] Reconcile SQL written to ${reconcileFilePath}`);
         console.log(
@@ -233,14 +339,14 @@ const runLegacyPath = async ({
         });
 
         const postReconcile = await verifyCatalogEquivalence(sql, {
-            snapshot0000Path: paths.snapshot0000Path,
-            snapshot0001Path: paths.snapshot0001Path,
+            snapshot0000Path: firstPaths.snapshot0000Path,
+            snapshot0001Path: firstPaths.snapshot0001Path,
             mode: 'strict',
             allowExtraTableNames: ['q360_baseline_provenance'],
         });
         if (!postReconcile.ok) {
             console.error(JSON.stringify(postReconcile.diffs, null, 2));
-            throw new Error('Post-reconcile catalog verification failed: schema is not equivalent to 0000.');
+            throw new Error('Post-reconcile catalog verification failed: schema is not equivalent to first baseline.');
         }
 
         const { execSync } = await import('child_process');
@@ -249,9 +355,9 @@ const runLegacyPath = async ({
         const verificationReportHash = sha256String(verificationReportContent);
 
         await seedJournal(sql, {
-            migration0000SqlPath: paths.migration0000SqlPath,
-            journalPath: path.join(paths.snapshot0000Path, '..', '_journal.json'),
-            tag: '0000_wave0_initial',
+            migration0000SqlPath: firstPaths.migration0000SqlPath,
+            journalPath: path.join(firstPaths.snapshot0000Path, '..', '_journal.json'),
+            tag: paths.firstBaselineEntry.tag,
             provenance: {
                 backup_checksum: backupChecksum || '',
                 repository_commit: repositoryCommit,
@@ -261,11 +367,11 @@ const runLegacyPath = async ({
                 operator_marker: process.env.USER || 'unknown',
                 baseline_marker: 'restored',
             },
-            snapshot0000Path: paths.snapshot0000Path,
-            snapshot0001Path: paths.snapshot0001Path,
+            snapshot0000Path: firstPaths.snapshot0000Path,
+            snapshot0001Path: firstPaths.snapshot0001Path,
             skipCatalogVerification: false,
         });
-        console.log('[migrate_noninteractive] 0000 journal seeded and baseline provenance recorded.');
+        console.log('[migrate_noninteractive] First baseline journal seeded and baseline provenance recorded.');
     } else {
         console.log('[migrate_noninteractive] Legacy schema already reconciled and seeded; skipping reconcile.');
     }
@@ -276,22 +382,22 @@ const runLegacyPath = async ({
         throw new Error('Drizzle migrate failed on legacy path.');
     }
 
-    // Final strict verification against 0000 + 0001 target.
+    // Final strict verification against the full committed target.
     const finalVerification = await verifyCatalogEquivalence(sql, {
-        snapshot0000Path: paths.snapshot0000Path,
-        snapshot0001Path: paths.snapshot0001Path,
+        snapshot0000Path: paths.finalSnapshotPath,
         mode: 'strict',
         allowExtraTableNames: ['q360_baseline_provenance'],
     });
     if (!finalVerification.ok) {
         console.error(JSON.stringify(finalVerification.diffs, null, 2));
-        throw new Error('Track B final catalog does not match expected 0000 + 0001 target.');
+        throw new Error(`Track B final catalog does not match expected ${paths.finalEntry.tag} target.`);
     }
 
     const afterFingerprint = await captureSchemaFingerprint(fingerprintClient);
     return { beforeFingerprint, afterFingerprint, verificationResults };
 };
 
+// --- entry point -------------------------------------------------------------
 const main = async () => {
     const { execSync } = await import('child_process');
     const repositoryCommit = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
@@ -309,6 +415,10 @@ const main = async () => {
         throw new Error(`Drizzle config not found at ${drizzleConfigPath}`);
     }
 
+    const journalPath = path.join(cwd, 'drizzle', 'meta', '_journal.json');
+    const journal = await loadJournal(journalPath);
+    const paths = getMigrationPaths(cwd, journal.entries);
+
     const fingerprintClient = postgres(databaseUrl, {
         max: 1,
         ssl: process.env.POSTGRES_SSL === 'false' ? false : 'require',
@@ -322,7 +432,7 @@ const main = async () => {
         const empty = await isPublicSchemaEmpty(fingerprintClient);
 
         if (empty) {
-            const result = await runEmptyPath({ cwd, sql: fingerprintClient, fingerprintClient });
+            const result = await runEmptyPath({ cwd, sql: fingerprintClient, fingerprintClient, paths });
             beforeFingerprint = result.beforeFingerprint;
             afterFingerprint = result.afterFingerprint;
             verificationResults = result.verificationResults;
@@ -335,6 +445,7 @@ const main = async () => {
                 sql: fingerprintClient,
                 fingerprintClient,
                 backupChecksum,
+                paths,
             });
             beforeFingerprint = result.beforeFingerprint;
             afterFingerprint = result.afterFingerprint;
@@ -358,16 +469,16 @@ const main = async () => {
         category: 'supabase-vault-exception',
         severity: 'low',
         description: 'The encrypted staging backup contains Supabase-managed system schemas (auth, storage, realtime, vault, extensions). These extension-managed schemas are excluded from the disposable restore; only the public application schema is reconciled.',
-        mitigation: 'Confirm that the Wave 0 migration touches only the public schema; system schemas remain managed by Supabase.',
+        mitigation: 'Confirm that the migration touches only the public schema; system schemas remain managed by Supabase.',
     });
 
     const failed = verificationResults.some((r) => r.status === 'failed');
 
     const result = await generateManifest({
-        taskId: 'Q360-PS-M6-S3F',
+        taskId: 'Q360-PS-M6-S3N-R3',
         repositoryCommit,
         repositoryBranch,
-        migrationIdentifiers: ['0000_wave0_initial', '0001_restaurant_partial_index_adoption'],
+        migrationIdentifiers: journal.entries.map((e) => e.tag),
         backupArtifactPath,
         backupChecksum,
         beforeFingerprint,
