@@ -15,6 +15,7 @@ import ordersRoutes from './routes/orders.js';
 import suppliersRoutes from './routes/suppliers.js';
 import customersRoutes from './routes/customers.js';
 import quotesRoutes from './routes/quotes.js';
+import productsRoutes from './routes/products.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
@@ -164,6 +165,7 @@ app.route('/api/public', publicRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/inventory', inventoryRoutes);
 app.route('/api', ordersRoutes); // /api/orders and /api/products/search
+app.route('/api/products', productsRoutes);
 app.route('/api/suppliers', suppliersRoutes);
 app.route('/api/customers', customersRoutes);
 app.route('/api/quotes', quotesRoutes);

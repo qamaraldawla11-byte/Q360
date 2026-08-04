@@ -69,15 +69,43 @@ export const inventoryItems = pgTable('inventory_items', {
     businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
 });
 
-// Products table (for POS barcode lookup)
+// Products table — canonical Q Core Product identity.
+//
+// Compatibility: the legacy double-precision `price` column and existing
+// barcode-backed POS lookup are preserved unchanged. New Shared Product fields
+// use integer minor units (`defaultPriceAmountMinor`) and an explicit currency.
+// Lifecycle is soft-only: active products appear in normal lists; archived
+// products are preserved for historical references and are not hard-deleted.
 export const products = pgTable('products', {
     id: text('id').primaryKey(),
+    businessId: text('business_id').default('biz_main').notNull(),
     name: text('name').notNull(),
-    barcode: text('barcode').notNull().unique(),
+    description: text('description'),
+    sku: text('sku'),
+    barcode: text('barcode'),
+    unit: text('unit'),
+    // Legacy POS/Inventory price — preserved for existing consumers.
     price: doublePrecision('price').notNull(),
+    // New Shared Product price — integer minor units (e.g. cents).
+    defaultPriceAmountMinor: integer('default_price_amount_minor'),
+    currency: text('currency').default('USD').notNull(),
     category: text('category'),
-    businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
-});
+    status: text('status').$type<'active' | 'archived'>().default('active').notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('products_business_id_idx').on(table.businessId),
+    index('products_status_idx').on(table.status),
+    // Tenant-scoped uniqueness where a value is present. Null/blank values do
+    // not participate, so different tenants may share the same SKU or barcode.
+    uniqueIndex('products_business_sku_idx')
+        .on(table.businessId, table.sku)
+        .where(sql`${table.sku} IS NOT NULL AND ${table.sku} <> ''`),
+    uniqueIndex('products_business_barcode_idx')
+        .on(table.businessId, table.barcode)
+        .where(sql`${table.barcode} IS NOT NULL AND ${table.barcode} <> ''`),
+]);
 
 // Orders table
 export const orders = pgTable('orders', {
@@ -559,6 +587,7 @@ export type OtpCode = typeof otpCodes.$inferSelect;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type NewInventoryItem = typeof inventoryItems.$inferInsert;
 export type Product = typeof products.$inferSelect;
+export type NewProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
