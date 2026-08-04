@@ -402,8 +402,16 @@ try {
     const sharedList = await requestWithToken<{ modules: { moduleKey: string; enabled: boolean }[] }>(ownerAToken, '/api/business/modules?workspace=shared');
     assertStatus(sharedList.response.status, 200, 'Shared module listing must succeed');
     const sharedKeys = sharedList.body.modules.map(module => module.moduleKey);
-    if (sharedKeys.filter(key => key === 'customers').length !== 1 || sharedKeys.filter(key => key === 'quotes').length !== 1 || sharedKeys.length !== 2) {
-        throw new Error(`Shared listing must contain customers and quotes exactly once; got ${sharedKeys.join(',')}`);
+    const expectedSharedKeys = ['customers', 'quotes', 'products'];
+    const sharedKeyCounts = new Map<string, number>();
+    for (const key of sharedKeys) {
+        sharedKeyCounts.set(key, (sharedKeyCounts.get(key) ?? 0) + 1);
+    }
+    const missing = expectedSharedKeys.filter(key => sharedKeyCounts.get(key) !== 1);
+    const duplicates = [...sharedKeyCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key);
+    const unexpected = sharedKeys.filter(key => !expectedSharedKeys.includes(key));
+    if (missing.length > 0 || duplicates.length > 0 || unexpected.length > 0) {
+        throw new Error(`Shared listing must contain exactly customers, quotes, products once each; got [${sharedKeys.join(',')}]; missing=[${missing.join(',')}], duplicates=[${duplicates.join(',')}], unexpected=[${unexpected.join(',')}]`);
     }
     const restaurantList = await requestWithToken<{ modules: { moduleKey: string }[] }>(ownerAToken, '/api/business/modules?workspace=restaurant');
     assertStatus(restaurantList.response.status, 200, 'Restaurant module listing must succeed');
