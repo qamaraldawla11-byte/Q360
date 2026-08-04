@@ -5,6 +5,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { AppShell } from '@/layouts/AppShell';
 import { useAuthStore } from '@/store/auth.store';
 import { RestaurantAccessGuard } from '@/components/auth/RestaurantAccessGuard';
+import { FounderRoute } from '@/components/auth/FounderRoute';
 import { hasRestaurantModuleAccess, isRestaurantManager } from '@/utils/restaurantAccess';
 import { PLATFORM_APP_URL } from '@/utils/host';
 
@@ -113,6 +114,9 @@ const SupermarketProcurement = lazy(() => import('@/modules/commerce/supermarket
 
 const PharmacyProcurement = lazy(() => import('@/modules/commerce/pharmacy/views/ProcurementView').then(m => ({ default: m.PharmacyProcurementView })));
 const RetailProcurement = lazy(() => import('@/modules/commerce/retail/views/ProcurementView').then(m => ({ default: m.RetailProcurementView })));
+
+// Founder (Q360-QB-M4-S2)
+const FounderDailyBriefView = lazy(() => import('@/modules/founder/FounderDailyBriefView').then(m => ({ default: m.FounderDailyBriefView })));
 
 // School Vertical
 const SchoolDashboard = lazy(() => import('@/modules/education/school/views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -303,6 +307,18 @@ export const appRoutes: RouteObject[] = [
                 children: [
                     { index: true, element: <SchoolDashboard /> },
                 ]
+            },
+            {
+                // Q360-QB-M4-S2: Founder-only daily brief. FounderRoute blocks
+                // rendering (and the API fetch) for every non-owner role.
+                path: 'founder',
+                element: (
+                    <Suspense fallback={<PageLoader />}>
+                        <FounderRoute>
+                            <FounderDailyBriefView />
+                        </FounderRoute>
+                    </Suspense>
+                ),
             },
             {
                 element: <MainLayout />,

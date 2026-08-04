@@ -23,6 +23,7 @@ import businessRoutes from './routes/business.js';
 import staffRoutes from './routes/staff.js';
 import publicRoutes from './routes/public.js';
 import purchasesExpensesRoutes from './routes/purchasesExpenses.js';
+import founderRoutes from './routes/founder.js';
 import { getQGuestBriefDeps, qGuestBriefRoutes } from './routes/qGuestBriefs.js';
 import { resolveReadinessTimeout } from './services/readiness.js';
 
@@ -175,6 +176,7 @@ app.route('/api/restaurant', restaurantRoutes);
 app.route('/api/business', businessRoutes);
 app.route('/api/staff', staffRoutes);
 app.route('/api/purchases-expenses', purchasesExpensesRoutes);
+app.route('/api/founder', founderRoutes);
 // Q guest-brief lifecycle routes mount ONLY behind the fail-closed flag:
 // Q_GUEST_BRIEF_ENABLED=true plus Q_GUEST_BRIEF_TOKEN_SECRET (≥ 32 bytes).
 // The public brief-create route (/api/public/q-concierge/brief) self-gates

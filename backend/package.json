@@ -38,6 +38,7 @@
         "verify:customers": "tsx src/scripts/verify_customers.ts",
         "verify:quotes": "tsx src/scripts/verify_quotes.ts",
         "verify:products": "tsx src/scripts/verify_products.ts",
+        "verify:founder-brief": "tsx src/scripts/verify_founder_brief.ts",
         "verify:jwt-init": "tsx src/scripts/verify_jwt_init.ts",
         "verify:otp": "tsx src/scripts/verify_otp.ts",
         "verify:security-authz": "tsx src/scripts/verify_security_authz.ts",
