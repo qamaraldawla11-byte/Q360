@@ -3,6 +3,7 @@ import { db, first } from '../db/client.js';
 import { inventoryItems, products, stockMovements } from '../db/schema.js';
 import { randomUUID } from 'crypto';
 import { eq, and } from 'drizzle-orm';
+import { applyStockMovement, StockMovementError } from '../services/inventoryMovement.service.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { requireModule } from '../middleware/moduleAuthorization.js';
 import { logAudit } from '../utils/audit.js';
@@ -35,6 +36,23 @@ inventory.get('/:id', async (c) => {
     return c.json(item);
 });
 
+// GET /api/inventory/:id/movements
+inventory.get('/:id/movements', async (c) => {
+    const id = c.req.param('id');
+    const businessId = c.get('businessId');
+    const item = await first(db.select({ id: inventoryItems.id }).from(inventoryItems).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))));
+
+    if (!item) {
+        return c.json({ error: 'Item not found' }, 404);
+    }
+
+    const movements = await db.select().from(stockMovements)
+        .where(and(eq(stockMovements.inventoryItemId, id), eq(stockMovements.businessId, businessId)))
+        .orderBy(stockMovements.createdAt);
+
+    return c.json(movements);
+});
+
 // PATCH /api/inventory/:id/stock
 inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
     const id = c.req.param('id');
@@ -47,41 +65,36 @@ inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager'])
     if (typeof body.delta !== 'number' || !Number.isFinite(body.delta)) {
         return c.json({ error: 'Delta must be a finite number' }, 400);
     }
-    const delta = body.delta;
 
-    const item = await first(db.select().from(inventoryItems).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))));
-
-    if (!item) {
-        return c.json({ error: 'Item not found' }, 404);
-    }
-
-    const newCurrent = Math.max(0, item.current + delta);
-
-    // Calculate new status
-    let newStatus: 'ok' | 'low' | 'critical' = 'ok';
-    if (newCurrent <= item.min / 2) {
-        newStatus = 'critical';
-    } else if (newCurrent <= item.min) {
-        newStatus = 'low';
-    }
-
-    const appliedDelta = newCurrent - item.current;
-    await db.transaction(async (tx) => {
-        await tx.update(inventoryItems)
-            .set({ current: newCurrent, status: newStatus })
-            .where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId)));
-        await tx.insert(stockMovements).values({
-            id: randomUUID(), businessId, inventoryItemId: id, delta: appliedDelta,
-            reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'manual_adjustment',
-            createdBy: c.get('userId'),
+    try {
+        const result = await applyStockMovement({
+            businessId,
+            userId: c.get('userId'),
+            userRole: c.get('userRole'),
+            inventoryItemId: id,
+            delta: body.delta,
+            reason: typeof body.reason === 'string' && body.reason.trim()
+                ? body.reason.trim()
+                : 'manual_adjustment',
+            movementType: 'manual_adjustment',
+            sourceModule: 'inventory',
+            requiredRoles: ['user', 'owner', 'admin', 'manager'],
         });
-    });
 
-    await logAudit(c, 'UPDATE_STOCK', 'INVENTORY', id, { delta, newCurrent, newStatus });
+        await logAudit(c, 'UPDATE_STOCK', 'INVENTORY', id, {
+            delta: result.deltaApplied,
+            newCurrent: result.newCurrent,
+            newStatus: result.newStatus,
+        });
 
-    const updatedItem = await first(db.select().from(inventoryItems).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))));
-
-    return c.json(updatedItem);
+        const updatedItem = await first(db.select().from(inventoryItems).where(and(eq(inventoryItems.id, id), eq(inventoryItems.businessId, businessId))));
+        return c.json(updatedItem);
+    } catch (error) {
+        if (error instanceof StockMovementError) {
+            return c.json({ error: error.message }, error.status);
+        }
+        throw error;
+    }
 });
 
 // POST /api/inventory

@@ -33,6 +33,7 @@
         "verify:public-identity": "tsx src/scripts/verify_public_identity.ts",
         "verify:business-modules": "tsx src/scripts/verify_business_modules.ts",
         "verify:inventory-procurement": "tsx src/scripts/verify_inventory_procurement.ts",
+        "verify:stock-movement-service": "tsx src/scripts/verify_stock_movement_service.ts",
         "verify:staff-hr": "tsx src/scripts/verify_staff_hr.ts",
         "verify:purchases-expenses": "tsx src/scripts/verify_purchases_expenses.ts",
         "verify:customers": "tsx src/scripts/verify_customers.ts",

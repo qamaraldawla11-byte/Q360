@@ -21,6 +21,7 @@ let initialStock: number = 0;
 let stockAfterOrder: number = 0;
 let stockAfterRestart: number = 0;
 let testItemPrice: number = 0;
+let orderId: string = '';
 
 function log(message: string) {
     console.log(`  ${message}`);
@@ -152,10 +153,11 @@ async function runTests() {
 
     const orderRes = await makeRequest('POST', '/orders', orderPayload);
     if (orderRes.ok && orderRes.data?.orderId) {
+        orderId = orderRes.data.orderId;
         if (Math.abs(orderRes.data.subtotal - testItemPrice) > Number.EPSILON) {
             fail('Server-side Pricing', `Expected ${testItemPrice}, got ${orderRes.data.subtotal}`);
         }
-        pass('Create Order', `Order ID: ${orderRes.data.orderId}`);
+        pass('Create Order', `Order ID: ${orderId}`);
         pass('Server-side Pricing', `Client price ignored; canonical price ${testItemPrice} used`);
         log(`Subtotal: $${orderRes.data.subtotal}, Tax: $${orderRes.data.tax}, Total: $${orderRes.data.total}`);
     } else {
@@ -175,6 +177,25 @@ async function runTests() {
         }
     } else {
         fail('Inventory Decreased', `Status ${inventoryAfterRes.status}`);
+    }
+
+    // ===== STEP 6b: Verify Sale Movement Record =====
+    console.log('\n📝 Step 6b: Verify Sale Movement Record');
+    const movementsRes = await makeRequest('GET', `/inventory/${testItemId}/movements`);
+    if (movementsRes.ok && Array.isArray(movementsRes.data)) {
+        const saleMovement = movementsRes.data.find((m: any) =>
+            m.operationId === orderId &&
+            m.movementType === 'sale' &&
+            m.sourceModule === 'orders' &&
+            m.delta === -1,
+        );
+        if (saleMovement) {
+            pass('Sale Movement Record', `Movement ${saleMovement.id} recorded for order ${orderId}`);
+        } else {
+            fail('Sale Movement Record', 'No matching sale movement found');
+        }
+    } else {
+        fail('Sale Movement Record', `Status ${movementsRes.status}`);
     }
 
     // ===== STEP 7: Simulate Restart (Re-fetch) =====

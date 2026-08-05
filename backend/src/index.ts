@@ -122,6 +122,7 @@ app.get('/readyz', async (c) => {
         const result = await performReadinessChecks(queryClient, {
             snapshot0000Path: paths.snapshot0000Path,
             snapshot0001Path: paths.snapshot0001Path,
+            snapshot0004Path: path.join(paths.snapshot0000Path, '..', '0004_snapshot.json'),
             migration0000SqlPath: paths.migration0000SqlPath,
             migration0001SqlPath: path.join(paths.migration0000SqlPath, '..', '0001_restaurant_partial_index_adoption.sql'),
             journalPath: path.join(paths.snapshot0000Path, '..', '_journal.json'),

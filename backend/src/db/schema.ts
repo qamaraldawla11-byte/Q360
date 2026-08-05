@@ -66,8 +66,11 @@ export const inventoryItems = pgTable('inventory_items', {
     status: text('status').default('ok'), // ok | low | critical
     supplier: text('supplier'),
     price: doublePrecision('price').notNull(),
+    productId: text('product_id'), // Shared product identity link (M2, additive, nullable)
     businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
-});
+}, (table) => [
+    index('inventory_items_product_id_idx').on(table.productId),
+]);
 
 // Products table — canonical Q Core Product identity.
 //
@@ -374,6 +377,9 @@ export const stockMovements = pgTable('stock_movements', {
     businessId: text('business_id').notNull(),
     inventoryItemId: text('inventory_item_id').notNull(),
     purchaseOrderId: text('purchase_order_id'),
+    operationId: text('operation_id'), // Idempotent operation boundary (M2)
+    movementType: text('movement_type'), // e.g. purchase_received, sale, manual_adjustment
+    sourceModule: text('source_module'), // originating module: inventory, suppliers, orders, restaurant
     delta: doublePrecision('delta').notNull(),
     reason: text('reason').notNull(),
     createdBy: text('created_by').notNull(),
@@ -381,6 +387,9 @@ export const stockMovements = pgTable('stock_movements', {
 }, (table) => [
     index('stock_movements_business_idx').on(table.businessId),
     index('stock_movements_item_idx').on(table.inventoryItemId),
+    uniqueIndex('stock_movements_business_operation_item_uidx')
+        .on(table.businessId, table.operationId, table.inventoryItemId)
+        .where(sql`${table.operationId} IS NOT NULL`),
 ]);
 
 // Businesses table
@@ -586,6 +595,8 @@ export type NewUser = typeof users.$inferInsert;
 export type OtpCode = typeof otpCodes.$inferSelect;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type NewInventoryItem = typeof inventoryItems.$inferInsert;
+export type StockMovement = typeof stockMovements.$inferSelect;
+export type NewStockMovement = typeof stockMovements.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;

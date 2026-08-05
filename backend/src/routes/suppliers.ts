@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto';
 import { Hono } from 'hono';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db, first } from '../db/client.js';
-import { businesses, inventoryItems, purchaseExpenseRecords, purchaseOrders, stockMovements, suppliers } from '../db/schema.js';
+import { businesses, inventoryItems, purchaseExpenseRecords, purchaseOrders, suppliers } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import type { AppEnv } from '../types/app.js';
 import { logAudit } from '../utils/audit.js';
 import { duplicateKeysFor } from '../services/purchaseExpenses.js';
+import { applyStockMovement, StockMovementError } from '../services/inventoryMovement.service.js';
 
 const suppliersRouter = new Hono<AppEnv>();
 suppliersRouter.use('/*', authMiddleware);
@@ -101,15 +102,19 @@ suppliersRouter.patch('/procurement/orders/:id/receive', requireRole(['user', 'o
                 .returning({ id: purchaseOrders.id });
             if (!receivedOrder) throw new Error('PURCHASE_ORDER_ALREADY_RECEIVED');
 
-            const [updatedItem] = await tx.update(inventoryItems)
-                .set({ current: sql`${inventoryItems.current} + ${order.quantity}` })
-                .where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)))
-                .returning({ current: inventoryItems.current, min: inventoryItems.min });
-            if (!updatedItem) throw new Error('INVENTORY_ITEM_NOT_FOUND');
-            newCurrent = updatedItem.current;
-            const status = newCurrent <= updatedItem.min / 2 ? 'critical' : newCurrent <= updatedItem.min ? 'low' : 'ok';
-            await tx.update(inventoryItems).set({ status }).where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)));
-            await tx.insert(stockMovements).values({ id: randomUUID(), businessId, inventoryItemId: item.id, purchaseOrderId: id, delta: order.quantity, reason: 'purchase_received', createdBy: c.get('userId') });
+            const movementResult = await applyStockMovement({
+                businessId,
+                userId: c.get('userId'),
+                userRole: c.get('userRole'),
+                inventoryItemId: item.id,
+                delta: order.quantity,
+                reason: 'purchase_received',
+                operationId: id,
+                movementType: 'purchase_received',
+                sourceModule: 'suppliers',
+                tx,
+            });
+            newCurrent = movementResult.newCurrent;
 
             const amountMinor = Math.round(order.quantity * order.unitCost * 100);
             if (amountMinor > 0) {
@@ -123,7 +128,7 @@ suppliersRouter.patch('/procurement/orders/:id/receive', requireRole(['user', 'o
         });
     } catch (error) {
         if (error instanceof Error && error.message === 'PURCHASE_ORDER_ALREADY_RECEIVED') return c.json({ error: 'Purchase order already received' }, 409);
-        if (error instanceof Error && error.message === 'INVENTORY_ITEM_NOT_FOUND') return c.json({ error: 'Inventory item not found' }, 404);
+        if (error instanceof StockMovementError) return c.json({ error: error.message }, error.status);
         throw error;
     }
     await logAudit(c, 'PURCHASE_ORDER_RECEIVED', 'PURCHASE_ORDER', id, { itemId: item.id, quantity: order.quantity, newCurrent });

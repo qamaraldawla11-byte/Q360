@@ -26,6 +26,7 @@ export interface ReadinessOptions {
     snapshot0001Path: string;
     migration0000SqlPath: string;
     migration0001SqlPath: string;
+    snapshot0004Path?: string;
     journalPath: string;
     timeoutMs?: number;
 }
@@ -86,6 +87,7 @@ const CRITICAL_TABLES = [
     'orders',
     'products',
     'inventory_items',
+    'stock_movements',
 ];
 
 const CRITICAL_COLUMNS: { table: string; column: string }[] = [
@@ -94,11 +96,20 @@ const CRITICAL_COLUMNS: { table: string; column: string }[] = [
     { table: 'restaurant_orders', column: 'idempotency_key' },
     { table: 'restaurant_orders', column: 'visible_order_number' },
     { table: 'restaurant_orders', column: 'order_number_date' },
+    { table: 'inventory_items', column: 'product_id' },
+    { table: 'stock_movements', column: 'operation_id' },
+    { table: 'stock_movements', column: 'movement_type' },
+    { table: 'stock_movements', column: 'source_module' },
 ];
 
 const RESTAURANT_INDEX_NAMES = [
     'restaurant_orders_business_idempotency_key_idx',
     'restaurant_orders_business_daily_visible_number_idx',
+];
+
+const INVENTORY_INDEX_NAMES = [
+    'inventory_items_product_id_idx',
+    'stock_movements_business_operation_item_uidx',
 ];
 
 type JournalRow = { hash: string; created_at: number };
@@ -176,6 +187,7 @@ const runExpectedCatalog = async (options: ReadinessOptions): Promise<{ ok: true
             loadExpectedCatalog({
                 snapshot0000Path: options.snapshot0000Path,
                 snapshot0001Path: options.snapshot0001Path,
+                additionalSnapshotPaths: options.snapshot0004Path ? [options.snapshot0004Path] : undefined,
             })
         );
         return { ok: true, catalog, durationMs };
@@ -248,7 +260,7 @@ const buildIndexChecks = (expectedCatalog: Catalog, actualCatalog: Catalog): Rea
     const actualIndexes = new Map(actualCatalog.indexes.map((i) => [i.name, i]));
     const checks: ReadinessCheck[] = [];
 
-    for (const name of RESTAURANT_INDEX_NAMES) {
+    for (const name of [...RESTAURANT_INDEX_NAMES, ...INVENTORY_INDEX_NAMES]) {
         const { result: check, durationMs } = timedSync(() => {
             const expectedIdx = expectedIndexes.get(name);
             const actualIdx = actualIndexes.get(name);

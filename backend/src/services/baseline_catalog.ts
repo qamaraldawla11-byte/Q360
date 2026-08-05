@@ -147,6 +147,7 @@ const snapshotColumnToCatalog = (col: any): CatalogColumn => {
 export const loadExpectedCatalog = async (options: {
     snapshot0000Path: string;
     snapshot0001Path?: string;
+    additionalSnapshotPaths?: string[];
 }): Promise<Catalog> => {
     const snap0 = await loadSnapshot(options.snapshot0000Path);
     const tables: CatalogTable[] = [];
@@ -187,6 +188,15 @@ export const loadExpectedCatalog = async (options: {
     if (options.snapshot0001Path) {
         const snap1 = await loadSnapshot(options.snapshot0001Path);
         for (const t of Object.values<any>(snap1.tables || {})) {
+            for (const idx of Object.values<any>(t.indexes || {})) {
+                indexes.push(snapshotIndexToCatalog(t.name, idx));
+            }
+        }
+    }
+
+    for (const snapshotPath of options.additionalSnapshotPaths ?? []) {
+        const snap = await loadSnapshot(snapshotPath);
+        for (const t of Object.values<any>(snap.tables || {})) {
             for (const idx of Object.values<any>(t.indexes || {})) {
                 indexes.push(snapshotIndexToCatalog(t.name, idx));
             }
@@ -387,6 +397,10 @@ const normalizePredicate = (predicate: string): string => {
         .replace(/"([^"]+)"\."([^"]+)"/g, '"$2"')
         .replace(/"/g, '')
         .replace(/[()]/g, '')
+        // PostgreSQL 16 may append type casts (e.g. ''::text) to string literals
+        // in index predicates; these are semantically equivalent for catalog
+        // comparison purposes.
+        .replace(/::[\w]+(\([^)]*\))?/g, '')
         .trim();
 };
 
