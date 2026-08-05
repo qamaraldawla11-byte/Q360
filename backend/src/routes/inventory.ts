@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { db, first } from '../db/client.js';
 import { inventoryItems, products, stockMovements } from '../db/schema.js';
-import { randomUUID } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { applyStockMovement, StockMovementError } from '../services/inventoryMovement.service.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
