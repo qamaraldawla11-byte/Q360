@@ -1,7 +1,7 @@
 # Q360-PS-RC1-FINAL-F6 PR Gate Report
 
 > Prepared by: Kimi K2.7 Coding acting as Q PS
-> Date: `2026-08-08T17:25Z`
+> Date: `2026-08-08T17:27Z`
 > Session worktree: `D:/VS CODE App/Q360/.worktrees/q360-rc1-clean`
 > Branch: `rc/q360-rc1-clean`
 
@@ -19,10 +19,10 @@ The RC1 candidate branch `rc/q360-rc1-clean` has been pushed to origin and a pul
 |----------|-------|
 | pwd | `D:/VS CODE App/Q360/.worktrees/q360-rc1-clean` |
 | branch | `rc/q360-rc1-clean` |
-| HEAD | `8f41e329bbb561a51b8b2bd6b77025e653f67302` |
-| HEAD parent | `ce956d38d6c089156c4e9bbcd3b005e8398ef249` |
+| HEAD | `6bbd34bc8edcf1979cb5787128e3541b9425b4c9` |
+| HEAD parent | `8f41e329bbb561a51b8b2bd6b77025e653f67302` |
 | origin/main | `a76870e7b1bc93532b1469e0a138ec4fda55badf` |
-| ahead/behind | 23 ahead, 0 behind |
+| ahead/behind | 24 ahead, 0 behind |
 | git status | clean |
 | Git locks | none |
 | Competing writers | none on `rc/q360-rc1-clean` |
@@ -65,7 +65,7 @@ Protected areas unchanged:
 | Command | `git push origin rc/q360-rc1-clean` |
 | Exit code | 0 |
 | Remote branch | `origin/rc/q360-rc1-clean` |
-| Remote branch commit | `8f41e329bbb561a51b8b2bd6b77025e653f67302` |
+| Remote branch commit | `6bbd34bc8edcf1979cb5787128e3541b9425b4c9` |
 
 No other branches were pushed.
 
@@ -80,7 +80,7 @@ No other branches were pushed.
 | Title | Q360 RC1 — Shared Core and Platform Safety Release Candidate |
 | Base branch | `main` |
 | Head branch | `rc/q360-rc1-clean` |
-| Head commit | `8f41e329bbb561a51b8b2bd6b77025e653f67302` |
+| Head commit | `6bbd34bc8edcf1979cb5787128e3541b9425b4c9` |
 | State | OPEN |
 | Mergeability | MERGEABLE |
 
