@@ -24,6 +24,18 @@ const businessId = 'biz_verify_restaurant_core';
 const businessBId = 'biz_verify_restaurant_core_b';
 const userId = 'usr_verify_restaurant_core';
 const userBId = 'usr_verify_restaurant_core_b';
+const userAdminId = userId;
+const userWaiterId = 'usr_verify_restaurant_core_waiter';
+const userKitchenId = 'usr_verify_restaurant_core_kitchen';
+const userCashierId = 'usr_verify_restaurant_core_cashier';
+const userManagerId = 'usr_verify_restaurant_core_manager';
+const roleUserIds: Record<string, string | undefined> = {
+    admin: userAdminId,
+    waiter: userWaiterId,
+    kitchen: userKitchenId,
+    cashier: userCashierId,
+    manager: userManagerId,
+};
 const port = 32000 + (process.pid % 1000);
 const baseUrl = `http://127.0.0.1:${port}`;
 const secret = process.env.JWT_SECRET || 'restaurant-core-test-secret';
@@ -37,8 +49,11 @@ const createToken = (options?: { businessId?: string; userId?: string; role?: st
     const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const now = Math.floor(Date.now() / 1000);
     const tokenBusinessId = options?.businessId ?? businessId;
-    const tokenUserId = options?.userId ?? userId;
     const tokenRole = options?.role ?? 'admin';
+    // Use a role-appropriate test user so that the auth middleware's DB role
+    // enforcement resolves to the same role carried in the token. This keeps
+    // the verification fixture aligned with production account-state checks.
+    const tokenUserId = options?.userId ?? roleUserIds[tokenRole] ?? userId;
     const header = encode({ alg: 'HS256', typ: 'JWT' });
     const payload = encode({
         sub: tokenUserId,
@@ -110,7 +125,8 @@ const resetFixture = async () => {
     await db.delete(menuItems).where(inArray(menuItems.businessId, businessesUnderTest));
     await db.delete(menuCategories).where(inArray(menuCategories.businessId, businessesUnderTest));
     await db.delete(restaurantMenus).where(inArray(restaurantMenus.businessId, businessesUnderTest));
-    await db.delete(users).where(inArray(users.id, [userId, userBId]));
+    const roleUserIdsUnderTest = [userAdminId, userWaiterId, userKitchenId, userCashierId, userManagerId, userBId];
+    await db.delete(users).where(inArray(users.id, roleUserIdsUnderTest));
     await db.delete(businesses).where(inArray(businesses.id, businessesUnderTest));
 
     await db.insert(businesses).values([
@@ -119,10 +135,46 @@ const resetFixture = async () => {
     ]);
     await db.insert(users).values([
         {
-            id: userId,
+            id: userAdminId,
             email: 'verify-restaurant-core@example.com',
             name: 'Restaurant Verifier',
             role: 'admin',
+            businessId,
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+        {
+            id: userWaiterId,
+            email: 'verify-restaurant-core-waiter@example.com',
+            name: 'Restaurant Verifier Waiter',
+            role: 'waiter',
+            businessId,
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+        {
+            id: userKitchenId,
+            email: 'verify-restaurant-core-kitchen@example.com',
+            name: 'Restaurant Verifier Kitchen',
+            role: 'kitchen',
+            businessId,
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+        {
+            id: userCashierId,
+            email: 'verify-restaurant-core-cashier@example.com',
+            name: 'Restaurant Verifier Cashier',
+            role: 'cashier',
+            businessId,
+            onboardingCompleted: true,
+            primaryWorkspace: '/app/restaurant',
+        },
+        {
+            id: userManagerId,
+            email: 'verify-restaurant-core-manager@example.com',
+            name: 'Restaurant Verifier Manager',
+            role: 'manager',
             businessId,
             onboardingCompleted: true,
             primaryWorkspace: '/app/restaurant',

@@ -54,7 +54,7 @@ inventory.get('/:id/movements', async (c) => {
 });
 
 // PATCH /api/inventory/:id/stock
-inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
+inventory.patch('/:id/stock', requireRole(['owner', 'admin', 'manager']), async (c) => {
     const id = c.req.param('id');
     if (!id) {
         return c.json({ error: 'Item ID is required' }, 400);
@@ -78,7 +78,7 @@ inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager'])
                 : 'manual_adjustment',
             movementType: 'manual_adjustment',
             sourceModule: 'inventory',
-            requiredRoles: ['user', 'owner', 'admin', 'manager'],
+            requiredRoles: ['owner', 'admin', 'manager'],
         });
 
         await logAudit(c, 'UPDATE_STOCK', 'INVENTORY', id, {
@@ -98,7 +98,7 @@ inventory.patch('/:id/stock', requireRole(['user', 'owner', 'admin', 'manager'])
 });
 
 // POST /api/inventory
-inventory.post('/', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
+inventory.post('/', requireRole(['owner', 'admin', 'manager']), async (c) => {
     let body: {
         name?: string;
         current?: number;
@@ -188,7 +188,7 @@ inventory.post('/', requireRole(['user', 'owner', 'admin', 'manager']), async (c
     }
 });
 
-inventory.patch('/:id', requireRole(['user', 'owner', 'admin', 'manager']), async (c) => {
+inventory.patch('/:id', requireRole(['owner', 'admin', 'manager']), async (c) => {
     const businessId = c.get('businessId');
     const id = c.req.param('id');
     if (!id) return c.json({ error: 'Item ID is required' }, 400);
