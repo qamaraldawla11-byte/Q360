@@ -19,17 +19,18 @@ import {
   Settings,
   Sparkles,
   Store,
+  Target,
   TrendingUp,
-  Truck,
   Users,
   X,
 } from 'lucide-react';
 import { http } from '@/api/http';
-import { currencyForCountry } from '@/api/qGuestBrief.api';
 import { LogoMark } from '@/components/ui/Logo';
 import {
+  activeDimension,
   deriveQuickReplies,
   determineNextPresentation,
+  dimensionStates,
   emailPattern,
   FIELD_ORDER,
   fallbackModules,
@@ -53,9 +54,10 @@ import {
   requiredComplete,
   requiredFields,
   replyAsksField,
-  requiredProgress,
   syncJourney,
   textOf,
+  understandingPercent,
+  type DnaDimensionKey,
   type FieldKey,
   type FieldStatus,
   type GuestSetup,
@@ -132,10 +134,13 @@ const moduleIcon = (moduleName: string) => {
   return Store;
 };
 
-const serviceModeIcon = (mode?: string) => {
-  const normalized = (mode || '').toLowerCase().replace(/[-_\s]/g, '');
-  if (normalized === 'takeaway') return Truck;
-  return Store;
+const DNA_RING_C = 2 * Math.PI * 62;
+
+const dnaIcon = (key: DnaDimensionKey) => {
+  if (key === 'business') return Store;
+  if (key === 'service') return MapPin;
+  if (key === 'operations') return Settings;
+  return Target;
 };
 
 const guestQStyles = [
@@ -172,7 +177,7 @@ const guestQStyles = [
   '.guest-q-typing{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:12px 16px;border:1px solid var(--q-border-strong);border-radius:18px;border-bottom-left-radius:5px;background:var(--q-q-bubble);animation:guestQIn .18s ease-out both;}.guest-q-typing span{width:7px;height:7px;border-radius:50%;background:#8ba1bd;animation:guestQTyping 1.2s ease-in-out infinite;}.guest-q-typing span:nth-child(2){animation-delay:.15s;}.guest-q-typing span:nth-child(3){animation-delay:.3s;}',
   '@keyframes guestQIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}',
   '@keyframes guestQTyping{0%,60%,100%{transform:translateY(0);opacity:.45;}30%{transform:translateY(-4px);opacity:1;}}',
-  '@media(prefers-reduced-motion:reduce){.guest-q-bubble,.guest-q-chip,.guest-q-action,.guest-q-typing,.guest-q-typing span,.guest-q-message{animation:none !important;}}',
+  '@media(prefers-reduced-motion:reduce){.guest-q-bubble,.guest-q-chip,.guest-q-action,.guest-q-typing,.guest-q-typing span,.guest-q-message,.guest-q-module,.guest-q-dna-q,.guest-q-dna-q-sweep,.guest-q-dna-pulse,.guest-q-dna-dim{animation:none !important;}.guest-q-dna-arc{transition:none !important;}}',
   '.guest-q-form{position:relative;flex:0 0 auto;display:flex;align-items:flex-end;gap:12px;padding-top:6px;}',
   '.guest-q-input{min-width:0;flex:1;border:0;border-bottom:1px solid var(--q-border-strong);border-radius:0;background:transparent;color:var(--q-text);padding:16px 52px 16px 0;font:inherit;font-size:17px;line-height:1.45;}.guest-q-input:focus{outline:none;border-bottom-color:var(--q-accent);}.guest-q-input::placeholder{color:#9aa5b8;}',
   '.guest-q-send{position:absolute;right:0;bottom:4px;display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:var(--q-accent);color:#fff;cursor:pointer;transition:transform .1s ease,background .15s ease;}.guest-q-send:hover{background:#c75c00;}.guest-q-send:disabled{opacity:.45;cursor:not-allowed;}.guest-q-send:focus-visible{outline:2px solid var(--q-focus);outline-offset:2px;}',
@@ -196,10 +201,47 @@ const guestQStyles = [
   '.guest-q-draft-value{font-weight:700;color:var(--q-text);text-align:right;}',
   '.guest-q-draft-missing{color:var(--q-accent);font-weight:700;text-align:right;}',
   '.guest-q-modules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}',
-  '.guest-q-module{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--q-bg);border:1px solid var(--q-border);font-size:14px;font-weight:600;color:var(--q-text);}',
+  '.guest-q-module{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--q-bg);border:1px solid var(--q-border);font-size:14px;font-weight:600;color:var(--q-text);animation:guestQIn .32s ease-out both;}.guest-q-module:nth-child(2){animation-delay:.05s;}.guest-q-module:nth-child(3){animation-delay:.1s;}.guest-q-module:nth-child(4){animation-delay:.15s;}.guest-q-module:nth-child(5){animation-delay:.2s;}.guest-q-module:nth-child(6){animation-delay:.25s;}.guest-q-module:nth-child(7){animation-delay:.3s;}.guest-q-module:nth-child(8){animation-delay:.35s;}.guest-q-module:nth-child(n+9){animation-delay:.4s;}',
   '.guest-q-module svg{width:17px;height:17px;color:var(--q-accent);flex-shrink:0;}',
   '.guest-q-brief-actions{display:flex;flex-direction:column;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--q-border-strong);border-radius:14px;background:var(--q-bg);color:var(--q-text);padding:12px 14px;font:inherit;font-weight:700;cursor:pointer;}.guest-q-button:disabled{opacity:.45;cursor:not-allowed;}.guest-q-button--primary{border-color:var(--q-text);background:var(--q-text);color:#fff;padding:16px 18px;font-size:16px;}.guest-q-button--primary:hover{background:#1a1a1a;border-color:#1a1a1a;color:#fff;}.guest-q-button:focus-visible{outline:2px solid var(--q-focus);outline-offset:2px;}',
   '.guest-q-note{font-size:13px;color:var(--q-text-secondary);line-height:1.5;}',
+  '.guest-q-dna-subtitle{margin:2px 0 0;font-size:14px;line-height:1.5;color:var(--q-text-secondary);}',
+  '.guest-q-dna-ringwrap{display:flex;justify-content:center;padding:4px 0;}',
+  '.guest-q-dna-ring{position:relative;width:148px;height:148px;}',
+  '.guest-q-dna-ring>svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}',
+  '.guest-q-dna-track{fill:none;stroke:var(--q-border-strong);stroke-width:7;}',
+  '.guest-q-dna-arc{fill:none;stroke:var(--q-accent);stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
+  '.guest-q-dna-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}',
+  '.guest-q-dna-q{display:block;width:30px;height:30px;color:var(--q-accent);}',
+  '.guest-q-dna-q svg{display:block;width:100%;height:100%;}',
+  '.guest-q-dna-q-base,.guest-q-dna-q-tail{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;}',
+  '.guest-q-dna-q-base{stroke-opacity:.32;transition:stroke-opacity .4s ease;}',
+  '.guest-q-dna-q-sweep{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;stroke-dasharray:24 76;opacity:0;transition:opacity .3s ease;transform-origin:22px 22px;}',
+  '.guest-q-dna-q.is-idle{animation:guestQDnaBreath 4.4s ease-in-out infinite;}',
+  '.guest-q-dna-q.is-learning .guest-q-dna-q-base{stroke-opacity:.55;}',
+  '.guest-q-dna-q.is-learning .guest-q-dna-q-sweep{opacity:1;animation:guestQDnaSweep 2.2s linear infinite;}',
+  '.guest-q-dna-q.is-prepared{filter:drop-shadow(0 0 12px rgba(227,107,0,.4));}',
+  '.guest-q-dna-q.is-prepared .guest-q-dna-q-base{stroke-opacity:1;}',
+  '.guest-q-dna-percent{font-size:26px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
+  '.guest-q-dna-percent-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
+  '.guest-q-dna-dims{display:flex;flex-direction:column;gap:6px;}',
+  '.guest-q-dna-dim{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--q-border);border-radius:13px;background:var(--q-bg);transition:border-color .3s ease;}',
+  '.guest-q-dna-dim.is-active{border-color:var(--q-accent);}',
+  '.guest-q-dna-dim-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--q-accent-soft);color:var(--q-accent);flex:0 0 auto;}',
+  '.guest-q-dna-dim-icon svg{width:16px;height:16px;}',
+  '.guest-q-dna-dim-title{flex:1;min-width:0;font-size:14px;font-weight:650;color:var(--q-text);}',
+  '.guest-q-dna-dim-status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;white-space:nowrap;}',
+  '.guest-q-dna-dim.is-understood .guest-q-dna-dim-status{color:var(--q-success);}',
+  '.guest-q-dna-dim.is-learning .guest-q-dna-dim-status{color:var(--q-accent);}',
+  '.guest-q-dna-dim.is-next .guest-q-dna-dim-status{color:var(--q-text-secondary);font-weight:600;}',
+  '.guest-q-dna-pulse{width:7px;height:7px;border-radius:50%;background:var(--q-accent);animation:guestQDnaPulse 1.5s ease-in-out infinite;}',
+  '.guest-q-dna-hollow{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--q-text-secondary);opacity:.55;}',
+  '.guest-q-draft-unset{color:var(--q-text-secondary);font-weight:500;text-align:right;}',
+  '.guest-q-dna-principle{padding-top:4px;font-size:12.5px;font-weight:700;letter-spacing:.05em;text-align:center;color:var(--q-text-secondary);}',
+  '@keyframes guestQDnaBreath{0%,100%{opacity:.7;transform:scale(1);}50%{opacity:1;transform:scale(1.06);}}',
+  '@keyframes guestQDnaPulse{0%,100%{transform:scale(1);opacity:.6;}50%{transform:scale(1.4);opacity:1;}}',
+  '@keyframes guestQDnaSweep{to{transform:rotate(360deg);}}',
+  '@media(max-width:900px){.guest-q-dna-ring{width:126px;height:126px;}.guest-q-dna-percent{font-size:22px;}.guest-q-dna-q{width:26px;height:26px;}}',
   '@media(max-width:900px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;grid-template-columns:none;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:36dvh;min-height:220px;overflow-y:auto;border-left:0;border-top:1px solid var(--q-border);padding:20px;}.guest-q-message{max-width:92%;}.guest-q-header{padding:14px 18px;}.guest-q-brand-text{font-size:18px;}.guest-q-plan-title{font-size:26px;}}',
 ].join('');
 
@@ -722,18 +764,27 @@ export function GuestQConcierge({
     };
   }, []);
 
-  const progress = requiredProgress(setup, journey);
   const canContinue = requiredComplete(setup, journey);
   const modules = recommendedModules.length ? recommendedModules : fallbackModules(setup);
 
   const missingRequired = requiredFields(setup).filter(
     (key) => journey[key] === 'missing' || !fieldDefByKey[key].hasValue(setup),
   );
-  const optionalRemaining = FIELD_ORDER.filter(
-    (key) =>
-      !fieldDefByKey[key].required(setup) &&
-      fieldDefByKey[key].applicable(setup) &&
-      journey[key] === 'missing',
+
+  const dnaDimensions = dimensionStates(setup, journey);
+  const dnaPercentRaw = understandingPercent(setup, journey);
+  const [dnaPercentPeak, setDnaPercentPeak] = useState(0);
+  useEffect(() => {
+    // Field applicability shifts as businessType lands; never let the ring regress.
+    setDnaPercentPeak((peak) => Math.max(peak, dnaPercentRaw));
+  }, [dnaPercentRaw]);
+  const dnaPercent = reviewReady ? 100 : dnaPercentPeak;
+  const dnaActive = activeDimension(setup, journey, activeField);
+  const qMood: 'idle' | 'learning' | 'prepared' = reviewReady ? 'prepared' : isSending ? 'learning' : 'idle';
+  const showModules =
+    modules.length > 0 && (recommendedModules.length > 0 || fieldDefByKey.businessType.hasValue(setup));
+  const snapshotUnsetRows = FIELD_ORDER.filter(
+    (key) => fieldDefByKey[key].applicable(setup) && !fieldDefByKey[key].hasValue(setup),
   );
 
   const continueHint = !emailPattern.test(setup.email)
@@ -830,13 +881,6 @@ export function GuestQConcierge({
     const def = fieldDefByKey[key];
     return def.applicable(setup) && fieldDefByKey[key].hasValue(setup);
   });
-
-  const workspaceTypeLabel = setup.businessType
-    ? `${setup.businessType[0].toUpperCase()}${setup.businessType.slice(1)} workspace`
-    : 'Workspace plan';
-
-  const initialAvatar = setup.businessName.trim().slice(0, 1).toUpperCase() || '?';
-  const derivedCurrency = setup.country ? currencyForCountry(setup.country) : '';
 
   return (
     <div
@@ -1010,111 +1054,125 @@ export function GuestQConcierge({
             </div>
           </div>
 
-          <aside className="guest-q-brief" aria-label="Workspace plan">
+          <aside className="guest-q-brief" aria-label="Your business DNA">
             <div>
-              <div className="guest-q-plan-label">Your plan</div>
-              <div className="guest-q-plan-head">
-                <div>
-                  <h3 className="guest-q-plan-title">{setup.businessName || 'Your workspace'}</h3>
-                  <div className="guest-q-plan-subtitle">{workspaceTypeLabel}</div>
-                </div>
-                <div className="guest-q-plan-avatar" aria-hidden="true">
-                  {initialAvatar}
-                </div>
-              </div>
+              <div className="guest-q-plan-label">{reviewReady ? 'Workspace prepared' : 'Your Business DNA'}</div>
+              <p className="guest-q-dna-subtitle">
+                {reviewReady ? 'Review what Q learned.' : 'Q is learning what makes your business unique.'}
+              </p>
+            </div>
 
-              <div className="guest-q-plan-meta">
-                {setup.country ? (
-                  <div className="guest-q-meta-item">
-                    <MapPin />
-                    {setup.country}
-                  </div>
-                ) : null}
-                {derivedCurrency ? (
-                  <div className="guest-q-meta-item">
-                    <CircleDollarSign />
-                    {derivedCurrency}
-                  </div>
-                ) : null}
-                {setup.tables !== undefined ? (
-                  <div className="guest-q-meta-item">
-                    <LayoutGrid />
-                    {setup.tables} tables
-                  </div>
-                ) : null}
-                {setup.serviceMode ? (
-                  <div className="guest-q-meta-item">
-                    {(() => {
-                      const Icon = serviceModeIcon(setup.serviceMode);
-                      return <Icon />;
-                    })()}
-                    {formatFieldValue('serviceMode', setup)}
-                  </div>
-                ) : null}
+            <div className="guest-q-dna-ringwrap">
+              <div
+                className="guest-q-dna-ring"
+                role="img"
+                aria-label={`Q understands ${dnaPercent}% of your business so far`}
+              >
+                <svg viewBox="0 0 148 148" aria-hidden="true">
+                  <circle className="guest-q-dna-track" cx="74" cy="74" r="62" />
+                  <circle
+                    className="guest-q-dna-arc"
+                    cx="74"
+                    cy="74"
+                    r="62"
+                    style={{
+                      strokeDasharray: DNA_RING_C,
+                      strokeDashoffset: DNA_RING_C * (1 - dnaPercent / 100),
+                    }}
+                  />
+                </svg>
+                <div className="guest-q-dna-center">
+                  <span className={'guest-q-dna-q is-' + qMood}>
+                    <svg viewBox="0 0 48 48" aria-hidden="true">
+                      <circle className="guest-q-dna-q-base" cx="22" cy="22" r="15" />
+                      <path className="guest-q-dna-q-tail" d="M31.5 31.5 L39.5 39.5" />
+                      <circle className="guest-q-dna-q-sweep" cx="22" cy="22" r="15" pathLength={100} />
+                    </svg>
+                  </span>
+                  <span className="guest-q-dna-percent">{dnaPercent}%</span>
+                  <span className="guest-q-dna-percent-label">understood</span>
+                </div>
               </div>
             </div>
 
-            <div>
-              <div className="guest-q-section-title">Prepared modules</div>
-              <div className="guest-q-modules">
-                {modules.map((module) => {
-                  const Icon = moduleIcon(module);
-                  return (
-                    <div key={module} className="guest-q-module">
+            <div className="guest-q-dna-dims">
+              {dnaDimensions.map((dimension) => {
+                const Icon = dnaIcon(dimension.key);
+                return (
+                  <div
+                    key={dimension.key}
+                    className={
+                      'guest-q-dna-dim is-' + dimension.status + (dimension.key === dnaActive ? ' is-active' : '')
+                    }
+                  >
+                    <span className="guest-q-dna-dim-icon" aria-hidden="true">
                       <Icon />
-                      {module}
+                    </span>
+                    <span className="guest-q-dna-dim-title">{dimension.title}</span>
+                    <span className="guest-q-dna-dim-status">
+                      {dimension.status === 'understood' ? (
+                        <>
+                          <Check size={13} /> Understood
+                        </>
+                      ) : dimension.status === 'learning' ? (
+                        <>
+                          <span className="guest-q-dna-pulse" aria-hidden="true" /> Learning
+                        </>
+                      ) : (
+                        <>
+                          <span className="guest-q-dna-hollow" aria-hidden="true" /> Next
+                        </>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div>
+              <div className="guest-q-section-title">Business snapshot</div>
+              <div className="guest-q-draft">
+                {confirmedRows.map((key) => {
+                  const def = fieldDefByKey[key];
+                  const value = formatFieldValue(key, setup);
+                  return (
+                    <div key={key} className="guest-q-draft-row">
+                      <span className="guest-q-draft-label">{def.label}</span>
+                      <span className="guest-q-draft-value">{value}</span>
                     </div>
                   );
                 })}
+                {snapshotUnsetRows.map((key) => (
+                  <div key={key} className="guest-q-draft-row">
+                    <span className="guest-q-draft-label">{fieldDefByKey[key].label}</span>
+                    <span className="guest-q-draft-unset">Not set</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {confirmedRows.length > 0 ? (
-              <div>
-                <div className="guest-q-section-title">
-                  {reviewReady ? 'Confirmed' : 'Your workspace draft'}
-                </div>
-                <div className="guest-q-draft">
-                  {confirmedRows.map((key) => {
-                    const def = fieldDefByKey[key];
-                    const value = formatFieldValue(key, setup);
+            <div>
+              <div className="guest-q-section-title">
+                {reviewReady ? 'Prepared for your workspace' : 'Q is preparing'}
+              </div>
+              {showModules ? (
+                <div className="guest-q-modules">
+                  {modules.map((module) => {
+                    const Icon = moduleIcon(module);
                     return (
-                      <div key={key} className="guest-q-draft-row">
-                        <span className="guest-q-draft-label">{def.label}</span>
-                        <span className="guest-q-draft-value">{value}</span>
+                      <div key={module} className="guest-q-module">
+                        <Icon />
+                        {module}
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            ) : (
-              <div>
-                <div className="guest-q-section-title">Your workspace draft</div>
-                <p className="guest-q-note">
-                  {progress.done} of {progress.total} required details collected. Q will recommend modules as the setup takes shape.
-                </p>
-              </div>
-            )}
+              ) : (
+                <p className="guest-q-note">Modules appear here as Q learns about your business.</p>
+              )}
+            </div>
 
-            {missingRequired.length > 0 || optionalRemaining.length > 0 ? (
-              <div>
-                <div className="guest-q-section-title">Still needed</div>
-                <div className="guest-q-draft">
-                  {missingRequired.map((key) => (
-                    <div key={key} className="guest-q-draft-row">
-                      <span className="guest-q-draft-label">{fieldDefByKey[key].label}</span>
-                      <span className="guest-q-draft-missing">Required</span>
-                    </div>
-                  ))}
-                  {optionalRemaining.map((key) => (
-                    <div key={key} className="guest-q-draft-row">
-                      <span className="guest-q-draft-label">{fieldDefByKey[key].label}</span>
-                      <span className="guest-q-draft-missing">Optional</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <div className="guest-q-dna-principle">Q learns. Q prepares. You decide.</div>
 
             <div className="guest-q-brief-actions">
               <button type="button" className="guest-q-button" onClick={() => void copyBrief()}>

@@ -8,6 +8,9 @@ import {
   classifyBackendReply,
   determineNextPresentation,
   deriveQuickReplies,
+  dimensionStates,
+  activeDimension,
+  understandingPercent,
   emailPattern,
   FIELD_ORDER,
   fallbackModules,
@@ -984,5 +987,104 @@ describe('guestQConciergeState', () => {
     assert.equal(ksa.country, 'Saudi Arabia');
     const usa = parseActiveAnswer('  America  ', 'country', setup);
     assert.equal(usa.country, 'United States');
+  });
+});
+
+describe('business DNA selectors', () => {
+  it('empty state starts at 0% with every dimension next', () => {
+    const setup = initialSetup('Hello');
+    const journey = initialJourney();
+    const dimensions = dimensionStates(setup, journey);
+    assert.equal(understandingPercent(setup, journey), 0);
+    assert.deepEqual(dimensions.map((d) => d.key), ['business', 'operations', 'goals']);
+    assert.ok(dimensions.every((d) => d.status === 'next'));
+    assert.equal(activeDimension(setup, journey, null), null);
+  });
+
+  it('normal flow moves a dimension from learning to understood as fields confirm', () => {
+    const setup = baseSetup();
+    const journey = syncJourney(setup, initialJourney(), 'businessType', false, true);
+    const business = dimensionStates(setup, journey).find((d) => d.key === 'business');
+    assert.equal(business?.status, 'learning');
+    const percent = understandingPercent(setup, journey);
+    assert.ok(percent > 0 && percent < 100);
+    assert.equal(activeDimension(setup, journey, 'country'), 'business');
+    assert.equal(activeDimension(setup, journey, null), 'business');
+
+    const confirmedJourney = {
+      ...journey,
+      businessName: 'confirmed' as FieldStatus,
+      country: 'confirmed' as FieldStatus,
+      email: 'confirmed' as FieldStatus,
+    };
+    const understood = dimensionStates(setup, confirmedJourney).find((d) => d.key === 'business');
+    assert.equal(understood?.status, 'understood');
+  });
+
+  it('restaurant-specific fields create a service dimension that resolves', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', services: ['dine-in'], tables: 12 });
+    const journey = {
+      ...initialJourney(),
+      serviceMode: 'confirmed' as FieldStatus,
+      tables: 'confirmed' as FieldStatus,
+    };
+    const dimensions = dimensionStates(setup, journey);
+    const service = dimensions.find((d) => d.key === 'service');
+    assert.deepEqual(service?.fields, ['serviceMode', 'tables']);
+    assert.equal(service?.status, 'understood');
+  });
+
+  it('non-restaurant businesses omit the service dimension entirely', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'retail shop' });
+    const journey = syncJourney(setup, initialJourney(), 'businessType', false, true);
+    const dimensions = dimensionStates(setup, journey);
+    assert.deepEqual(dimensions.map((d) => d.key), ['business', 'operations', 'goals']);
+    assert.equal(understandingPercent(setup, journey), 11);
+  });
+
+  it('skipped fields count as resolved decisions', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'cafe', employees: 3 });
+    const journey = {
+      ...initialJourney(),
+      teamSize: 'confirmed' as FieldStatus,
+      stockConcerns: 'skipped' as FieldStatus,
+      bookings: 'skipped' as FieldStatus,
+    };
+    const operations = dimensionStates(setup, journey).find((d) => d.key === 'operations');
+    assert.equal(operations?.status, 'understood');
+    assert.equal(understandingPercent(setup, journey), 27);
+  });
+
+  it('completion state reaches 100% with every dimension understood', () => {
+    const setup = mergeSetup(initialSetup('Hello'), {
+      businessType: 'restaurant',
+      businessName: 'Noor',
+      country: 'Spain',
+      email: 'owner@noor.test',
+      services: ['dine-in'],
+      tables: 10,
+      employees: 4,
+      priorities: ['Sales'],
+      stockConcerns: true,
+      bookings: true,
+    });
+    const journey: Record<FieldKey, FieldStatus> = {
+      businessType: 'confirmed',
+      serviceMode: 'confirmed',
+      businessName: 'confirmed',
+      country: 'confirmed',
+      email: 'confirmed',
+      tables: 'confirmed',
+      teamSize: 'confirmed',
+      stockConcerns: 'confirmed',
+      bookings: 'confirmed',
+      priorities: 'confirmed',
+      otherPreferences: 'skipped',
+    };
+    assert.equal(understandingPercent(setup, journey), 100);
+    const dimensions = dimensionStates(setup, journey);
+    assert.equal(dimensions.length, 4);
+    assert.ok(dimensions.every((d) => d.status === 'understood'));
+    assert.equal(activeDimension(setup, journey, null), null);
   });
 });

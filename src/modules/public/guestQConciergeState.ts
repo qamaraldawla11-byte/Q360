@@ -724,3 +724,86 @@ export const isStaleRevision = (requestRevision: number, currentRevision: number
 /** Returns true when the field's own quick replies already contain a skip action. */
 export const hasInlineSkip = (field: FieldKey): boolean =>
   fieldDefByKey[field].quickReplies(initialSetup('')).some((reply) => isSkipMessage(reply));
+
+/* -------------------------------------------------------------------------- */
+/* Business DNA — derived, read-only views over the existing journey state.    */
+/* -------------------------------------------------------------------------- */
+
+export type DnaDimensionKey = 'business' | 'service' | 'operations' | 'goals';
+
+export type DnaDimensionStatus = 'understood' | 'learning' | 'next';
+
+export type DnaDimension = {
+  key: DnaDimensionKey;
+  title: string;
+  /** Applicable fields for the current setup, in field order. */
+  fields: FieldKey[];
+  status: DnaDimensionStatus;
+};
+
+const DNA_DIMENSION_DEFS: Array<{ key: DnaDimensionKey; title: string; fields: FieldKey[] }> = [
+  { key: 'business', title: 'Business', fields: ['businessType', 'businessName', 'country', 'email'] },
+  { key: 'service', title: 'Service & locations', fields: ['serviceMode', 'tables'] },
+  { key: 'operations', title: 'Operations', fields: ['teamSize', 'stockConcerns', 'bookings'] },
+  { key: 'goals', title: 'Goals', fields: ['priorities', 'otherPreferences'] },
+];
+
+/** A field counts as resolved once the owner confirmed it or deliberately skipped it. */
+const dnaFieldResolved = (journey: Record<FieldKey, FieldStatus>, key: FieldKey) =>
+  journey[key] === 'confirmed' || journey[key] === 'skipped';
+
+/** A field is known once Q holds a value for it, confirmed or still awaiting confirmation. */
+const dnaFieldKnown = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>, key: FieldKey) =>
+  fieldDefByKey[key].hasValue(setup) && (journey[key] === 'confirmed' || journey[key] === 'captured');
+
+/**
+ * Per-dimension understanding states, derived from the same journey model the
+ * concierge already maintains. Dimensions with no applicable fields (e.g.
+ * Service & locations for a retail shop) are omitted entirely.
+ */
+export const dimensionStates = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>): DnaDimension[] =>
+  DNA_DIMENSION_DEFS.map((def) => ({
+    key: def.key,
+    title: def.title,
+    fields: def.fields.filter((key) => fieldDefByKey[key].applicable(setup)),
+  }))
+    .filter((dimension) => dimension.fields.length > 0)
+    .map((dimension) => {
+      const resolved = dimension.fields.filter((key) => dnaFieldResolved(journey, key)).length;
+      const touched =
+        dimension.fields.filter((key) => dnaFieldKnown(setup, journey, key) || journey[key] === 'skipped').length;
+      const status: DnaDimensionStatus =
+        resolved === dimension.fields.length ? 'understood' : touched > 0 ? 'learning' : 'next';
+      return { ...dimension, status };
+    });
+
+/**
+ * Share of applicable fields the owner has resolved (confirmed or deliberately
+ * skipped — choosing to skip is also a decision). Computed over currently
+ * applicable fields, so the raw value can move in both directions when
+ * businessType changes applicability; the UI holds a high-water mark.
+ */
+export const understandingPercent = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>): number => {
+  const applicable = FIELD_ORDER.filter((key) => fieldDefByKey[key].applicable(setup));
+  if (applicable.length === 0) return 0;
+  const resolved = applicable.filter((key) => dnaFieldResolved(journey, key)).length;
+  return Math.round((resolved / applicable.length) * 100);
+};
+
+/**
+ * The dimension Q is currently working on: the one owning the active field,
+ * otherwise the first dimension still in a learning state.
+ */
+export const activeDimension = (
+  setup: GuestSetup,
+  journey: Record<FieldKey, FieldStatus>,
+  activeField: FieldKey | null,
+): DnaDimensionKey | null => {
+  const dimensions = dimensionStates(setup, journey);
+  if (activeField) {
+    const owner = dimensions.find((dimension) => dimension.fields.includes(activeField));
+    if (owner) return owner.key;
+  }
+  const learning = dimensions.find((dimension) => dimension.status === 'learning');
+  return learning ? learning.key : null;
+};
