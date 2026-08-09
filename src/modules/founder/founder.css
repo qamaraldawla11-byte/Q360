@@ -1,0 +1,255 @@
+/* Q360-QB-M4-S2: Founder Daily Brief page styles.
+   Uses the existing theme tokens only; no design-system core changes. */
+
+.founder-page {
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    gap: 20px;
+}
+
+.founder-header {
+    display: grid;
+    gap: 6px;
+}
+
+.founder-title {
+    margin: 0;
+    font-size: 26px;
+    color: var(--fg-primary);
+}
+
+.founder-subtitle {
+    margin: 0;
+    color: var(--fg-secondary);
+    font-size: 14px;
+}
+
+.founder-meta {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 13px;
+}
+
+.founder-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px;
+    color: var(--fg-secondary);
+    border: 1px solid var(--surface-400);
+    border-radius: 16px;
+    background: var(--surface-100);
+}
+
+.founder-spin {
+    animation: founder-rotate 1s linear infinite;
+}
+
+@keyframes founder-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .founder-spin {
+        animation: none;
+    }
+}
+
+.founder-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 16px;
+    background: var(--surface-100);
+}
+
+.founder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.founder-card {
+    padding: 20px;
+    border: 1px solid var(--surface-400);
+    border-radius: 16px;
+    background: var(--surface-100);
+    display: grid;
+    gap: 14px;
+}
+
+.founder-card--unavailable,
+.founder-card--postponed {
+    opacity: 0.85;
+}
+
+.founder-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.founder-card-title {
+    margin: 0;
+    font-size: 16px;
+    color: var(--fg-primary);
+}
+
+.founder-status {
+    flex-shrink: 0;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.founder-status--supported {
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.founder-status--partial {
+    color: var(--warning);
+    border-color: var(--warning);
+}
+
+.founder-status--unavailable {
+    color: var(--fg-muted);
+    border-color: var(--surface-400);
+}
+
+.founder-status--postponed {
+    color: var(--info);
+    border-color: var(--info);
+}
+
+.founder-facts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.founder-fact {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+}
+
+.founder-fact-label {
+    color: var(--fg-secondary);
+}
+
+.founder-fact-value {
+    color: var(--fg-primary);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.founder-tag {
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--fg-muted);
+    border: 1px solid var(--surface-400);
+    white-space: nowrap;
+}
+
+.founder-tag--estimated {
+    color: var(--info);
+    border-color: var(--info);
+}
+
+.founder-unknowns {
+    border-top: 1px solid var(--surface-400);
+    padding-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.founder-unknowns-title {
+    margin: 0;
+    font-size: 13px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.founder-unknowns-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.founder-unknown {
+    display: grid;
+    gap: 2px;
+    font-size: 13px;
+}
+
+.founder-unknown-fact {
+    color: var(--fg-primary);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.founder-unknown-reason {
+    color: var(--fg-secondary);
+}
+
+.founder-empty {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 14px;
+}
+
+/* Tablet */
+@media (max-width: 768px) {
+    .founder-page {
+        padding: 16px;
+    }
+
+    .founder-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Small phones (covers 375 px) */
+@media (max-width: 480px) {
+    .founder-page {
+        padding: 12px;
+        gap: 14px;
+    }
+
+    .founder-title {
+        font-size: 22px;
+    }
+
+    .founder-card {
+        padding: 16px;
+    }
+
+    .founder-fact {
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .founder-fact-value {
+        text-align: left;
+    }
+}

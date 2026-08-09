@@ -221,6 +221,86 @@ try {
         throw new Error('Updated customer was not persisted under Business A');
     }
 
+    // ── CORE-M1-S2: customer lifecycle, archive, search, and filtering ───
+    const lifecycleCustomer = await requestJson<{ id?: string; status?: string; archivedAt?: string | null }>('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Lifecycle Customer', phone: '+15550999001', email: 'lifecycle@example.com', companyName: 'Lifecycle Co', notes: 'archive me' }),
+    });
+    assertStatus(lifecycleCustomer.response.status, 201, 'Lifecycle customer create must succeed');
+    if (lifecycleCustomer.body.status !== 'active') {
+        throw new Error(`New customer default status must be active, got ${lifecycleCustomer.body.status}`);
+    }
+
+    const activeList = await requestJson<{ id: string; status: string }[]>('/api/customers');
+    assertStatus(activeList.response.status, 200, 'Active customer list must succeed');
+    if (!activeList.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Active list must include newly created active customer');
+    }
+
+    const archived = await requestJson<{ id?: string; status?: string; archivedAt?: string | null }>(`/api/customers/${lifecycleCustomer.body.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    assertStatus(archived.response.status, 200, 'Archive customer must succeed');
+    if (archived.body.status !== 'archived' || !archived.body.archivedAt) {
+        throw new Error(`Archive must set status=archived and archivedAt; got status=${archived.body.status}, archivedAt=${archived.body.archivedAt}`);
+    }
+
+    const archivedAgain = await requestJson<{ id?: string; status?: string; archivedAt?: string | null }>(`/api/customers/${lifecycleCustomer.body.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    assertStatus(archivedAgain.response.status, 200, 'Repeat archive must be idempotent');
+    if (archivedAgain.body.status !== 'archived') {
+        throw new Error(`Idempotent archive must keep status=archived, got ${archivedAgain.body.status}`);
+    }
+
+    const activeListAfterArchive = await requestJson<{ id: string; status: string }[]>('/api/customers');
+    assertStatus(activeListAfterArchive.response.status, 200, 'Active customer list after archive must succeed');
+    if (activeListAfterArchive.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Active list must exclude archived customer by default');
+    }
+
+    const archivedList = await requestJson<{ id: string; status: string }[]>('/api/customers?includeArchived=true');
+    assertStatus(archivedList.response.status, 200, 'Archived-inclusive list must succeed');
+    if (!archivedList.body.some(customer => customer.id === lifecycleCustomer.body.id && customer.status === 'archived')) {
+        throw new Error('includeArchived=true must return the archived customer');
+    }
+
+    const searchByName = await requestJson<{ id: string }[]>('/api/customers?search=Lifecycle');
+    assertStatus(searchByName.response.status, 200, 'Search by name must succeed');
+    if (searchByName.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Search by default must exclude archived customer');
+    }
+
+    const searchArchived = await requestJson<{ id: string }[]>('/api/customers?search=Lifecycle&includeArchived=true');
+    assertStatus(searchArchived.response.status, 200, 'Search archived must succeed');
+    if (!searchArchived.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Search with includeArchived=true must find archived customer');
+    }
+
+    const searchPhone = await requestJson<{ id: string }[]>('/api/customers?search=+15550999001');
+    assertStatus(searchPhone.response.status, 200, 'Search by phone must succeed');
+    if (searchPhone.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Search by phone must exclude archived customer by default');
+    }
+
+    const crossTenantArchive = await requestJson<{ error?: string }>(`/api/customers/${lifecycleCustomer.body.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    }, businessBId);
+    assertStatus(crossTenantArchive.response.status, 404, 'Business B must not archive Business A customer');
+
+    const crossTenantSearch = await requestJson<{ id: string }[]>('/api/customers?search=Lifecycle&includeArchived=true', {}, businessBId);
+    assertStatus(crossTenantSearch.response.status, 200, 'Cross-tenant search must succeed');
+    if (crossTenantSearch.body.some(customer => customer.id === lifecycleCustomer.body.id)) {
+        throw new Error('Business B search must not include Business A customer');
+    }
+
     // ── CORE-M1: shared customers entitlement ────────────────────────────
     // State so far: NO module rows exist for Business A (canonical shared row
     // absent, legacy restaurant row absent). The CRUD checks above already
@@ -322,8 +402,16 @@ try {
     const sharedList = await requestWithToken<{ modules: { moduleKey: string; enabled: boolean }[] }>(ownerAToken, '/api/business/modules?workspace=shared');
     assertStatus(sharedList.response.status, 200, 'Shared module listing must succeed');
     const sharedKeys = sharedList.body.modules.map(module => module.moduleKey);
-    if (sharedKeys.filter(key => key === 'customers').length !== 1 || sharedKeys.filter(key => key === 'quotes').length !== 1 || sharedKeys.length !== 2) {
-        throw new Error(`Shared listing must contain customers and quotes exactly once; got ${sharedKeys.join(',')}`);
+    const expectedSharedKeys = ['customers', 'quotes', 'products'];
+    const sharedKeyCounts = new Map<string, number>();
+    for (const key of sharedKeys) {
+        sharedKeyCounts.set(key, (sharedKeyCounts.get(key) ?? 0) + 1);
+    }
+    const missing = expectedSharedKeys.filter(key => sharedKeyCounts.get(key) !== 1);
+    const duplicates = [...sharedKeyCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key);
+    const unexpected = sharedKeys.filter(key => !expectedSharedKeys.includes(key));
+    if (missing.length > 0 || duplicates.length > 0 || unexpected.length > 0) {
+        throw new Error(`Shared listing must contain exactly customers, quotes, products once each; got [${sharedKeys.join(',')}]; missing=[${missing.join(',')}], duplicates=[${duplicates.join(',')}], unexpected=[${unexpected.join(',')}]`);
     }
     const restaurantList = await requestWithToken<{ modules: { moduleKey: string }[] }>(ownerAToken, '/api/business/modules?workspace=restaurant');
     assertStatus(restaurantList.response.status, 200, 'Restaurant module listing must succeed');
@@ -358,7 +446,7 @@ try {
     const tenantAStaffPrimaryWorkspace = await requestWithToken(await staffTokenFor(staffAllowId, businessAId, '/app/retail'), '/api/customers');
     assertStatus(tenantAStaffPrimaryWorkspace.response.status, 200, 'primaryWorkspace must not change staff authorization');
 
-    console.log('Customers verification passed: create, list, detail, update, missing/empty-name rejection, cross-tenant update isolation, workspace-route tenant rejection, shared/legacy entitlement resolution, staff module-access layering, module-settings scope validation, single shared listing, and primaryWorkspace neutrality.');
+    console.log('Customers verification passed: create, list, detail, update, missing/empty-name rejection, cross-tenant update isolation, workspace-route tenant rejection, shared/legacy entitlement resolution, staff module-access layering, module-settings scope validation, single shared listing, primaryWorkspace neutrality, customer lifecycle defaults, archive idempotency, archived filtering, tenant-scoped search, and cross-tenant archive isolation.');
 } catch (error) {
     console.error('Customers verification failed:', error);
     process.exitCode = 1;

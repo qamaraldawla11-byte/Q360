@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "restaurant_orders_business_idempotency_key_idx" ON "restaurant_orders" USING btree ("business_id","idempotency_key") WHERE "restaurant_orders"."idempotency_key" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "restaurant_orders_business_daily_visible_number_idx" ON "restaurant_orders" USING btree ("business_id","order_number_date","visible_order_number") WHERE "restaurant_orders"."visible_order_number" IS NOT NULL AND "restaurant_orders"."order_number_date" IS NOT NULL;

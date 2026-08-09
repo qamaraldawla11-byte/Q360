@@ -5,6 +5,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { AppShell } from '@/layouts/AppShell';
 import { useAuthStore } from '@/store/auth.store';
 import { RestaurantAccessGuard } from '@/components/auth/RestaurantAccessGuard';
+import { FounderRoute } from '@/components/auth/FounderRoute';
 import { hasRestaurantModuleAccess, isRestaurantManager } from '@/utils/restaurantAccess';
 import { PLATFORM_APP_URL } from '@/utils/host';
 
@@ -92,6 +93,7 @@ const PharmacyStaff = lazy(() => import('@/modules/commerce/pharmacy/views/Staff
 const RetailDashboard = lazy(() => import('@/modules/commerce/retail/views/DashboardView').then(m => ({ default: m.DashboardView })));
 const RetailPos = lazy(() => import('@/modules/commerce/retail/views/PosView').then(m => ({ default: m.PosView })));
 const RetailCatalog = lazy(() => import('@/modules/commerce/retail/views/CatalogView').then(m => ({ default: m.CatalogView })));
+const RetailProducts = lazy(() => import('@/modules/commerce/retail/views/ProductsView').then(m => ({ default: m.ProductsView })));
 const RetailInventory = lazy(() => import('@/modules/commerce/retail/views/InventoryView').then(m => ({ default: m.InventoryView })));
 const RetailCustomers = lazy(() => import('@/modules/commerce/retail/views/CustomersView').then(m => ({ default: m.CustomersView })));
 const RetailQuotes = lazy(() => import('@/modules/commerce/retail/views/QuotesView').then(m => ({ default: m.QuotesView })));
@@ -112,6 +114,9 @@ const SupermarketProcurement = lazy(() => import('@/modules/commerce/supermarket
 
 const PharmacyProcurement = lazy(() => import('@/modules/commerce/pharmacy/views/ProcurementView').then(m => ({ default: m.PharmacyProcurementView })));
 const RetailProcurement = lazy(() => import('@/modules/commerce/retail/views/ProcurementView').then(m => ({ default: m.RetailProcurementView })));
+
+// Founder (Q360-QB-M4-S2)
+const FounderDailyBriefView = lazy(() => import('@/modules/founder/FounderDailyBriefView').then(m => ({ default: m.FounderDailyBriefView })));
 
 // School Vertical
 const SchoolDashboard = lazy(() => import('@/modules/education/school/views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -273,6 +278,7 @@ export const appRoutes: RouteObject[] = [
                     { index: true, element: <RetailDashboard /> },
                     { path: 'pos', element: <RetailPos /> },
                     { path: 'catalog', element: <RetailCatalog /> },
+                    { path: 'products', element: <RetailProducts /> },
                     { path: 'inventory', element: <RetailInventory /> },
                     { path: 'customers', element: <RetailCustomers /> },
                     { path: 'quotes', element: <RetailQuotes /> },
@@ -301,6 +307,18 @@ export const appRoutes: RouteObject[] = [
                 children: [
                     { index: true, element: <SchoolDashboard /> },
                 ]
+            },
+            {
+                // Q360-QB-M4-S2: Founder-only daily brief. FounderRoute blocks
+                // rendering (and the API fetch) for every non-owner role.
+                path: 'founder',
+                element: (
+                    <Suspense fallback={<PageLoader />}>
+                        <FounderRoute>
+                            <FounderDailyBriefView />
+                        </FounderRoute>
+                    </Suspense>
+                ),
             },
             {
                 element: <MainLayout />,

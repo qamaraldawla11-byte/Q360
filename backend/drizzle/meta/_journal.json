@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785544124981,
+      "tag": "0000_wave0_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785572873655,
+      "tag": "0001_restaurant_partial_index_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785691953662,
+      "tag": "0002_sudden_lionheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785782526422,
+      "tag": "0003_small_stone_men",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785782526433,
+      "tag": "0004_inventory_core_m2",
+      "breakpoints": true
+    }
+  ]
+}

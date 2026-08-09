@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
     boolean,
     doublePrecision,
@@ -65,18 +66,49 @@ export const inventoryItems = pgTable('inventory_items', {
     status: text('status').default('ok'), // ok | low | critical
     supplier: text('supplier'),
     price: doublePrecision('price').notNull(),
+    productId: text('product_id'), // Shared product identity link (M2, additive, nullable)
     businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
-});
+}, (table) => [
+    index('inventory_items_product_id_idx').on(table.productId),
+]);
 
-// Products table (for POS barcode lookup)
+// Products table — canonical Q Core Product identity.
+//
+// Compatibility: the legacy double-precision `price` column and existing
+// barcode-backed POS lookup are preserved unchanged. New Shared Product fields
+// use integer minor units (`defaultPriceAmountMinor`) and an explicit currency.
+// Lifecycle is soft-only: active products appear in normal lists; archived
+// products are preserved for historical references and are not hard-deleted.
 export const products = pgTable('products', {
     id: text('id').primaryKey(),
+    businessId: text('business_id').default('biz_main').notNull(),
     name: text('name').notNull(),
-    barcode: text('barcode').notNull().unique(),
+    description: text('description'),
+    sku: text('sku'),
+    barcode: text('barcode'),
+    unit: text('unit'),
+    // Legacy POS/Inventory price — preserved for existing consumers.
     price: doublePrecision('price').notNull(),
+    // New Shared Product price — integer minor units (e.g. cents).
+    defaultPriceAmountMinor: integer('default_price_amount_minor'),
+    currency: text('currency').default('USD').notNull(),
     category: text('category'),
-    businessId: text('business_id').default('biz_main').notNull(), // Multi-tenancy
-});
+    status: text('status').$type<'active' | 'archived'>().default('active').notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+    index('products_business_id_idx').on(table.businessId),
+    index('products_status_idx').on(table.status),
+    // Tenant-scoped uniqueness where a value is present. Null/blank values do
+    // not participate, so different tenants may share the same SKU or barcode.
+    uniqueIndex('products_business_sku_idx')
+        .on(table.businessId, table.sku)
+        .where(sql`${table.sku} IS NOT NULL AND ${table.sku} <> ''`),
+    uniqueIndex('products_business_barcode_idx')
+        .on(table.businessId, table.barcode)
+        .where(sql`${table.barcode} IS NOT NULL AND ${table.barcode} <> ''`),
+]);
 
 // Orders table
 export const orders = pgTable('orders', {
@@ -101,6 +133,8 @@ export const customers = pgTable('customers', {
     companyName: text('company_name'),
     address: text('address'),
     notes: text('notes'),
+    status: text('status').$type<'active' | 'archived'>().default('active').notNull(),
+    archivedAt: timestamp('archived_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => [
@@ -239,7 +273,14 @@ export const restaurantOrders = pgTable('restaurant_orders', {
     total: integer('total').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => [
+    uniqueIndex('restaurant_orders_business_idempotency_key_idx')
+        .on(table.businessId, table.idempotencyKey)
+        .where(sql`${table.idempotencyKey} IS NOT NULL`),
+    uniqueIndex('restaurant_orders_business_daily_visible_number_idx')
+        .on(table.businessId, table.orderNumberDate, table.visibleOrderNumber)
+        .where(sql`${table.visibleOrderNumber} IS NOT NULL AND ${table.orderNumberDate} IS NOT NULL`),
+]);
 
 export const restaurantOrderItems = pgTable('restaurant_order_items', {
     id: text('id').primaryKey(),
@@ -336,6 +377,9 @@ export const stockMovements = pgTable('stock_movements', {
     businessId: text('business_id').notNull(),
     inventoryItemId: text('inventory_item_id').notNull(),
     purchaseOrderId: text('purchase_order_id'),
+    operationId: text('operation_id'), // Idempotent operation boundary (M2)
+    movementType: text('movement_type'), // e.g. purchase_received, sale, manual_adjustment
+    sourceModule: text('source_module'), // originating module: inventory, suppliers, orders, restaurant
     delta: doublePrecision('delta').notNull(),
     reason: text('reason').notNull(),
     createdBy: text('created_by').notNull(),
@@ -343,6 +387,9 @@ export const stockMovements = pgTable('stock_movements', {
 }, (table) => [
     index('stock_movements_business_idx').on(table.businessId),
     index('stock_movements_item_idx').on(table.inventoryItemId),
+    uniqueIndex('stock_movements_business_operation_item_uidx')
+        .on(table.businessId, table.operationId, table.inventoryItemId)
+        .where(sql`${table.operationId} IS NOT NULL`),
 ]);
 
 // Businesses table
@@ -548,7 +595,10 @@ export type NewUser = typeof users.$inferInsert;
 export type OtpCode = typeof otpCodes.$inferSelect;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type NewInventoryItem = typeof inventoryItems.$inferInsert;
+export type StockMovement = typeof stockMovements.$inferSelect;
+export type NewStockMovement = typeof stockMovements.$inferInsert;
 export type Product = typeof products.$inferSelect;
+export type NewProduct = typeof products.$inferInsert;
 export type Order = typeof orders.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;

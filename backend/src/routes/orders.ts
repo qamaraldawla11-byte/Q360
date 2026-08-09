@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
 import type { AppEnv } from '../types/app.js';
+import { applyStockMovement, StockMovementError } from '../services/inventoryMovement.service.js';
 
 const ordersRouter = new Hono<AppEnv>();
 
@@ -115,24 +116,18 @@ ordersRouter.post('/orders', requireRole(['owner', 'admin', 'manager', 'staff'])
             });
 
             for (const item of canonicalItems) {
-                const inventoryItem = await first(tx.select().from(inventoryItems)
-                    .where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)))
-                );
-                if (!inventoryItem) {
-                    throw new OrderValidationError(`Product ${item.id} was not found`, 404);
-                }
-                const newCurrent = inventoryItem.current - item.quantity;
-
-                let newStatus: 'ok' | 'low' | 'critical' = 'ok';
-                if (newCurrent <= inventoryItem.min / 2) {
-                    newStatus = 'critical';
-                } else if (newCurrent <= inventoryItem.min) {
-                    newStatus = 'low';
-                }
-
-                await tx.update(inventoryItems)
-                    .set({ current: newCurrent, status: newStatus })
-                    .where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.businessId, businessId)));
+                await applyStockMovement({
+                    businessId,
+                    userId: c.get('userId'),
+                    userRole: c.get('userRole'),
+                    inventoryItemId: item.id,
+                    delta: -item.quantity,
+                    reason: 'sale',
+                    operationId: orderId,
+                    movementType: 'sale',
+                    sourceModule: 'orders',
+                    tx,
+                });
             }
 
             return { canonicalItems, subtotal, tax, total };
@@ -153,6 +148,9 @@ ordersRouter.post('/orders', requireRole(['owner', 'admin', 'manager', 'staff'])
         }, 201);
     } catch (error) {
         if (error instanceof OrderValidationError) {
+            return c.json({ error: error.message }, error.status);
+        }
+        if (error instanceof StockMovementError) {
             return c.json({ error: error.message }, error.status);
         }
         console.error(`[ORDERS] Failed to create order:`, error);
