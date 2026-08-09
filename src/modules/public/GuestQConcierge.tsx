@@ -50,6 +50,7 @@ import {
   listOf,
   mergeSetup,
   nextField,
+  openingAcknowledgement,
   ownerNameFromStatement,
   parseActiveAnswer,
   requiredComplete,
@@ -569,14 +570,18 @@ export function GuestQConcierge({
 
       // Confirm the active field, or any volunteered facts parsed when no field was active.
       // Volunteered facts come from reliable local parsers, so they can be confirmed directly.
+      // Map parsed GuestSetup keys to journey FieldKeys (e.g. employees → teamSize)
+      // so volunteered facts confirm the fields they actually belong to; otherwise
+      // Q would re-ask for something the owner already said.
+      const volunteeredKeys = (Object.entries(activeFieldAnswer) as Array<[keyof GuestSetup, unknown]>)
+        .filter(([, value]) => value !== undefined && value !== '' && value !== null && value !== false)
+        .map(([key]) => fieldKeyForUpdateKey(key))
+        .filter((key): key is FieldKey => Boolean(key));
       const keysToConfirm = pendingField
         ? hasActiveAnswer
           ? [pendingField]
           : []
-        : (Object.keys(activeFieldAnswer) as FieldKey[]).filter((key) => {
-            const value = (activeFieldAnswer as Record<string, unknown>)[key];
-            return value !== undefined && value !== '' && value !== null && value !== false;
-          });
+        : [...new Set(volunteeredKeys)];
 
       if (keysToConfirm.length > 0) {
         const preSetup = mergeSetup(setupRef.current, activeFieldAnswer);
@@ -665,8 +670,12 @@ export function GuestQConcierge({
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    void sendMessage(initialPrompt.trim() || 'Hello');
-  }, [initialPrompt, sendMessage]);
+    const prompt = initialPrompt.trim() || 'Hello';
+    // sendMessage runs synchronously up to the network call: the owner's bubble and
+    // the locally confirmed facts are already in place before Q acknowledges them.
+    void sendMessage(prompt);
+    appendMessage('q', openingAcknowledgement(setupRef.current));
+  }, [initialPrompt, sendMessage, appendMessage]);
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
     const container = messageScrollRef.current;

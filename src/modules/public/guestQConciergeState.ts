@@ -807,3 +807,23 @@ export const activeDimension = (
   const learning = dimensions.find((dimension) => dimension.status === 'learning');
   return learning ? learning.key : null;
 };
+
+/**
+ * Composes Q's first acknowledgement from facts the owner just volunteered in the
+ * check-in bar. Cites only locally confirmed parses — never invented information,
+ * never claims completed actions. Returns a calm, generic line when nothing
+ * reliable was parsed. Kept deliberately short: this line precedes the real
+ * conversation, it does not replace it.
+ */
+export const openingAcknowledgement = (setup: GuestSetup): string => {
+  const closing = 'Got it. Let me understand how it runs.';
+  const type = textOf(setup.businessType, 40);
+  if (!type) return closing;
+  const displayType = type.charAt(0).toLowerCase() + type.slice(1);
+  const article = /^[aeiou]/i.test(displayType) ? 'An' : 'A';
+  const details: string[] = [];
+  if (setup.tables !== undefined && setup.tables > 0) details.push(`${setup.tables} tables`);
+  if (setup.employees !== undefined && setup.employees > 0) details.push(`a team of ${setup.employees}`);
+  const identity = details.length ? `${article} ${displayType} — ${details.join(', ')}` : `${article} ${displayType}`;
+  return `${identity}.\n${closing}`;
+};

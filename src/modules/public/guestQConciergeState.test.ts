@@ -24,6 +24,7 @@ import {
   isStaleRevision,
   mergeSetup,
   nextField,
+  openingAcknowledgement,
   parseActiveAnswer,
   requiredComplete,
   requiredProgress,
@@ -1086,5 +1087,42 @@ describe('business DNA selectors', () => {
     assert.equal(dimensions.length, 4);
     assert.ok(dimensions.every((d) => d.status === 'understood'));
     assert.equal(activeDimension(setup, journey, null), null);
+  });
+});
+
+describe('openingAcknowledgement', () => {
+  const CLOSING = 'Got it. Let me understand how it runs.';
+
+  it('reflects confirmed facts in a calm, specific line', () => {
+    const setup = mergeSetup(initialSetup('A cafe with 12 tables and 5 employees'), {
+      businessType: 'cafe',
+      tables: 12,
+      employees: 5,
+    });
+    assert.equal(openingAcknowledgement(setup), `A cafe — 12 tables, a team of 5.\n${CLOSING}`);
+  });
+
+  it('handles a type-only opening', () => {
+    const setup = mergeSetup(initialSetup('restaurant'), { businessType: 'restaurant' });
+    assert.equal(openingAcknowledgement(setup), `A restaurant.\n${CLOSING}`);
+  });
+
+  it('uses the right article and normalizes capitalization', () => {
+    const setup = mergeSetup(initialSetup('x'), { businessType: 'Italian restaurant' });
+    assert.equal(openingAcknowledgement(setup), `An italian restaurant.\n${CLOSING}`);
+  });
+
+  it('stays generic when nothing reliable was parsed', () => {
+    assert.equal(openingAcknowledgement(initialSetup('hi')), CLOSING);
+  });
+
+  it('never invents facts: name and country alone do not make an identity', () => {
+    const setup = mergeSetup(initialSetup('x'), { businessName: 'Noor', country: 'Spain' });
+    assert.equal(openingAcknowledgement(setup), CLOSING);
+  });
+
+  it('omits zero counts', () => {
+    const setup = mergeSetup(initialSetup('cafe'), { businessType: 'cafe', tables: 0 });
+    assert.equal(openingAcknowledgement(setup), `A cafe.\n${CLOSING}`);
   });
 });
