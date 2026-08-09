@@ -562,7 +562,6 @@ export const LaunchLandingView = () => {
                             <p className="d2-chapter">
                                 <span className="d2-chapter-num">01</span> — Meet Q
                             </p>
-                            <p className="d2-direction-line">Tell Q about your business.</p>
                             <p className="d2-direction-line d2-direction-dim">Q learns how your business works.</p>
                         </div>
                         <button
