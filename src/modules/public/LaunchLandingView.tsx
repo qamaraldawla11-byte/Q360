@@ -497,8 +497,8 @@ export const LaunchLandingView = () => {
                             </span>
                         </h1>
                         <p className="d2-support">
-                            Q360 is an AI workspace that take care of your business, so you have know more control your
-                            life
+                            Q360 is an AI workspace that takes care of your business, so you have more control over
+                            your life.
                         </p>
                         <div className="d2-desk-stage">
                             <div className="d2-orbits" aria-hidden="true">
@@ -516,7 +516,7 @@ export const LaunchLandingView = () => {
                                 onSubmit={openConcierge}
                                 inputRef={arrivalInputRef}
                                 placeholder={CHECK_IN_PLACEHOLDER}
-                                microcopy="Know more . Live more."
+                                microcopy="Know more. Live more."
                             />
                         </div>
                         <div className="d2-signals" aria-hidden="true">
