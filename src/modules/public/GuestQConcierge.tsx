@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { http } from '@/api/http';
 import { LogoMark } from '@/components/ui/Logo';
+import { BrandLogo } from './BrandLogo';
 import {
   activeDimension,
   deriveQuickReplies,
@@ -143,8 +144,15 @@ const dnaIcon = (key: DnaDimensionKey) => {
   return Target;
 };
 
+const DNA_INSIGHT: Record<DnaDimensionKey, string> = {
+  business: 'Q is learning your business.',
+  service: 'Q is learning your service and locations.',
+  operations: 'Q is learning your operations.',
+  goals: 'Q is learning your goals.',
+};
+
 const guestQStyles = [
-  ':root{--q-bg:#ffffff;--q-surface:#fafafa;--q-text:#0a0a0a;--q-text-secondary:#5a6a7d;--q-border:#eeeeee;--q-border-strong:#e0e0e0;--q-accent:#e36b00;--q-accent-soft:#fff6ed;--q-q-bubble:#ffffff;--q-user-bubble:#0a0a0a;--q-success:#007b65;--q-error:#b0362c;--q-focus:#7cadff;}',
+  ':root{--q-bg:#ffffff;--q-surface:#fafafa;--q-text:#0a0a0a;--q-text-secondary:#5a6a7d;--q-border:#eeeeee;--q-border-strong:#e0e0e0;--q-accent:#e36b00;--q-accent-soft:#fff6ed;--q-momentum:#ff6a00;--q-q-bubble:#ffffff;--q-user-bubble:#0a0a0a;--q-success:#007b65;--q-error:#b0362c;--q-focus:#7cadff;}',
   '.guest-q-overlay{position:fixed;inset:0;z-index:2000;height:100dvh;display:grid;place-items:center;padding:24px;background:rgba(13,24,43,.55);backdrop-filter:blur(12px);overflow:hidden;overscroll-behavior:none;}',
   '.guest-q-modal{isolation:isolate;width:min(1180px,100%);height:min(860px,calc(100dvh - 48px));max-height:calc(100dvh - 48px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--q-border);border-radius:28px;background:var(--q-bg);color:var(--q-text);box-shadow:0 28px 90px rgba(15,30,55,.35);}',
   '.guest-q-overlay[data-theme=dark]{--q-bg:#0f1a2c;--q-surface:#121c2e;--q-text:#f5f8ff;--q-text-secondary:#90a0b8;--q-border:#273b58;--q-border-strong:#2b405f;--q-accent:#ff9a3c;--q-accent-soft:#3b2b20;--q-q-bubble:#17243a;--q-user-bubble:#1e2d46;}',
@@ -201,18 +209,20 @@ const guestQStyles = [
   '.guest-q-draft-value{font-weight:700;color:var(--q-text);text-align:right;}',
   '.guest-q-draft-missing{color:var(--q-accent);font-weight:700;text-align:right;}',
   '.guest-q-modules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}',
-  '.guest-q-module{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--q-bg);border:1px solid var(--q-border);font-size:14px;font-weight:600;color:var(--q-text);animation:guestQIn .32s ease-out both;}.guest-q-module:nth-child(2){animation-delay:.05s;}.guest-q-module:nth-child(3){animation-delay:.1s;}.guest-q-module:nth-child(4){animation-delay:.15s;}.guest-q-module:nth-child(5){animation-delay:.2s;}.guest-q-module:nth-child(6){animation-delay:.25s;}.guest-q-module:nth-child(7){animation-delay:.3s;}.guest-q-module:nth-child(8){animation-delay:.35s;}.guest-q-module:nth-child(n+9){animation-delay:.4s;}',
+  '.guest-q-module{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--q-bg);border:1px solid var(--q-border);font-size:14px;font-weight:600;color:var(--q-text);animation:guestQModuleIn .4s cubic-bezier(.16,1,.3,1) both;}.guest-q-module:nth-child(2){animation-delay:.05s;}.guest-q-module:nth-child(3){animation-delay:.1s;}.guest-q-module:nth-child(4){animation-delay:.15s;}.guest-q-module:nth-child(5){animation-delay:.2s;}.guest-q-module:nth-child(6){animation-delay:.25s;}.guest-q-module:nth-child(7){animation-delay:.3s;}.guest-q-module:nth-child(8){animation-delay:.35s;}.guest-q-module:nth-child(n+9){animation-delay:.4s;}',
   '.guest-q-module svg{width:17px;height:17px;color:var(--q-accent);flex-shrink:0;}',
   '.guest-q-brief-actions{display:flex;flex-direction:column;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--q-border-strong);border-radius:14px;background:var(--q-bg);color:var(--q-text);padding:12px 14px;font:inherit;font-weight:700;cursor:pointer;}.guest-q-button:disabled{opacity:.45;cursor:not-allowed;}.guest-q-button--primary{border-color:var(--q-text);background:var(--q-text);color:#fff;padding:16px 18px;font-size:16px;}.guest-q-button--primary:hover{background:#1a1a1a;border-color:#1a1a1a;color:#fff;}.guest-q-button:focus-visible{outline:2px solid var(--q-focus);outline-offset:2px;}',
   '.guest-q-note{font-size:13px;color:var(--q-text-secondary);line-height:1.5;}',
   '.guest-q-dna-subtitle{margin:2px 0 0;font-size:14px;line-height:1.5;color:var(--q-text-secondary);}',
   '.guest-q-dna-ringwrap{display:flex;justify-content:center;padding:4px 0;}',
+  '.guest-q-dna-ringwrap.is-learning .guest-q-dna-arc{filter:drop-shadow(0 0 6px rgba(255,106,0,.5));}',
+  '.guest-q-dna-ringwrap.is-prepared .guest-q-dna-arc{filter:drop-shadow(0 0 8px rgba(255,106,0,.55));}',
   '.guest-q-dna-ring{position:relative;width:148px;height:148px;}',
   '.guest-q-dna-ring>svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}',
   '.guest-q-dna-track{fill:none;stroke:var(--q-border-strong);stroke-width:7;}',
-  '.guest-q-dna-arc{fill:none;stroke:var(--q-accent);stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
+  '.guest-q-dna-arc{fill:none;stroke:var(--q-momentum);stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
   '.guest-q-dna-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}',
-  '.guest-q-dna-q{display:block;width:30px;height:30px;color:var(--q-accent);}',
+  '.guest-q-dna-q{display:block;width:30px;height:30px;color:var(--q-momentum);}',
   '.guest-q-dna-q svg{display:block;width:100%;height:100%;}',
   '.guest-q-dna-q-base,.guest-q-dna-q-tail{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;}',
   '.guest-q-dna-q-base{stroke-opacity:.32;transition:stroke-opacity .4s ease;}',
@@ -220,12 +230,13 @@ const guestQStyles = [
   '.guest-q-dna-q.is-idle{animation:guestQDnaBreath 4.4s ease-in-out infinite;}',
   '.guest-q-dna-q.is-learning .guest-q-dna-q-base{stroke-opacity:.55;}',
   '.guest-q-dna-q.is-learning .guest-q-dna-q-sweep{opacity:1;animation:guestQDnaSweep 2.2s linear infinite;}',
-  '.guest-q-dna-q.is-prepared{filter:drop-shadow(0 0 12px rgba(227,107,0,.4));}',
+  '.guest-q-dna-q.is-prepared{filter:drop-shadow(0 0 12px rgba(255,106,0,.45));}',
   '.guest-q-dna-q.is-prepared .guest-q-dna-q-base{stroke-opacity:1;}',
   '.guest-q-dna-percent{font-size:26px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
   '.guest-q-dna-percent-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
+  '.guest-q-dna-insight{display:flex;align-items:center;justify-content:center;gap:8px;margin:-4px 0 0;font-size:13px;font-weight:600;line-height:1.5;text-align:center;color:var(--q-text-secondary);}',
   '.guest-q-dna-dims{display:flex;flex-direction:column;gap:6px;}',
-  '.guest-q-dna-dim{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--q-border);border-radius:13px;background:var(--q-bg);transition:border-color .3s ease;}',
+  '.guest-q-dna-dim{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--q-border);border-radius:13px;background:var(--q-bg);transition:border-color .3s ease;animation:guestQDnaDimIn .45s cubic-bezier(.16,1,.3,1) both;}',
   '.guest-q-dna-dim.is-active{border-color:var(--q-accent);}',
   '.guest-q-dna-dim-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--q-accent-soft);color:var(--q-accent);flex:0 0 auto;}',
   '.guest-q-dna-dim-icon svg{width:16px;height:16px;}',
@@ -234,13 +245,15 @@ const guestQStyles = [
   '.guest-q-dna-dim.is-understood .guest-q-dna-dim-status{color:var(--q-success);}',
   '.guest-q-dna-dim.is-learning .guest-q-dna-dim-status{color:var(--q-accent);}',
   '.guest-q-dna-dim.is-next .guest-q-dna-dim-status{color:var(--q-text-secondary);font-weight:600;}',
-  '.guest-q-dna-pulse{width:7px;height:7px;border-radius:50%;background:var(--q-accent);animation:guestQDnaPulse 1.5s ease-in-out infinite;}',
+  '.guest-q-dna-pulse{width:7px;height:7px;border-radius:50%;background:var(--q-momentum);animation:guestQDnaPulse 1.5s ease-in-out infinite;}',
   '.guest-q-dna-hollow{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--q-text-secondary);opacity:.55;}',
   '.guest-q-draft-unset{color:var(--q-text-secondary);font-weight:500;text-align:right;}',
   '.guest-q-dna-principle{padding-top:4px;font-size:12.5px;font-weight:700;letter-spacing:.05em;text-align:center;color:var(--q-text-secondary);}',
   '@keyframes guestQDnaBreath{0%,100%{opacity:.7;transform:scale(1);}50%{opacity:1;transform:scale(1.06);}}',
   '@keyframes guestQDnaPulse{0%,100%{transform:scale(1);opacity:.6;}50%{transform:scale(1.4);opacity:1;}}',
   '@keyframes guestQDnaSweep{to{transform:rotate(360deg);}}',
+  '@keyframes guestQDnaDimIn{from{opacity:.35;transform:translateY(4px);border-color:color-mix(in srgb,var(--q-momentum) 55%,transparent);}to{opacity:1;transform:translateY(0);}}',
+  '@keyframes guestQModuleIn{from{opacity:0;transform:translateY(8px);border-color:color-mix(in srgb,var(--q-momentum) 65%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--q-momentum) 14%,transparent);}to{opacity:1;transform:translateY(0);box-shadow:none;}}',
   '@media(max-width:900px){.guest-q-dna-ring{width:126px;height:126px;}.guest-q-dna-percent{font-size:22px;}.guest-q-dna-q{width:26px;height:26px;}}',
   '@media(max-width:900px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;grid-template-columns:none;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:36dvh;min-height:220px;overflow-y:auto;border-left:0;border-top:1px solid var(--q-border);padding:20px;}.guest-q-message{max-width:92%;}.guest-q-header{padding:14px 18px;}.guest-q-brand-text{font-size:18px;}.guest-q-plan-title{font-size:26px;}}',
 ].join('');
@@ -895,8 +908,7 @@ export function GuestQConcierge({
       <section className="guest-q-modal" ref={modalRef}>
         <header className="guest-q-header">
           <div className="guest-q-brand">
-            <LogoMark size={44} />
-            <span className="guest-q-brand-text">Q360</span>
+            <BrandLogo height={34} />
           </div>
           <div className={'guest-q-header-status ' + (replyMode === 'ai' ? 'guest-q-status--ai' : '')}>
             <span className="guest-q-status-dot" aria-hidden="true" />
@@ -1062,7 +1074,7 @@ export function GuestQConcierge({
               </p>
             </div>
 
-            <div className="guest-q-dna-ringwrap">
+            <div className={'guest-q-dna-ringwrap is-' + qMood}>
               <div
                 className="guest-q-dna-ring"
                 role="img"
@@ -1095,12 +1107,21 @@ export function GuestQConcierge({
               </div>
             </div>
 
+            <p className="guest-q-dna-insight">
+              {qMood === 'learning' ? <span className="guest-q-dna-pulse" aria-hidden="true" /> : null}
+              {reviewReady
+                ? 'Workspace prepared — review what Q learned.'
+                : dnaActive
+                  ? DNA_INSIGHT[dnaActive]
+                  : 'Q is ready when you are.'}
+            </p>
+
             <div className="guest-q-dna-dims">
               {dnaDimensions.map((dimension) => {
                 const Icon = dnaIcon(dimension.key);
                 return (
                   <div
-                    key={dimension.key}
+                    key={dimension.key + ':' + dimension.status}
                     className={
                       'guest-q-dna-dim is-' + dimension.status + (dimension.key === dnaActive ? ' is-active' : '')
                     }
