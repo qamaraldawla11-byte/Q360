@@ -21,42 +21,36 @@ const MOMENTS: Moment[] = [
     {
         id: 'inventory',
         kind: 'inventory',
-        title: 'Inventory Ready',
+        title: 'Operations',
         human: 'Reorder drafts are written — send them when you’re ready.',
         minutesAgo: 33,
         working: 'Q is checking stock…',
-        done: 'Stock checked',
+        done: 'Inventory checked',
     },
     {
         id: 'customer',
         kind: 'customer',
-        title: 'Customer Waiting',
+        title: 'Customers',
         human: 'A reply is drafted in your words. Read it, then send.',
         minutesAgo: 26,
         working: 'Q is writing in your words…',
-        done: 'Reply drafted',
+        done: 'Replies drafted',
     },
     {
         id: 'supplier',
         kind: 'supplier',
-        title: 'Supplier Follow-up',
+        title: 'Decisions',
         human: 'The follow-up is written. Firm, polite, yours.',
         minutesAgo: 19,
-        working: 'Q is chasing invoice 214…',
-        done: 'Follow-up written',
+        working: 'Q is preparing the follow-up…',
+        done: 'Priorities prepared',
     },
 ];
 
 const CHAPTERS = [
-    { scene: 'arrival', num: '01', label: 'Arrival' },
+    { scene: 'arrival', num: '01', label: 'Meet Q' },
     { scene: 'prepare', num: '02', label: 'What Q prepares' },
-    { scene: 'door', num: '03', label: 'Check in' },
-] as const;
-
-const JOURNEY = [
-    { num: '01', title: 'Check in', body: 'Tell Q about your business, in a sentence or two.' },
-    { num: '02', title: 'Q learns', body: 'Your business DNA, captured in minutes.' },
-    { num: '03', title: 'Workspace prepared', body: 'Your operating system, ready when you are.' },
+    { scene: 'door', num: '03', label: 'Talk to Q' },
 ] as const;
 
 const CHECK_IN_PLACEHOLDER = 'Tell Q about your business...';
@@ -564,15 +558,13 @@ export const LaunchLandingView = () => {
                                 </span>
                             </div>
                         </div>
-                        <ol className="d2-journey">
-                            {JOURNEY.map((step) => (
-                                <li key={step.num} className="d2-journey-step">
-                                    <span className="d2-journey-num">{step.num}</span>
-                                    <span className="d2-journey-title">{step.title}</span>
-                                    <span className="d2-journey-body">{step.body}</span>
-                                </li>
-                            ))}
-                        </ol>
+                        <div className="d2-direction">
+                            <p className="d2-chapter">
+                                <span className="d2-chapter-num">01</span> — Meet Q
+                            </p>
+                            <p className="d2-direction-line">Tell Q about your business.</p>
+                            <p className="d2-direction-line d2-direction-dim">Q learns how your business works.</p>
+                        </div>
                         <button
                             type="button"
                             className="d2-scrollcue"
@@ -592,18 +584,18 @@ export const LaunchLandingView = () => {
                             <span className="d2-chapter-num">02</span> — Illustrated
                         </p>
                         <h2 className="d2-prepare-title">What Q prepares</h2>
-                        <p className="d2-prepare-quiet">A morning with Q, illustrated. Your business will be its own.</p>
+                        <p className="d2-prepare-quiet">While you run your business, Q prepares what matters. A morning with Q, illustrated.</p>
                     </header>
                     <article className="d2-doc d2-doc-brief">
                         <span className="d2-pin" aria-hidden="true" />
                         <span className="d2-scan" aria-hidden="true" />
-                        <p className="d2-doc-label">The Daily Brief</p>
+                        <p className="d2-doc-label">The Daily Business Brief</p>
                         <p className="d2-doc-status">
                             <span className="d2-q-dot" aria-hidden="true" />
                             {`Prepared ${preparedAt(45)} — before you arrived`}
                         </p>
                         <p className="d2-doc-body">
-                            {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders, no loose ends.\nToday: 12 customers expected, one supplier waiting on you.`}
+                            {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders completed.\nToday: 12 customers expected. One supplier needs attention.`}
                         </p>
                         <p className="d2-human">Everything else is ready.</p>
                         <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
@@ -623,7 +615,7 @@ export const LaunchLandingView = () => {
 
                 <section id="d2-scene-door" data-scene="door" className="d2-act d2-close" aria-label="Check in with Q">
                     <p className="d2-chapter">
-                        <span className="d2-chapter-num">03</span> — The promise
+                        <span className="d2-chapter-num">03</span> — Talk to Q
                     </p>
                     <article className={'d2-doc d2-doc-review' + (signed ? ' is-approved' : '')}>
                         <span className="d2-pin" aria-hidden="true" />
@@ -654,7 +646,7 @@ export const LaunchLandingView = () => {
                     {signed ? <span className="d2-swell" aria-hidden="true" /> : null}
                     <div className="d2-door">
                         <h2 className="d2-door-title">
-                            What business are you <em className="d2-accent">running?</em>
+                            Tell Q what you are <em className="d2-accent">building.</em>
                         </h2>
                         <ConciergeCard
                             id="d2-door-input"
@@ -692,15 +684,15 @@ export const LaunchLandingView = () => {
 
 const d2Styles = `
 .d2-page{--ease:cubic-bezier(.16,1,.3,1);--orange:#FF6A00;--paper-ink:#26211a;--paper-soft:#857a68;--paper-hair:rgba(38,33,26,.13);--r-doc:22px;--r-card:18px;--r-inset:14px;--lx:50%;--ly:36%;--sunx:30%;--suny:22%;--shx:0px;--sy:0px;--sp:0;position:relative;min-height:100dvh;background:var(--bg);color:var(--ink);overflow-x:hidden;transition:background-color .45s ease,color .45s ease;}
-.d2-page[data-d2-theme='light']{--bg:#f7f2e9;--elev:#fdfaf3;--paper:#fdfbf5;--ink:#1c1813;--soft:#7d7364;--hair:rgba(28,24,19,.10);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 18px 42px rgba(96,74,44,.14),var(--shx,0px) 64px 110px rgba(96,74,44,.10);--chip-shadow:0 10px 28px rgba(96,74,44,.15);}
+.d2-page[data-d2-theme='light']{--bg:#faf6ee;--elev:#fefcf7;--paper:#fdfbf5;--ink:#1c1813;--soft:#7d7364;--hair:rgba(28,24,19,.09);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 18px 42px rgba(96,74,44,.12),var(--shx,0px) 64px 110px rgba(96,74,44,.08);--chip-shadow:0 10px 28px rgba(96,74,44,.13);}
 .d2-page[data-d2-theme='dark']{--bg:#12100c;--elev:#1a1611;--paper:#f7f1e5;--ink:#f3efe8;--soft:#a89f92;--hair:rgba(243,239,232,.14);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 24px 50px rgba(0,0,0,.5),0 80px 140px rgba(0,0,0,.42);--chip-shadow:0 12px 30px rgba(0,0,0,.5);}
 
-.d2-grain{position:fixed;inset:-90px 0;z-index:0;pointer-events:none;opacity:.05;mix-blend-mode:multiply;transform:translateY(calc(var(--sy) * -.04));background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+.d2-grain{position:fixed;inset:-90px 0;z-index:0;pointer-events:none;opacity:.03;mix-blend-mode:multiply;transform:translateY(calc(var(--sy) * -.04));background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
 .d2-page[data-d2-theme='dark'] .d2-grain{mix-blend-mode:soft-light;opacity:.14;}
 .d2-ambient{position:fixed;inset:0;z-index:0;pointer-events:none;transition:opacity .45s ease;}
-.d2-page[data-d2-theme='light'] .d2-ambient{background:radial-gradient(720px 560px at var(--sunx) var(--suny),rgba(255,214,150,.14),transparent 70%),radial-gradient(980px 640px at 10% -10%,rgba(255,214,150,.28),transparent 64%),radial-gradient(130% 100% at 50% 112%,rgba(150,110,60,.07),transparent 60%);}
+.d2-page[data-d2-theme='light'] .d2-ambient{background:radial-gradient(720px 560px at var(--sunx) var(--suny),rgba(255,214,150,.10),transparent 70%),radial-gradient(980px 640px at 10% -10%,rgba(255,214,150,.22),transparent 64%),radial-gradient(130% 100% at 50% 112%,rgba(150,110,60,.05),transparent 60%);}
 .d2-page[data-d2-theme='dark'] .d2-ambient{background:radial-gradient(560px 460px at var(--lx) var(--ly),rgba(255,196,130,.11),transparent 70%),radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.34));}
-.d2-moon{position:fixed;top:-28vmin;right:-20vmin;width:94vmin;height:94vmin;border-radius:50%;z-index:0;pointer-events:none;background:radial-gradient(circle at 44% 44%,rgba(255,194,124,.34),rgba(255,194,124,.10) 48%,transparent 70%);transform:translateY(calc(var(--sy) * .05));}
+.d2-moon{position:fixed;top:-28vmin;right:-20vmin;width:94vmin;height:94vmin;border-radius:50%;z-index:0;pointer-events:none;background:radial-gradient(circle at 44% 44%,rgba(255,194,124,.26),rgba(255,194,124,.07) 48%,transparent 70%);transform:translateY(calc(var(--sy) * .05));}
 .d2-page[data-d2-theme='dark'] .d2-moon{background:radial-gradient(circle at 44% 44%,rgba(255,180,105,.16),rgba(255,180,105,.05) 48%,transparent 70%);}
 
 .d2-progress{display:none;position:fixed;top:0;left:0;right:0;height:2px;z-index:36;background:color-mix(in srgb,var(--soft) 18%,transparent);}
@@ -749,9 +741,9 @@ const d2Styles = `
 
 .d2-desk-stage{position:relative;max-width:620px;margin:0 auto;}
 .d2-orbits{position:absolute;inset:0;pointer-events:none;}
-.d2-orbit{position:absolute;left:50%;top:50%;border:1px solid rgba(255,106,0,.26);border-radius:50%;}
+.d2-orbit{position:absolute;left:50%;top:50%;border:1px solid rgba(255,106,0,.17);border-radius:50%;}
 .d2-orbit-one{width:880px;height:290px;transform:translate(-50%,-50%) rotate(-7deg);}
-.d2-orbit-two{width:1040px;height:370px;transform:translate(-50%,-50%) rotate(5deg);opacity:.55;}
+.d2-orbit-two{width:1040px;height:370px;transform:translate(-50%,-50%) rotate(5deg);opacity:.4;}
 .d2-orbit-dot{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 12px rgba(255,106,0,.8);animation:d2QPulse 3.4s ease-in-out infinite;}
 .d2-od1{left:5%;top:36%;}
 .d2-od2{right:6%;top:66%;animation-delay:1.1s;}
@@ -794,11 +786,9 @@ const d2Styles = `
 .d2-chip:nth-child(4) .d2-chip-tick{animation-delay:2.1s;}
 .d2-chip:nth-child(5) .d2-chip-tick{animation-delay:2.8s;}
 
-.d2-journey{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(18px,3vw,40px);list-style:none;margin:28px auto 0;padding:20px 0 0;max-width:760px;border-top:1px solid var(--hair);text-align:left;}
-.d2-journey-step{display:flex;flex-direction:column;gap:6px;}
-.d2-journey-num{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--orange);}
-.d2-journey-title{font-size:14.5px;font-weight:750;letter-spacing:.01em;}
-.d2-journey-body{font-size:13px;line-height:1.55;color:var(--soft);}
+.d2-direction{margin:30px auto 0;}
+.d2-direction-line{margin:0;font-size:15.5px;font-weight:600;letter-spacing:.01em;line-height:1.65;color:var(--ink);}
+.d2-direction-dim{color:var(--soft);font-weight:500;}
 
 .d2-scrollcue{display:inline-flex;align-items:center;gap:8px;margin:20px auto 0;background:none;border:0;color:var(--soft);font:inherit;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:8px 4px;transition:color .2s ease;}
 .d2-scrollcue:hover{color:var(--orange);}
@@ -887,6 +877,7 @@ const d2Styles = `
 .d2-swell{position:fixed;inset:0;z-index:20;pointer-events:none;background:radial-gradient(circle at 50% 45%,rgba(255,106,0,.14),transparent 55%);animation:d2Swell .9s ease-out both;}
 
 .d2-door{margin-top:88px;display:flex;flex-direction:column;align-items:center;width:100%;}
+.d2-door .d2-desk{width:100%;}
 .d2-door-title{margin:0 0 34px;font-size:clamp(28px,3.4vw,46px);font-weight:640;letter-spacing:-.025em;line-height:1.1;}
 
 .d2-footer{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:26px clamp(18px,4vw,44px);color:var(--soft);font-size:13px;}
@@ -919,7 +910,7 @@ const d2Styles = `
 .d2-signals{margin-top:32px;}
 .d2-signals-drift{gap:10px;}
 .d2-chip{width:42px;height:54px;padding:10px 9px;}
-.d2-journey{grid-template-columns:1fr;gap:20px;max-width:420px;margin-top:40px;}
+.d2-direction{margin-top:26px;}
 .d2-prepare{padding:84px 20px 72px;}
 .d2-prepare-head{margin-bottom:44px;}
 .d2-proof-grid{grid-template-columns:1fr;max-width:520px;margin:0 auto;}
