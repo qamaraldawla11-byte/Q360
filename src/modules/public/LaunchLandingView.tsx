@@ -2,16 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GuestQConcierge, type GuestSetup } from './GuestQConcierge';
 import { createGuestBrief, currencyForCountry } from '@/api/qGuestBrief.api';
-import { ArrowRight, Check, Moon, Sun } from 'lucide-react';
+import { ArrowDown, ArrowRight, Check, Moon, Sun } from 'lucide-react';
 
 type MomentKind = 'inventory' | 'customer' | 'supplier';
 
 type Moment = {
     id: string;
     kind: MomentKind;
-    chapter: string;
     title: string;
-    caption: string;
     human: string;
     minutesAgo: number;
     working: string;
@@ -22,9 +20,7 @@ const MOMENTS: Moment[] = [
     {
         id: 'inventory',
         kind: 'inventory',
-        chapter: '02 — Stock',
         title: 'Inventory Ready',
-        caption: 'Checked while the lights were off.',
         human: 'Reorder drafts are written — send them when you’re ready.',
         minutesAgo: 33,
         working: 'Q is checking stock…',
@@ -33,9 +29,7 @@ const MOMENTS: Moment[] = [
     {
         id: 'customer',
         kind: 'customer',
-        chapter: '03 — Customer',
         title: 'Customer Waiting',
-        caption: 'Drafted in your voice, not a template.',
         human: 'A reply is drafted in your words. Read it, then send.',
         minutesAgo: 26,
         working: 'Q is writing in your words…',
@@ -44,9 +38,7 @@ const MOMENTS: Moment[] = [
     {
         id: 'supplier',
         kind: 'supplier',
-        chapter: '04 — Supplier',
         title: 'Supplier Follow-up',
-        caption: 'Invoice 214, unanswered for four days.',
         human: 'The follow-up is written. Firm, polite, yours.',
         minutesAgo: 19,
         working: 'Q is chasing invoice 214…',
@@ -56,12 +48,17 @@ const MOMENTS: Moment[] = [
 
 const CHAPTERS = [
     { scene: 'arrival', num: '01', label: 'Arrival' },
-    { scene: 'inventory', num: '02', label: 'Stock' },
-    { scene: 'customer', num: '03', label: 'Customer' },
-    { scene: 'supplier', num: '04', label: 'Supplier' },
-    { scene: 'signature', num: '05', label: 'Review' },
-    { scene: 'door', num: '06', label: 'Talk to Q' },
+    { scene: 'prepare', num: '02', label: 'What Q prepares' },
+    { scene: 'door', num: '03', label: 'Check in' },
 ] as const;
+
+const JOURNEY = [
+    { num: '01', title: 'Check in', body: 'Tell Q about your business, in a sentence or two.' },
+    { num: '02', title: 'Q learns', body: 'Your business DNA, captured in minutes.' },
+    { num: '03', title: 'Workspace prepared', body: 'Your operating system, ready when you are.' },
+] as const;
+
+const CHECK_IN_PLACEHOLDER = 'A café in Jeddah — 12 tables, two staff, busy weekends…';
 
 const daypartOf = (hour: number): 'morning' | 'afternoon' | 'evening' | 'night' =>
     hour >= 5 && hour < 11 ? 'morning' : hour >= 11 && hour < 17 ? 'afternoon' : hour >= 17 && hour < 21 ? 'evening' : 'night';
@@ -256,25 +253,24 @@ const BrandMark = ({ size }: { size: number }) => (
     />
 );
 
-const Arc = ({ className, d, head }: { className: string; d: string; head: [number, number] }) => (
-    <svg className={'d2-arc ' + className} viewBox="0 0 380 200" aria-hidden="true">
-        <path d={d} pathLength={100} />
-        <circle className="d2-arc-head" cx={head[0]} cy={head[1]} r={4} />
-    </svg>
-);
-
 const ConciergeCard = ({
     id,
     value,
     onChange,
     onSubmit,
     inputRef,
+    label,
+    placeholder,
+    microcopy,
 }: {
     id: string;
     value: string;
     onChange: (value: string) => void;
     onSubmit: (prompt: string) => void;
     inputRef?: React.RefObject<HTMLInputElement | null>;
+    label: string;
+    placeholder: string;
+    microcopy?: string;
 }) => (
     <form
         className="d2-concierge"
@@ -284,7 +280,8 @@ const ConciergeCard = ({
         }}
     >
         <label className="d2-concierge-label" htmlFor={id}>
-            Tell Q about your business
+            <span className="d2-q-dot" aria-hidden="true" />
+            {label}
         </label>
         <div className="d2-concierge-row">
             <input
@@ -293,31 +290,30 @@ const ConciergeCard = ({
                 className="d2-concierge-input"
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
-                placeholder="Tell Q about your business…"
-                aria-label="Tell Q about your business"
+                placeholder={placeholder}
+                aria-label={label}
             />
             <button className="d2-concierge-send" type="submit" aria-label="Send to Q">
                 <ArrowRight size={18} />
             </button>
         </div>
+        {microcopy ? <p className="d2-concierge-micro">{microcopy}</p> : null}
     </form>
 );
 
 export const LaunchLandingView = () => {
     const navigate = useNavigate();
     const pageRef = useRef<HTMLDivElement>(null);
-    const doorInputRef = useRef<HTMLInputElement>(null);
+    const arrivalInputRef = useRef<HTMLInputElement>(null);
     const [theme, setTheme] = useState<'light' | 'dark'>(() =>
         localStorage.getItem('q360-landing-v2-theme') === 'dark' ? 'dark' : 'light',
     );
     const [now] = useState(() => new Date());
     const [scene, setScene] = useState('arrival');
-    const [heroPrompt, setHeroPrompt] = useState('');
+    const [arrivalPrompt, setArrivalPrompt] = useState('');
     const [doorPrompt, setDoorPrompt] = useState('');
     const [guestPrompt, setGuestPrompt] = useState('');
     const [guestChatOpen, setGuestChatOpen] = useState(false);
-    const [approved, setApproved] = useState<ReadonlySet<string>>(new Set());
-    const [departed, setDeparted] = useState<ReadonlySet<string>>(new Set());
     const [signed, setSigned] = useState(false);
     const continueInFlight = useRef(false);
 
@@ -339,8 +335,8 @@ export const LaunchLandingView = () => {
                     const act = entry.target as HTMLElement;
                     act.classList.add('is-visible');
                     if (act.dataset.scene) setScene(act.dataset.scene);
-                    if (act.dataset.scene === 'door' && window.matchMedia('(pointer: fine)').matches) {
-                        window.setTimeout(() => doorInputRef.current?.focus({ preventScroll: true }), 700);
+                    if (act.dataset.scene === 'arrival' && window.matchMedia('(pointer: fine)').matches) {
+                        window.setTimeout(() => arrivalInputRef.current?.focus({ preventScroll: true }), 700);
                     }
                 });
             },
@@ -445,14 +441,6 @@ export const LaunchLandingView = () => {
         }
     };
 
-    const approveMoment = (id: string) => {
-        setApproved((current) => new Set(current).add(id));
-        if (id === 'brief') return;
-        window.setTimeout(() => {
-            setDeparted((current) => new Set(current).add(id));
-        }, 900);
-    };
-
     return (
         <div className="d2-page" data-d2-theme={theme} data-scene={scene} ref={pageRef}>
             <div className="d2-grain" aria-hidden="true" />
@@ -507,158 +495,91 @@ export const LaunchLandingView = () => {
             </header>
 
             <main>
-                <section id="d2-scene-arrival" data-scene="arrival" className="d2-act d2-hero" aria-label="Arrival">
-                    <div className="d2-hero-copy">
-                        <p className="d2-eyebrow">An AI workspace for operations, customers and decisions</p>
-                        <h1 className="d2-headline">
-                            Your business
-                            <br />
-                            is already <em className="d2-accent">prepared.</em>
-                        </h1>
-                        <p className="d2-support">While you focus on what matters, Q gets everything else ready.</p>
-                        <ConciergeCard id="d2-hero-input" value={heroPrompt} onChange={setHeroPrompt} onSubmit={openConcierge} />
-                        <button type="button" className="d2-create" onClick={() => navigate('/login')}>
-                            Start with Q
-                        </button>
-                        <div className="d2-hero-chips" aria-hidden="true">
-                            <span className="d2-chip">
-                                <i />
-                                <i />
-                                <i className="d2-chip-low" />
-                                <b className="d2-chip-tick">
-                                    <Check size={9} />
-                                </b>
-                            </span>
-                            <span className="d2-chip">
-                                <i />
-                                <i />
-                                <b className="d2-chip-tick">
-                                    <Check size={9} />
-                                </b>
-                            </span>
-                            <span className="d2-chip">
-                                <i />
-                                <i className="d2-chip-low" />
-                                <b className="d2-chip-tick">
-                                    <Check size={9} />
-                                </b>
-                            </span>
-                            <span className="d2-chip">
-                                <i />
-                                <i />
-                                <b className="d2-chip-tick">
-                                    <Check size={9} />
-                                </b>
-                            </span>
-                            <span className="d2-chip">
-                                <svg viewBox="0 0 26 14" aria-hidden="true">
-                                    <path d="M1 11 C 6 10, 8 4, 13 6 S 21 11, 25 3" pathLength={100} />
-                                </svg>
-                                <b className="d2-chip-tick">
-                                    <Check size={9} />
-                                </b>
-                            </span>
-                        </div>
-                    </div>
-                    <div className="d2-hero-desk">
+                <section id="d2-scene-arrival" data-scene="arrival" className="d2-act d2-arrival" aria-label="Arrival">
+                    <div className="d2-arrival-inner">
                         <p className="d2-dateline">
                             <span className="d2-dateline-dot" aria-hidden="true" />
-                            {`${clockOf(now)} · ${DAYPART_LABEL[daypart]} — Q has been working for you.`}
+                            {`${clockOf(now)} · ${DAYPART_LABEL[daypart]} — Q is ready when you are.`}
                         </p>
-                        <article className={'d2-doc d2-doc-hero' + (approved.has('brief') ? ' is-approved' : '')}>
-                            <span className="d2-pin" aria-hidden="true" />
-                            <span className="d2-scan" aria-hidden="true" />
-                            <p className="d2-doc-label">The Daily Brief</p>
-                            <p className="d2-doc-status">
-                                <span className="d2-q-dot" aria-hidden="true" />
-                                {`Prepared ${preparedAt(45)} — before you arrived`}
-                            </p>
-                            <p className="d2-doc-body">
-                                {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders, no loose ends.\nToday: 12 customers expected, one supplier waiting on you.`}
-                            </p>
-                            <p className="d2-human">Everything else is ready.</p>
-                            <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
-                            <div className="d2-doc-foot">
-                                {approved.has('brief') ? (
-                                    <span className="d2-approved-tag">
-                                        <Check size={14} /> Approved
-                                    </span>
-                                ) : (
-                                    <button type="button" className="d2-approve" onClick={() => approveMoment('brief')}>
-                                        Approve
-                                    </button>
-                                )}
-                            </div>
-                        </article>
-                        <div className="d2-peek d2-peek-one" aria-hidden="true">
-                            <p className="d2-peek-title">Inventory Ready</p>
-                            <i />
-                            <i />
-                            <i className="d2-peek-low" />
-                        </div>
-                        <div className="d2-peek d2-peek-two" aria-hidden="true">
-                            <p className="d2-peek-title">Supplier Follow-up</p>
-                            <i />
-                            <i className="d2-peek-low" />
-                        </div>
-                        <Arc className="d2-arc-hero" d="M36 16 C 130 66, 250 92, 344 170" head={[344, 170]} />
+                        <h1 className="d2-headline">
+                            Your business,
+                            <br />
+                            <em className="d2-accent">understood.</em>
+                        </h1>
+                        <p className="d2-support">
+                            Check in once. Q learns how your business runs — then prepares your day, your numbers, and
+                            your next move.
+                        </p>
+                        <ConciergeCard
+                            id="d2-arrival-input"
+                            value={arrivalPrompt}
+                            onChange={setArrivalPrompt}
+                            onSubmit={openConcierge}
+                            inputRef={arrivalInputRef}
+                            label="Business check-in"
+                            placeholder={CHECK_IN_PLACEHOLDER}
+                            microcopy="About a minute · Nothing happens without you."
+                        />
+                        <ol className="d2-journey">
+                            {JOURNEY.map((step) => (
+                                <li key={step.num} className="d2-journey-step">
+                                    <span className="d2-journey-num">{step.num}</span>
+                                    <span className="d2-journey-title">{step.title}</span>
+                                    <span className="d2-journey-body">{step.body}</span>
+                                </li>
+                            ))}
+                        </ol>
+                        <button
+                            type="button"
+                            className="d2-scrollcue"
+                            onClick={() =>
+                                document.getElementById('d2-scene-prepare')?.scrollIntoView({ behavior: 'smooth' })
+                            }
+                        >
+                            See what Q prepares
+                            <ArrowDown size={14} aria-hidden="true" />
+                        </button>
                     </div>
                 </section>
 
-                {MOMENTS.map((moment, index) => (
-                    <section
-                        key={moment.id}
-                        id={`d2-scene-${moment.id}`}
-                        data-scene={moment.id}
-                        className={'d2-act d2-moment' + (index % 2 ? ' d2-flip' : '')}
-                        aria-label={moment.title}
-                    >
-                        <div className="d2-moment-caption">
-                            <p className="d2-chapter">
-                                <span className="d2-chapter-num">{moment.chapter.slice(0, 2)}</span>
-                                {moment.chapter.slice(2)}
-                            </p>
-                            <h2 className="d2-moment-title">{moment.title}</h2>
-                            <p className="d2-moment-quiet">{moment.caption}</p>
-                        </div>
-                        <article
-                            className={
-                                'd2-doc d2-doc-moment d2-doc--' + moment.kind +
-                                (approved.has(moment.id) ? ' is-approved' : '') +
-                                (departed.has(moment.id) ? ' is-departed' : '')
-                            }
-                        >
-                            <span className="d2-pin" aria-hidden="true" />
-                            <span className="d2-scan" aria-hidden="true" />
-                            <p className="d2-doc-label">{moment.title}</p>
-                            <QStatus working={moment.working} done={moment.done} time={preparedAt(moment.minutesAgo)} />
-                            <MomentArtifact kind={moment.kind} />
-                            <p className="d2-human">{moment.human}</p>
-                            <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
-                            <div className="d2-doc-foot">
-                                {approved.has(moment.id) ? (
-                                    <span className="d2-approved-tag">
-                                        <Check size={14} /> Approved
-                                    </span>
-                                ) : (
-                                    <button type="button" className="d2-approve" onClick={() => approveMoment(moment.id)}>
-                                        Approve
-                                    </button>
-                                )}
-                            </div>
-                        </article>
-                        {departed.has(moment.id) ? <p className="d2-slot-note">Approved — Q will handle it.</p> : null}
-                        <Arc
-                            className="d2-arc-moment"
-                            d={index % 2 ? 'M316 14 C 260 90, 130 100, 56 178' : 'M64 14 C 120 90, 250 100, 324 178'}
-                            head={index % 2 ? [56, 178] : [324, 178]}
-                        />
-                    </section>
-                ))}
+                <section id="d2-scene-prepare" data-scene="prepare" className="d2-act d2-prepare" aria-label="What Q prepares">
+                    <header className="d2-prepare-head">
+                        <p className="d2-chapter">
+                            <span className="d2-chapter-num">02</span> — Illustrated
+                        </p>
+                        <h2 className="d2-prepare-title">What Q prepares</h2>
+                        <p className="d2-prepare-quiet">A morning with Q, illustrated. Your business will be its own.</p>
+                    </header>
+                    <article className="d2-doc d2-doc-brief">
+                        <span className="d2-pin" aria-hidden="true" />
+                        <span className="d2-scan" aria-hidden="true" />
+                        <p className="d2-doc-label">The Daily Brief</p>
+                        <p className="d2-doc-status">
+                            <span className="d2-q-dot" aria-hidden="true" />
+                            {`Prepared ${preparedAt(45)} — before you arrived`}
+                        </p>
+                        <p className="d2-doc-body">
+                            {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders, no loose ends.\nToday: 12 customers expected, one supplier waiting on you.`}
+                        </p>
+                        <p className="d2-human">Everything else is ready.</p>
+                        <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
+                    </article>
+                    <div className="d2-proof-grid">
+                        {MOMENTS.map((moment) => (
+                            <article key={moment.id} className={'d2-doc d2-doc-moment d2-doc--' + moment.kind}>
+                                <span className="d2-scan" aria-hidden="true" />
+                                <p className="d2-doc-label">{moment.title}</p>
+                                <QStatus working={moment.working} done={moment.done} time={preparedAt(moment.minutesAgo)} />
+                                <MomentArtifact kind={moment.kind} />
+                                <p className="d2-human">{moment.human}</p>
+                            </article>
+                        ))}
+                    </div>
+                </section>
 
-                <section id="d2-scene-signature" data-scene="signature" className="d2-act d2-signature" aria-label="The signature">
+                <section id="d2-scene-door" data-scene="door" className="d2-act d2-close" aria-label="Check in with Q">
                     <p className="d2-chapter">
-                        <span className="d2-chapter-num">05</span> — The Review
+                        <span className="d2-chapter-num">03</span> — The promise
                     </p>
                     <article className={'d2-doc d2-doc-review' + (signed ? ' is-approved' : '')}>
                         <span className="d2-pin" aria-hidden="true" />
@@ -687,22 +608,19 @@ export const LaunchLandingView = () => {
                         </div>
                     </article>
                     {signed ? <span className="d2-swell" aria-hidden="true" /> : null}
-                </section>
-
-                <section id="d2-scene-door" data-scene="door" className="d2-act d2-door" aria-label="A conversation with Q">
-                    <p className="d2-chapter">
-                        <span className="d2-chapter-num">06</span> — Talk to Q
-                    </p>
-                    <h2 className="d2-door-title">
-                        What business are you <em className="d2-accent">running?</em>
-                    </h2>
-                    <ConciergeCard
-                        id="d2-door-input"
-                        value={doorPrompt}
-                        onChange={setDoorPrompt}
-                        onSubmit={openConcierge}
-                        inputRef={doorInputRef}
-                    />
+                    <div className="d2-door">
+                        <h2 className="d2-door-title">
+                            What business are you <em className="d2-accent">running?</em>
+                        </h2>
+                        <ConciergeCard
+                            id="d2-door-input"
+                            value={doorPrompt}
+                            onChange={setDoorPrompt}
+                            onSubmit={openConcierge}
+                            label="Check in with Q"
+                            placeholder={CHECK_IN_PLACEHOLDER}
+                        />
+                    </div>
                 </section>
             </main>
 
@@ -712,13 +630,6 @@ export const LaunchLandingView = () => {
                     Contact
                 </button>
             </footer>
-
-            {approved.size > 0 ? (
-                <div className="d2-counter" role="status" aria-label={`${approved.size} prepared documents approved`}>
-                    <Check size={13} />
-                    Approved · {approved.size}
-                </div>
-            ) : null}
 
             {guestChatOpen && (
                 <GuestQConcierge
@@ -767,120 +678,78 @@ const d2Styles = `
 .d2-icon-btn:hover{border-color:color-mix(in srgb,currentColor 22%,transparent);}
 .d2-signin{border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:transparent;color:inherit;border-radius:999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;}
 .d2-signin:hover{border-color:color-mix(in srgb,currentColor 55%,transparent);}
-.d2-icon-btn:focus-visible,.d2-signin:focus-visible,.d2-create:focus-visible,.d2-approve:focus-visible,.d2-sign-line:focus-visible,.d2-concierge-send:focus-visible,.d2-brand:focus-visible,.d2-rail-item:focus-visible,.d2-quiet-link:focus-visible{outline:2px solid color-mix(in srgb,currentColor 45%,transparent);outline-offset:2px;}
+.d2-icon-btn:focus-visible,.d2-signin:focus-visible,.d2-sign-line:focus-visible,.d2-concierge-send:focus-visible,.d2-brand:focus-visible,.d2-rail-item:focus-visible,.d2-quiet-link:focus-visible,.d2-scrollcue:focus-visible{outline:2px solid color-mix(in srgb,currentColor 45%,transparent);outline-offset:2px;}
 
 .d2-act{position:relative;z-index:1;}
 
-.d2-hero{min-height:100dvh;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(28px,4vw,72px);align-items:center;max-width:1280px;margin:0 auto;padding:120px clamp(20px,4vw,56px) 80px clamp(88px,9.5vw,150px);}
-.d2-hero-copy>*{opacity:0;transform:translateY(24px);}
-.d2-act.is-visible .d2-hero-copy>*{animation:d2Rise 1.1s var(--ease) forwards;}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(1){animation-delay:.2s;}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(2){animation-delay:.38s;}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(3){animation-delay:.56s;}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(4){animation-delay:.74s;}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(5){animation-delay:.92s;}
-.d2-eyebrow{margin:0 0 20px;font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);}
-.d2-headline{margin:0;font-size:clamp(32px,3.8vw,61px);font-weight:640;letter-spacing:-.025em;line-height:1.07;}
+.d2-arrival{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:130px clamp(20px,4vw,56px) 90px;}
+.d2-arrival-inner{width:100%;max-width:780px;margin:0 auto;text-align:center;}
+.d2-arrival-inner>*{opacity:0;transform:translateY(24px);}
+.d2-act.is-visible .d2-arrival-inner>*{animation:d2Rise 1.1s var(--ease) forwards;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(1){animation-delay:.15s;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(2){animation-delay:.32s;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(3){animation-delay:.49s;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(4){animation-delay:.68s;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(5){animation-delay:.88s;}
+.d2-act.is-visible .d2-arrival-inner>*:nth-child(6){animation-delay:1.05s;}
+.d2-dateline{display:inline-flex;align-items:center;gap:9px;margin:0 0 26px;font-size:13px;letter-spacing:.04em;color:var(--soft);}
+.d2-dateline-dot{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 10px rgba(228,87,46,.5);animation:d2QPulse 2.4s ease-in-out infinite;flex:0 0 auto;}
+.d2-headline{margin:0;font-size:clamp(40px,6vw,76px);font-weight:640;letter-spacing:-.028em;line-height:1.05;}
 .d2-accent{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-style:italic;font-weight:500;color:var(--orange);}
-.d2-support{margin:22px 0 34px;font-size:clamp(15px,1.4vw,18px);line-height:1.6;color:var(--soft);max-width:38ch;}
+.d2-support{margin:24px auto 40px;font-size:clamp(15px,1.5vw,18.5px);line-height:1.6;color:var(--soft);max-width:52ch;}
 
-.d2-concierge{width:100%;max-width:440px;background:var(--elev);border:1px solid var(--hair);border-radius:var(--r-card);padding:16px 18px 14px;box-shadow:var(--chip-shadow);transition:background-color .45s ease,border-color .45s ease;}
-.d2-concierge-label{display:block;margin:0 0 9px;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
+.d2-concierge{width:100%;max-width:580px;margin:0 auto;text-align:left;background:var(--elev);border:1px solid var(--hair);border-radius:20px;padding:20px 22px 16px;box-shadow:var(--chip-shadow);transition:background-color .45s ease,border-color .25s ease,box-shadow .25s ease;}
+.d2-concierge:focus-within{border-color:color-mix(in srgb,var(--orange) 45%,transparent);box-shadow:0 0 0 4px color-mix(in srgb,var(--orange) 12%,transparent),var(--chip-shadow);}
+.d2-concierge-label{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);}
 .d2-concierge-row{display:flex;align-items:center;gap:10px;}
-.d2-concierge-input{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--hair);color:inherit;font:inherit;font-size:15.5px;padding:9px 2px;transition:border-color .2s ease;}
+.d2-concierge-input{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--hair);color:inherit;font:inherit;font-size:16px;padding:11px 2px;transition:border-color .2s ease;}
 .d2-concierge-input::placeholder{color:color-mix(in srgb,var(--soft) 72%,transparent);}
 .d2-concierge-input:focus{outline:none;border-color:var(--orange);}
-.d2-concierge-send{display:grid;place-items:center;width:42px;height:42px;flex:0 0 auto;border:0;border-radius:50%;background:var(--orange);color:#fff;cursor:pointer;transition:transform .15s ease,box-shadow .2s ease;}
+.d2-concierge-send{display:grid;place-items:center;width:44px;height:44px;flex:0 0 auto;border:0;border-radius:50%;background:var(--orange);color:#fff;cursor:pointer;transition:transform .15s ease,box-shadow .2s ease;}
 .d2-concierge-send:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(228,87,46,.35);}
-.d2-create{display:inline-block;margin-top:18px;background:var(--ink);color:var(--bg);border:0;border-radius:999px;padding:11px 24px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:background-color .2s ease,color .2s ease,transform .15s ease;}
-.d2-create:hover{background:var(--orange);color:#fff;transform:translateY(-1px);}
-.d2-act.is-visible .d2-hero-copy>*:nth-child(6){animation-delay:1.1s;}
+.d2-concierge-micro{margin:12px 0 0;font-size:12.5px;letter-spacing:.03em;color:color-mix(in srgb,var(--soft) 85%,transparent);}
 
-.d2-hero-chips{display:flex;align-items:center;gap:12px;margin-top:34px;}
-.d2-chip{--r:0deg;position:relative;display:flex;flex-direction:column;justify-content:center;gap:4px;width:48px;height:60px;background:var(--paper);color:var(--paper-ink);border-radius:10px;padding:12px 10px;box-shadow:var(--doc-shadow);opacity:0;animation:d2ChipIn .9s var(--ease) both;}
-.d2-chip:nth-child(1){--r:-6deg;animation-delay:1.2s;}
-.d2-chip:nth-child(2){--r:-2deg;animation-delay:1.4s;}
-.d2-chip:nth-child(3){--r:1.5deg;animation-delay:1.6s;}
-.d2-chip:nth-child(4){--r:5deg;animation-delay:1.8s;}
-.d2-chip:nth-child(5){--r:9deg;animation-delay:2s;}
-.d2-chip i{display:block;height:3px;border-radius:2px;background:color-mix(in srgb,var(--paper-ink) 18%,transparent);}
-.d2-chip i:nth-child(2){width:72%;}
-.d2-chip i:nth-child(3){width:48%;}
-.d2-chip i.d2-chip-low{background:var(--orange);}
-.d2-chip svg{width:24px;height:13px;}
-.d2-chip svg path{fill:none;stroke:var(--paper-soft);stroke-width:2;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;animation:d2Spark 1s var(--ease) 2.7s both;}
-.d2-chip-tick{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--orange);color:#fff;transform:scale(0);box-shadow:0 2px 5px rgba(0,0,0,.25);animation:d2Pop .4s var(--ease) both;}
-.d2-chip:nth-child(1) .d2-chip-tick{animation-delay:2.6s;}
-.d2-chip:nth-child(2) .d2-chip-tick{animation-delay:2.75s;}
-.d2-chip:nth-child(3) .d2-chip-tick{animation-delay:2.9s;}
-.d2-chip:nth-child(4) .d2-chip-tick{animation-delay:3.05s;}
-.d2-chip:nth-child(5) .d2-chip-tick{animation-delay:3.2s;}
+.d2-journey{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(18px,3vw,40px);list-style:none;margin:56px auto 0;padding:32px 0 0;max-width:760px;border-top:1px solid var(--hair);text-align:left;}
+.d2-journey-step{display:flex;flex-direction:column;gap:6px;}
+.d2-journey-num{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--orange);}
+.d2-journey-title{font-size:14.5px;font-weight:750;letter-spacing:.01em;}
+.d2-journey-body{font-size:13px;line-height:1.55;color:var(--soft);}
 
-.d2-hero-desk{position:relative;padding:6px 0 44px;}
-.d2-dateline{display:flex;align-items:center;gap:9px;margin:0 0 20px;font-size:13px;letter-spacing:.04em;color:var(--soft);opacity:0;transform:translateY(12px);}
-.d2-act.is-visible .d2-dateline{animation:d2Rise 1s var(--ease) .7s forwards;}
-.d2-dateline-dot{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 10px rgba(228,87,46,.5);animation:d2QPulse 2.4s ease-in-out infinite;flex:0 0 auto;}
+.d2-scrollcue{display:inline-flex;align-items:center;gap:8px;margin:48px auto 0;background:none;border:0;color:var(--soft);font:inherit;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:8px 4px;transition:color .2s ease;}
+.d2-scrollcue:hover{color:var(--orange);}
+.d2-scrollcue svg{animation:d2Cue 2.2s ease-in-out infinite;}
+
+.d2-prepare{max-width:1180px;margin:0 auto;padding:110px clamp(20px,4vw,56px) 90px;text-align:center;}
+.d2-prepare-head{max-width:640px;margin:0 auto 64px;}
+.d2-prepare-title{margin:0 0 16px;font-size:clamp(30px,3.6vw,50px);font-weight:640;letter-spacing:-.025em;line-height:1.08;}
+.d2-prepare-quiet{margin:0;font-size:15px;line-height:1.6;color:var(--soft);}
+.d2-chapter{margin:0 0 14px;font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);}
+.d2-chapter-num{color:var(--orange);}
 
 .d2-doc{isolation:isolate;position:relative;width:100%;background:var(--paper);color:var(--paper-ink);border-radius:var(--r-doc);padding:36px 40px;box-shadow:var(--doc-shadow);transform:rotate(var(--tilt,0deg));transition:transform 1.15s var(--ease),box-shadow .9s var(--ease),opacity .9s ease,background-color .45s ease;}
 .d2-act:not(.is-visible) .d2-doc{opacity:0;transform:translate(var(--enter-x,0px),56px) rotate(var(--tilt,0deg));}
 .d2-act.is-visible .d2-doc{transition-delay:.15s;}
 .d2-doc:hover{transform:translateY(-3px) rotate(var(--tilt,0deg));}
-.d2-doc-hero{max-width:560px;margin-left:auto;--tilt:.4deg;--float-y:-4px;--float-r:.12deg;}
+.d2-doc-brief{max-width:600px;margin:0 auto 56px;text-align:left;--tilt:.4deg;--float-y:-4px;--float-r:.12deg;}
+.d2-act.is-visible .d2-doc-brief{animation:d2Float 11s ease-in-out 1.9s infinite alternate;}
 .d2-pin{position:absolute;top:20px;right:22px;width:22px;height:22px;border-radius:50%;background:var(--orange);box-shadow:inset 0 2px 5px rgba(60,15,0,.35),0 3px 7px rgba(0,0,0,.25);animation:d2Pin 10s ease-in-out infinite;}
 .d2-doc-label{margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--paper-soft);}
 .d2-doc-status{display:flex;align-items:center;gap:8px;margin:0 0 20px;font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--paper-soft);}
 .d2-doc-body{margin:0;font-size:16.5px;line-height:1.65;font-weight:450;white-space:pre-line;}
 .d2-human{margin:20px 0 0;font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-style:italic;font-size:19px;line-height:1.5;color:var(--paper-ink);}
 .d2-doc-note{margin:16px 0 0;font-size:12.5px;color:var(--paper-soft);}
-.d2-doc-foot{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:24px;padding-top:20px;border-top:1px solid var(--paper-hair);}
-.d2-approve{border:1px solid var(--paper-hair);background:transparent;color:var(--paper-ink);border-radius:999px;padding:9px 20px;font:inherit;font-size:13px;font-weight:700;letter-spacing:.04em;cursor:pointer;opacity:.6;transition:opacity .25s ease,border-color .2s ease,color .2s ease;animation:d2ApprovePulse 12s ease-in-out 2s infinite;}
-.d2-doc:hover .d2-approve,.d2-doc:focus-within .d2-approve{opacity:1;}
-.d2-approve:hover{border-color:var(--orange);color:var(--orange);}
-.d2-approved-tag{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--orange);}
 .is-approved .d2-pin{animation:d2Stamp .7s var(--ease);}
 
-.d2-peek{position:absolute;z-index:0;background:var(--paper);color:var(--paper-ink);border-radius:var(--r-card);padding:20px 24px;box-shadow:var(--doc-shadow);pointer-events:none;transition:opacity .9s ease 1s,transform 1s var(--ease) 1s,background-color .45s ease;}
-.d2-peek-title{margin:0 0 4px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--paper-soft);}
-.d2-peek i{display:block;height:3px;border-radius:2px;margin-top:11px;background:color-mix(in srgb,var(--paper-ink) 16%,transparent);}
-.d2-peek i:nth-child(3){width:74%;}
-.d2-peek i:nth-child(4){width:52%;}
-.d2-peek i.d2-peek-low{background:var(--orange);opacity:.7;}
-.d2-peek-one{right:-40px;bottom:-6px;width:62%;opacity:.55;filter:saturate(.85);transform:rotate(3deg);}
-.d2-peek-two{right:-78px;top:34px;width:55%;opacity:.36;filter:saturate(.8);transform:rotate(-2.5deg);}
-.d2-act:not(.is-visible) .d2-peek{opacity:0;transform:rotate(0deg) translateY(26px);}
-.d2-hero-desk .d2-doc-hero{z-index:1;}
-
-.d2-arc{position:absolute;z-index:0;pointer-events:none;overflow:visible;}
-.d2-arc path{fill:none;stroke:var(--orange);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:.6 7.9;opacity:.5;filter:drop-shadow(0 0 6px rgba(228,87,46,.55));animation:d2ArcFlow 3.4s linear infinite;}
-.d2-arc-head{fill:var(--orange);filter:drop-shadow(0 0 8px rgba(228,87,46,.85));}
-.d2-arc-hero{right:1%;bottom:-56px;width:232px;height:122px;z-index:2;opacity:0;transition:opacity 1s ease 1.5s;}
-.d2-act.is-visible .d2-arc-hero{opacity:1;}
-.d2-arc-moment{left:50%;bottom:-14px;width:min(380px,54%);height:200px;transform:translateX(-50%);opacity:.8;}
-
-.d2-moment{min-height:100dvh;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(28px,4vw,72px);align-items:center;max-width:1280px;margin:0 auto;padding:90px clamp(20px,4vw,56px) 130px clamp(88px,9.5vw,150px);}
-.d2-moment.d2-flip{grid-template-columns:minmax(0,6fr) minmax(0,5fr);}
-.d2-moment.d2-flip .d2-moment-caption{order:2;}
-.d2-moment.d2-flip .d2-doc{order:1;}
-.d2-chapter{margin:0 0 14px;font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);}
-.d2-chapter-num{color:var(--orange);}
-.d2-moment-title{margin:0 0 14px;font-size:clamp(28px,3vw,44px);font-weight:640;letter-spacing:-.02em;line-height:1.1;}
-.d2-moment-quiet{margin:0;font-size:15px;line-height:1.6;color:var(--soft);max-width:34ch;}
-.d2-moment-caption{opacity:0;transform:translateY(22px);}
-.d2-act.is-visible .d2-moment-caption{animation:d2Rise 1.05s var(--ease) .3s forwards;}
-
+.d2-proof-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,2.6vw,32px);text-align:left;align-items:start;}
+.d2-proof-grid .d2-doc-moment{max-width:none;}
 .d2-doc-moment{max-width:520px;--float-y:-4px;--float-r:.15deg;}
 .d2-doc-moment::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--paper);border-radius:var(--r-doc);transform:rotate(2.3deg) translate(12px,9px);opacity:.45;box-shadow:var(--doc-shadow);transition:background-color .45s ease;}
-.d2-flip .d2-doc-moment::before{transform:rotate(-2.3deg) translate(-12px,9px);}
 .d2-doc--inventory{--tilt:-.5deg;--enter-x:-40px;}
-.d2-doc--customer{--tilt:.6deg;--enter-x:40px;--float-y:-6px;--float-r:-.2deg;}
-.d2-doc--supplier{--tilt:-.35deg;--enter-x:-40px;--float-y:-3px;--float-r:.1deg;}
-.d2-flip .d2-doc--customer{--enter-x:-40px;}
-.d2-doc-moment.is-departed{transform:translate(30vw,-4vh) scale(.5) !important;opacity:0;pointer-events:none;animation:none;}
+.d2-doc--customer{--tilt:.6deg;--float-y:-6px;--float-r:-.2deg;}
+.d2-doc--supplier{--tilt:-.35deg;--enter-x:40px;--float-y:-3px;--float-r:.1deg;}
 .d2-act.is-visible .d2-doc-moment{animation:d2Float 9.5s ease-in-out 1.6s infinite alternate;}
 .d2-act.is-visible .d2-doc--customer{animation-duration:10.5s;animation-delay:1.8s;}
 .d2-act.is-visible .d2-doc--supplier{animation-duration:11.5s;animation-delay:2s;}
-.d2-act.is-visible .d2-doc-hero{animation:d2Float 11s ease-in-out 1.9s infinite alternate;}
-.d2-slot-note{position:absolute;bottom:14%;left:50%;transform:translateX(-50%);margin:0;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--soft);animation:d2Rise .8s var(--ease) both;}
 
 .d2-art{margin:0 0 20px;background:color-mix(in srgb,var(--paper-ink) 4%,var(--paper));border:1px solid var(--paper-hair);border-radius:var(--r-inset);padding:14px 18px;font-size:14px;}
 .d2-art-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;color:var(--paper-ink);}
@@ -919,8 +788,9 @@ const d2Styles = `
 .d2-scan::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,244,220,.32) 50%,transparent 62%);transform:translateX(-80%);opacity:0;}
 .d2-act.is-visible .d2-scan::before{animation:d2Scan 1.9s var(--ease) .5s both;}
 
-.d2-signature{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:110px 24px 100px;}
-.d2-doc-review{max-width:640px;--tilt:-.3deg;--float-y:-3px;--float-r:0deg;}
+.d2-close{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 24px 110px;text-align:center;}
+.d2-close .d2-chapter{margin-bottom:26px;}
+.d2-doc-review{max-width:640px;--tilt:-.3deg;--float-y:-3px;--float-r:0deg;text-align:left;}
 .d2-act.is-visible .d2-doc-review{animation:d2Float 11s ease-in-out 1.9s infinite alternate;}
 .d2-review-title{margin:0 0 10px;font-size:clamp(26px,3.2vw,40px);font-weight:640;letter-spacing:-.02em;color:var(--paper-ink);}
 .d2-sign-row{display:flex;justify-content:space-between;gap:28px;margin-top:32px;padding-top:24px;border-top:1px solid var(--paper-hair);}
@@ -931,16 +801,12 @@ const d2Styles = `
 .d2-signed-name{display:block;font-style:italic;font-size:18px;color:var(--paper-ink);padding:6px 4px;border-bottom:2px solid var(--orange);}
 .d2-swell{position:fixed;inset:0;z-index:20;pointer-events:none;background:radial-gradient(circle at 50% 45%,rgba(228,87,46,.14),transparent 55%);animation:d2Swell .9s ease-out both;}
 
-.d2-door{min-height:90dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:110px 24px 110px;}
-.d2-door-title{margin:0 0 40px;font-size:clamp(30px,4vw,58px);font-weight:640;letter-spacing:-.025em;line-height:1.1;}
-.d2-door .d2-concierge{text-align:left;}
+.d2-door{margin-top:88px;display:flex;flex-direction:column;align-items:center;width:100%;}
+.d2-door-title{margin:0 0 34px;font-size:clamp(28px,3.4vw,46px);font-weight:640;letter-spacing:-.025em;line-height:1.1;}
 
 .d2-footer{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:26px clamp(18px,4vw,44px);color:var(--soft);font-size:13px;}
 .d2-quiet-link{background:none;border:0;color:var(--soft);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:4px;text-decoration-color:color-mix(in srgb,currentColor 30%,transparent);padding:0;}
 .d2-quiet-link:hover{color:var(--ink);}
-
-.d2-counter{position:fixed;right:26px;bottom:26px;z-index:30;display:inline-flex;align-items:center;gap:8px;background:var(--elev);border:1px solid var(--hair);color:var(--ink);border-radius:999px;padding:10px 18px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--chip-shadow);animation:d2Rise .7s var(--ease);transition:background-color .45s ease,border-color .45s ease,color .45s ease;}
-.d2-counter svg{color:var(--orange);}
 
 @keyframes d2Rise{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
 @keyframes d2Pop{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
@@ -952,41 +818,27 @@ const d2Styles = `
 @keyframes d2Float{from{translate:0 0;rotate:0deg;}to{translate:0 var(--float-y,-4px);rotate:var(--float-r,.15deg);}}
 @keyframes d2Stamp{0%{transform:scale(1);}40%{transform:scale(1.35);}100%{transform:scale(1);}}
 @keyframes d2Pin{0%,100%{transform:rotate(0deg) scale(1);}50%{transform:rotate(7deg) scale(1.05);}}
-@keyframes d2ApprovePulse{0%,90%,100%{border-color:var(--paper-hair);}95%{border-color:color-mix(in srgb,var(--orange) 55%,transparent);}}
 @keyframes d2Swell{from{opacity:0;}30%{opacity:1;}to{opacity:0;}}
-@keyframes d2ArcFlow{to{stroke-dashoffset:-8.5;}}
-@keyframes d2ChipIn{from{opacity:0;transform:translateY(18px) rotate(var(--r,0deg)) scale(.92);}to{opacity:1;transform:translateY(0) rotate(var(--r,0deg)) scale(1);}}
-@keyframes d2Spark{from{stroke-dashoffset:100;}to{stroke-dashoffset:0;}}
+@keyframes d2Cue{0%,100%{transform:translateY(0);opacity:.7;}50%{transform:translateY(4px);opacity:1;}}
 
 @media(max-width:900px){
 .d2-rail{display:none;}
 .d2-progress{display:block;}
-.d2-hero{grid-template-columns:1fr;gap:40px;padding:104px 20px 64px;}
-.d2-doc-hero{margin-left:0;}
-.d2-peek-one{right:-12px;width:70%;}
-.d2-peek-two{right:-26px;width:60%;}
-.d2-arc-hero{right:-14px;bottom:-42px;}
-.d2-moment{grid-template-columns:1fr;gap:30px;padding:76px 20px 120px;}
-.d2-moment.d2-flip{grid-template-columns:1fr;}
-.d2-moment.d2-flip .d2-moment-caption{order:0;}
-.d2-moment.d2-flip .d2-doc{order:1;}
-.d2-doc-moment{max-width:100%;}
+.d2-arrival{padding:110px 20px 72px;}
+.d2-headline{font-size:clamp(36px,10vw,56px);}
+.d2-journey{grid-template-columns:1fr;gap:20px;max-width:420px;margin-top:48px;}
+.d2-prepare{padding:84px 20px 72px;}
+.d2-prepare-head{margin-bottom:44px;}
+.d2-proof-grid{grid-template-columns:1fr;max-width:520px;margin:0 auto;}
 .d2-doc{padding:28px 24px;}
-.d2-approve{opacity:.8;}
 .d2-sign-row{flex-direction:column;}
-.d2-counter{right:16px;bottom:16px;}
-.d2-headline{font-size:clamp(32px,9.4vw,52px);}
-.d2-hero-chips{gap:10px;margin-top:28px;}
-.d2-chip{width:42px;height:54px;padding:10px 9px;}
+.d2-door{margin-top:72px;}
 }
 
 @media(prefers-reduced-motion:reduce){
 .d2-page *,.d2-page *::before,.d2-page *::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}
 .d2-act:not(.is-visible) .d2-doc{opacity:1;transform:none;}
-.d2-act:not(.is-visible) .d2-peek{opacity:.4;transform:rotate(2deg);}
-.d2-hero-copy>*,.d2-moment-caption,.d2-dateline{opacity:1;transform:none;animation:none;}
-.d2-arc path{animation:none;opacity:.3;}
-.d2-arc-hero{opacity:.6;}
+.d2-arrival-inner>*{opacity:1;transform:none;animation:none;}
 .d2-ambient{display:none;}
 }
 `;

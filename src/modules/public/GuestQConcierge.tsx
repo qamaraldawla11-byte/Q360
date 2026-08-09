@@ -992,7 +992,7 @@ export function GuestQConcierge({
                 className="guest-q-input"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Tell Q about your business..."
+                placeholder="Reply to Q…"
                 aria-label="Message Q"
               />
               <button
