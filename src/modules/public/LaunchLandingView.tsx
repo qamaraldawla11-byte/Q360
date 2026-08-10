@@ -5,45 +5,54 @@ import { BrandLogo } from './BrandLogo';
 import { createGuestBrief, currencyForCountry } from '@/api/qGuestBrief.api';
 import { ArrowDown, ArrowRight, Check, Moon, Sparkle, Sun } from 'lucide-react';
 
-type MomentKind = 'inventory' | 'customer' | 'supplier';
+type MomentRow = { text: string; alert?: boolean };
 
 type Moment = {
-    id: string;
-    kind: MomentKind;
-    title: string;
-    human: string;
+    id: 'business' | 'relationships' | 'attention';
+    label: string;
+    rows: MomentRow[];
     minutesAgo: number;
     working: string;
     done: string;
+    depth: number;
 };
 
 const MOMENTS: Moment[] = [
     {
-        id: 'inventory',
-        kind: 'inventory',
-        title: 'Operations',
-        human: 'Reorder drafts are written — send them when you’re ready.',
+        id: 'business',
+        label: 'Your business',
+        rows: [
+            { text: 'Espresso beans — running low', alert: true },
+            { text: 'Reorder draft ready · Alba Foods' },
+        ],
         minutesAgo: 33,
         working: 'Q is checking stock…',
         done: 'Inventory checked',
+        depth: 0.05,
     },
     {
-        id: 'customer',
-        kind: 'customer',
-        title: 'Customers',
-        human: 'A reply is drafted in your words. Read it, then send.',
+        id: 'relationships',
+        label: 'Your relationships',
+        rows: [
+            { text: 'Customer waiting · Layla', alert: true },
+            { text: 'Reply drafted — in your words' },
+        ],
         minutesAgo: 26,
         working: 'Q is writing in your words…',
-        done: 'Replies drafted',
+        done: 'Reply drafted',
+        depth: 0.08,
     },
     {
-        id: 'supplier',
-        kind: 'supplier',
-        title: 'Decisions',
-        human: 'The follow-up is written. Firm, polite, yours.',
+        id: 'attention',
+        label: 'Your attention',
+        rows: [
+            { text: 'Invoice 214 · 2,340 — unanswered 4 days', alert: true },
+            { text: 'Next step prepared — ready to send' },
+        ],
         minutesAgo: 19,
         working: 'Q is preparing the follow-up…',
-        done: 'Priorities prepared',
+        done: 'Next step prepared',
+        depth: 0.04,
     },
 ];
 
@@ -91,126 +100,6 @@ const useInView = <T extends HTMLElement>() => {
         return () => observer.disconnect();
     }, []);
     return { ref, inView };
-};
-
-const useTypewriter = (text: string, start: boolean, speed = 24) => {
-    const reduced = useReducedMotion();
-    const [length, setLength] = useState(0);
-    useEffect(() => {
-        if (!start || reduced || length >= text.length) return;
-        const timer = window.setTimeout(() => setLength((current) => current + 1), speed);
-        return () => window.clearTimeout(timer);
-    }, [start, reduced, length, text, speed]);
-    const shown = reduced ? text : text.slice(0, length);
-    return { shown, done: reduced || length >= text.length };
-};
-
-const useCountUp = (target: number, start: boolean, duration = 900) => {
-    const reduced = useReducedMotion();
-    const [value, setValue] = useState(0);
-    useEffect(() => {
-        if (!start || reduced) return;
-        let frame = 0;
-        const t0 = performance.now();
-        const tick = (t: number) => {
-            const p = Math.min(1, (t - t0) / duration);
-            setValue(Math.round(target * (1 - Math.pow(1 - p, 3))));
-            if (p < 1) frame = window.requestAnimationFrame(tick);
-        };
-        frame = window.requestAnimationFrame(tick);
-        return () => window.cancelAnimationFrame(frame);
-    }, [start, reduced, target, duration]);
-    return reduced ? target : value;
-};
-
-const InventoryArtifact = () => {
-    const { ref, inView } = useInView<HTMLDivElement>();
-    return (
-        <div className={'d2-art d2-art-workspace' + (inView ? ' is-live' : '')} ref={ref} aria-hidden="true">
-            <span className="d2-art-progress" />
-            <div className="d2-art-row">
-                <span className="d2-art-key">
-                    <span className="d2-pop d2-d1">
-                        <Check size={13} />
-                    </span>
-                    Sourdough flour
-                </span>
-                <span>fine</span>
-            </div>
-            <div className="d2-art-row">
-                <span className="d2-art-key">
-                    <span className="d2-pop d2-d2">
-                        <Check size={13} />
-                    </span>
-                    Oat milk
-                </span>
-                <span>fine</span>
-            </div>
-            <div className="d2-art-row d2-art-low">
-                <span className="d2-art-key">
-                    <span className="d2-art-dot" /> Espresso beans
-                </span>
-                <span>low</span>
-            </div>
-            <div className="d2-art-row d2-art-emerge d2-d4">
-                <span className="d2-art-key">Reorder draft · Alba Foods</span>
-                <span>ready</span>
-            </div>
-        </div>
-    );
-};
-
-const CUSTOMER_DRAFT = 'Hi Layla — Friday at 7:30 works. You’re confirmed, and everything will be ready.';
-
-const CustomerArtifact = () => {
-    const { ref, inView } = useInView<HTMLDivElement>();
-    const { shown, done } = useTypewriter(CUSTOMER_DRAFT, inView);
-    return (
-        <div className={'d2-art d2-art-workspace' + (inView ? ' is-live' : '')} ref={ref} aria-hidden="true">
-            <span className="d2-art-progress" />
-            <p className="d2-art-stamp">Draft — in your words</p>
-            <p className="d2-art-text d2-art-typed">
-                <span className="d2-art-ghost">{CUSTOMER_DRAFT}</span>
-                <span className="d2-art-typed-live">
-                    {shown}
-                    {done ? null : <span className="d2-caret" />}
-                </span>
-            </p>
-        </div>
-    );
-};
-
-const SupplierArtifact = () => {
-    const { ref, inView } = useInView<HTMLDivElement>();
-    const total = useCountUp(2340, inView);
-    return (
-        <div className={'d2-art d2-art-workspace' + (inView ? ' is-live' : '')} ref={ref} aria-hidden="true">
-            <span className="d2-art-progress" />
-            <div className="d2-art-row">
-                <span className="d2-art-key">Invoice 214</span>
-                <span>{total.toLocaleString()}</span>
-            </div>
-            <div className="d2-art-row d2-art-low">
-                <span className="d2-art-key">Unanswered</span>
-                <span>4 days</span>
-            </div>
-            <div className="d2-art-row d2-art-emerge d2-d3">
-                <span className="d2-art-key">
-                    <span className="d2-pop d2-d3">
-                        <Check size={13} />
-                    </span>
-                    Follow-up drafted
-                </span>
-                <span>ready to send</span>
-            </div>
-        </div>
-    );
-};
-
-const MomentArtifact = ({ kind }: { kind: MomentKind }) => {
-    if (kind === 'inventory') return <InventoryArtifact />;
-    if (kind === 'customer') return <CustomerArtifact />;
-    return <SupplierArtifact />;
 };
 
 const QStatus = ({ working, done, time }: { working: string; done: string; time: string }) => {
@@ -583,31 +472,43 @@ export const LaunchLandingView = () => {
                             <span className="d2-chapter-num">02</span> — Illustrated
                         </p>
                         <h2 className="d2-prepare-title">What Q prepares</h2>
-                        <p className="d2-prepare-quiet">While you run your business, Q prepares what matters. A morning with Q, illustrated.</p>
+                        <p className="d2-prepare-quiet">While you run your business, Q prepares what matters.</p>
                     </header>
-                    <article className="d2-doc d2-doc-brief">
-                        <span className="d2-pin" aria-hidden="true" />
-                        <span className="d2-scan" aria-hidden="true" />
-                        <p className="d2-doc-label">The Daily Business Brief</p>
-                        <p className="d2-doc-status">
-                            <span className="d2-q-dot" aria-hidden="true" />
-                            {`Prepared ${preparedAt(45)} — before you arrived`}
-                        </p>
-                        <p className="d2-doc-body">
-                            {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders completed.\nToday: 12 customers expected. One supplier needs attention.`}
-                        </p>
-                        <p className="d2-human">Everything else is ready.</p>
-                        <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
-                    </article>
-                    <div className="d2-proof-grid">
+                    <div className="d2-stage">
+                        <article className="d2-doc d2-doc-brief">
+                            <span className="d2-pin" aria-hidden="true" />
+                            <span className="d2-scan" aria-hidden="true" />
+                            <p className="d2-doc-label">The Daily Business Brief</p>
+                            <p className="d2-doc-status">
+                                <span className="d2-q-dot" aria-hidden="true" />
+                                {`Prepared ${preparedAt(45)} — before you arrived`}
+                            </p>
+                            <p className="d2-doc-body">
+                                {`${GREETINGS[daypart]}\nYesterday closed clean — 47 orders completed.\nToday: 12 customers expected. One supplier needs attention.`}
+                            </p>
+                            <p className="d2-human">Everything else is ready.</p>
+                            <p className="d2-doc-note">Prepared by Q. Nothing happens without you.</p>
+                        </article>
                         {MOMENTS.map((moment) => (
-                            <article key={moment.id} className={'d2-doc d2-doc-moment d2-doc--' + moment.kind}>
-                                <span className="d2-scan" aria-hidden="true" />
-                                <p className="d2-doc-label">{moment.title}</p>
-                                <QStatus working={moment.working} done={moment.done} time={preparedAt(moment.minutesAgo)} />
-                                <MomentArtifact kind={moment.kind} />
-                                <p className="d2-human">{moment.human}</p>
-                            </article>
+                            <div
+                                key={moment.id}
+                                className={'d2-moment-par d2-moment-par--' + moment.id}
+                                style={{ '--depth': moment.depth } as React.CSSProperties}
+                            >
+                                <article className={'d2-doc d2-moment d2-moment--' + moment.id}>
+                                    <span className="d2-scan" aria-hidden="true" />
+                                    <p className="d2-doc-label">{moment.label}</p>
+                                    <QStatus working={moment.working} done={moment.done} time={preparedAt(moment.minutesAgo)} />
+                                    <div className="d2-moment-rows">
+                                        {moment.rows.map((row) => (
+                                            <div key={row.text} className={'d2-moment-row' + (row.alert ? ' is-alert' : '')}>
+                                                <span className="d2-moment-dot" aria-hidden="true" />
+                                                {row.text}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </article>
+                            </div>
                         ))}
                     </div>
                 </section>
@@ -683,8 +584,8 @@ export const LaunchLandingView = () => {
 
 const d2Styles = `
 .d2-page{--ease:cubic-bezier(.16,1,.3,1);--orange:#FF6A00;--paper-ink:#26211a;--paper-soft:#857a68;--paper-hair:rgba(38,33,26,.13);--r-doc:22px;--r-card:18px;--r-inset:14px;--lx:50%;--ly:36%;--sunx:30%;--suny:22%;--shx:0px;--sy:0px;--sp:0;position:relative;min-height:100dvh;background:var(--bg);color:var(--ink);overflow-x:hidden;transition:background-color .45s ease,color .45s ease;}
-.d2-page[data-d2-theme='light']{--bg:#fbf8f1;--elev:#fefcf7;--paper:#fdfbf5;--ink:#1c1813;--soft:#7d7364;--hair:rgba(28,24,19,.09);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 18px 42px rgba(96,74,44,.12),var(--shx,0px) 64px 110px rgba(96,74,44,.08);--chip-shadow:0 10px 28px rgba(96,74,44,.13);}
-.d2-page[data-d2-theme='dark']{--bg:#12100c;--elev:#1a1611;--paper:#f7f1e5;--ink:#f3efe8;--soft:#a89f92;--hair:rgba(243,239,232,.14);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 24px 50px rgba(0,0,0,.5),0 80px 140px rgba(0,0,0,.42);--chip-shadow:0 12px 30px rgba(0,0,0,.5);}
+.d2-page[data-d2-theme='light']{--bg:#fbf8f1;--elev:#fefcf7;--paper:#fdfbf5;--ink:#1c1813;--soft:#7d7364;--hair:rgba(28,24,19,.09);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 18px 42px rgba(96,74,44,.12),var(--shx,0px) 64px 110px rgba(96,74,44,.08);--lift-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 28px 56px rgba(96,74,44,.10),var(--shx,0px) 78px 132px rgba(96,74,44,.06);--chip-shadow:0 10px 28px rgba(96,74,44,.13);}
+.d2-page[data-d2-theme='dark']{--bg:#12100c;--elev:#1a1611;--paper:#f7f1e5;--ink:#f3efe8;--soft:#a89f92;--hair:rgba(243,239,232,.14);--doc-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 24px 50px rgba(0,0,0,.5),0 80px 140px rgba(0,0,0,.42);--lift-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 32px 62px rgba(0,0,0,.44),0 92px 160px rgba(0,0,0,.36);--chip-shadow:0 12px 30px rgba(0,0,0,.5);}
 
 .d2-grain{position:fixed;inset:-90px 0;z-index:0;pointer-events:none;opacity:.03;mix-blend-mode:multiply;transform:translateY(calc(var(--sy) * -.04));background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
 .d2-page[data-d2-theme='dark'] .d2-grain{mix-blend-mode:soft-light;opacity:.14;}
@@ -793,7 +694,7 @@ const d2Styles = `
 .d2-scrollcue:hover{color:var(--orange);}
 .d2-scrollcue svg{animation:d2Cue 2.2s ease-in-out infinite;}
 
-.d2-prepare{max-width:1180px;margin:0 auto;padding:110px clamp(20px,4vw,56px) 90px;text-align:center;}
+.d2-prepare{max-width:1280px;margin:0 auto;padding:110px clamp(16px,2.5vw,32px) 90px;text-align:center;}
 .d2-prepare-head{max-width:640px;margin:0 auto 64px;}
 .d2-prepare-title{margin:0 0 16px;font-size:clamp(30px,3.6vw,50px);font-weight:640;letter-spacing:-.025em;line-height:1.08;}
 .d2-prepare-quiet{margin:0;font-size:15px;line-height:1.6;color:var(--soft);}
@@ -804,7 +705,7 @@ const d2Styles = `
 .d2-act:not(.is-visible) .d2-doc{opacity:0;transform:translate(var(--enter-x,0px),56px) rotate(var(--tilt,0deg));}
 .d2-act.is-visible .d2-doc{transition-delay:.15s;}
 .d2-doc:hover{transform:translateY(-3px) rotate(var(--tilt,0deg));}
-.d2-doc-brief{max-width:600px;margin:0 auto 56px;text-align:left;--tilt:.4deg;--float-y:-4px;--float-r:.12deg;}
+.d2-doc-brief{max-width:600px;margin:0 auto;text-align:left;--tilt:.4deg;--float-y:-4px;--float-r:.12deg;}
 .d2-act.is-visible .d2-doc-brief{animation:d2Float 11s ease-in-out 1.9s infinite alternate;}
 .d2-pin{position:absolute;top:20px;right:22px;width:22px;height:22px;border-radius:50%;background:var(--orange);box-shadow:inset 0 2px 5px rgba(60,15,0,.35),0 3px 7px rgba(0,0,0,.25);animation:d2Pin 10s ease-in-out infinite;}
 .d2-doc-label{margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--paper-soft);}
@@ -814,44 +715,24 @@ const d2Styles = `
 .d2-doc-note{margin:16px 0 0;font-size:12.5px;color:var(--paper-soft);}
 .is-approved .d2-pin{animation:d2Stamp .7s var(--ease);}
 
-.d2-proof-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,2.6vw,32px);text-align:left;align-items:start;}
-.d2-proof-grid .d2-doc-moment{max-width:none;}
-.d2-doc-moment{max-width:520px;--float-y:-4px;--float-r:.15deg;}
-.d2-doc-moment::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--paper);border-radius:var(--r-doc);transform:rotate(2.3deg) translate(12px,9px);opacity:.45;box-shadow:var(--doc-shadow);transition:background-color .45s ease;}
-.d2-doc--inventory{--tilt:-.5deg;--enter-x:-40px;}
-.d2-doc--customer{--tilt:.6deg;--float-y:-6px;--float-r:-.2deg;}
-.d2-doc--supplier{--tilt:-.35deg;--enter-x:40px;--float-y:-3px;--float-r:.1deg;}
-.d2-act.is-visible .d2-doc-moment{animation:d2Float 9.5s ease-in-out 1.6s infinite alternate;}
-.d2-act.is-visible .d2-doc--customer{animation-duration:10.5s;animation-delay:1.8s;}
-.d2-act.is-visible .d2-doc--supplier{animation-duration:11.5s;animation-delay:2s;}
-
-.d2-art{margin:0 0 20px;background:color-mix(in srgb,var(--paper-ink) 4%,var(--paper));border:1px solid var(--paper-hair);border-radius:var(--r-inset);padding:14px 18px;font-size:14px;}
-.d2-art-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;color:var(--paper-ink);}
-.d2-art-row+.d2-art-row{border-top:1px solid var(--paper-hair);}
-.d2-art-row>span:last-child{color:var(--paper-soft);font-size:12px;font-weight:700;letter-spacing:.04em;}
-.d2-art-key{display:inline-flex;align-items:center;gap:8px;}
-.d2-art-low,.d2-art-low>span:last-child{color:var(--orange);}
-.d2-art-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex:0 0 auto;}
-.d2-art-stamp{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--orange);}
-.d2-art-text{margin:0;font-style:italic;line-height:1.55;}
-.d2-art-typed{position:relative;}
-.d2-art-ghost{visibility:hidden;}
-.d2-art-typed-live{position:absolute;inset:0;}
-.d2-art-workspace{position:relative;overflow:hidden;padding-top:18px;}
-.d2-art-progress{position:absolute;top:0;left:0;height:2px;width:0;border-radius:2px;background:linear-gradient(90deg,var(--orange),color-mix(in srgb,var(--orange) 18%,transparent));}
-.d2-art.is-live .d2-art-progress{animation:d2Progress 2s var(--ease) .15s both;}
-.d2-pop{display:inline-flex;transform:scale(0);opacity:0;}
-.d2-art.is-live .d2-pop{animation:d2Pop .55s var(--ease) both;}
-.d2-art.is-live .d2-pop.d2-d1{animation-delay:.35s;}
-.d2-art.is-live .d2-pop.d2-d2{animation-delay:.7s;}
-.d2-art.is-live .d2-pop.d2-d3{animation-delay:1.15s;}
-.d2-art.is-live .d2-pop.d2-d4{animation-delay:1.6s;}
-.d2-art-emerge{opacity:0;transform:translateY(6px);}
-.d2-art.is-live .d2-art-emerge{animation:d2Emerge .65s var(--ease) both;}
-.d2-art.is-live .d2-art-emerge.d2-d3{animation-delay:1.15s;}
-.d2-art.is-live .d2-art-emerge.d2-d4{animation-delay:1.5s;}
-.d2-art.is-live .d2-art-low .d2-art-dot{animation:d2QPulse 1.6s ease-in-out 1s 2;}
-.d2-caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:var(--orange);animation:d2Caret 1s steps(2) infinite;}
+.d2-stage{position:relative;max-width:1200px;margin:0 auto;padding:36px 0 64px;}
+.d2-stage .d2-doc-brief{margin:0 auto;}
+.d2-moment-par{position:absolute;width:244px;z-index:2;transform:translate(calc((var(--lx) - 50%) * var(--depth,.05)),calc((var(--ly) - 50%) * var(--depth,.05)));will-change:transform;}
+.d2-moment-par--business{left:2.5%;top:2%;--enter-x:-30px;}
+.d2-moment-par--relationships{right:0;top:30%;--enter-x:30px;}
+.d2-moment-par--attention{left:6%;bottom:-2%;--enter-x:-24px;}
+.d2-moment{max-width:none;padding:22px 24px;border-radius:var(--r-card);text-align:left;}
+.d2-moment--business{--tilt:-.5deg;--float-y:-9px;--float-r:.12deg;}
+.d2-moment--relationships{--tilt:.5deg;--float-y:-7px;--float-r:-.14deg;}
+.d2-moment--attention{--tilt:-.3deg;--float-y:-11px;--float-r:.1deg;}
+.d2-act.is-visible .d2-moment--business{animation:d2MomentFloat 5.6s ease-in-out 1.4s infinite alternate;}
+.d2-act.is-visible .d2-moment--relationships{animation:d2MomentFloat 6.6s ease-in-out 1.8s infinite alternate;}
+.d2-act.is-visible .d2-moment--attention{animation:d2MomentFloat 4.8s ease-in-out 2.2s infinite alternate;}
+.d2-moment-rows{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+.d2-moment-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;line-height:1.45;color:var(--paper-ink);}
+.d2-moment-row.is-alert{color:var(--orange);}
+.d2-moment-dot{width:6px;height:6px;border-radius:50%;background:color-mix(in srgb,var(--paper-ink) 30%,transparent);flex:0 0 auto;}
+.d2-moment-row.is-alert .d2-moment-dot{background:var(--orange);animation:d2QPulse 2.8s ease-in-out infinite;}
 
 .d2-q-status{display:flex;align-items:center;gap:8px;margin:-4px 0 16px;font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--paper-soft);opacity:0;transition:opacity .6s ease;}
 .d2-q-status.is-on{opacity:1;}
@@ -884,10 +765,7 @@ const d2Styles = `
 .d2-quiet-link:hover{color:var(--ink);}
 
 @keyframes d2Rise{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
-@keyframes d2Pop{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
-@keyframes d2Emerge{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-@keyframes d2Progress{from{width:0;}to{width:100%;}}
-@keyframes d2Caret{0%,49%{opacity:1;}50%,100%{opacity:0;}}
+@keyframes d2MomentFloat{from{translate:0 0;rotate:0deg;box-shadow:var(--doc-shadow);}to{translate:0 var(--float-y,-8px);rotate:var(--float-r,.12deg);box-shadow:var(--lift-shadow);}}
 @keyframes d2QPulse{0%,100%{transform:scale(1);opacity:.7;}50%{transform:scale(1.35);opacity:1;}}
 @keyframes d2Scan{0%{transform:translateX(-80%);opacity:0;}15%{opacity:1;}85%{opacity:1;}100%{transform:translateX(80%);opacity:0;}}
 @keyframes d2Float{from{translate:0 0;rotate:0deg;}to{translate:0 var(--float-y,-4px);rotate:var(--float-r,.15deg);}}
@@ -898,6 +776,11 @@ const d2Styles = `
 @keyframes d2Breathe{0%,100%{opacity:.2;}50%{opacity:.42;}}
 @keyframes d2ChipFloat{from{transform:translateY(3px) rotate(-.9deg);box-shadow:0 8px 20px rgba(96,74,44,.17);}to{transform:translateY(-5px) rotate(.9deg);box-shadow:0 18px 34px rgba(96,74,44,.10);}}
 @keyframes d2BarTravel{to{stroke-dashoffset:-100;}}
+
+@media(max-width:1150px){
+.d2-stage{display:flex;flex-direction:column;gap:18px;max-width:520px;margin:0 auto;}
+.d2-moment-par{position:static;width:100%;transform:none !important;}
+}
 
 @media(max-width:900px){
 .d2-rail{display:none;}
@@ -912,7 +795,6 @@ const d2Styles = `
 .d2-direction{margin-top:26px;}
 .d2-prepare{padding:84px 20px 72px;}
 .d2-prepare-head{margin-bottom:44px;}
-.d2-proof-grid{grid-template-columns:1fr;max-width:520px;margin:0 auto;}
 .d2-doc{padding:28px 24px;}
 .d2-sign-row{flex-direction:column;}
 .d2-door{margin-top:72px;}
@@ -923,6 +805,7 @@ const d2Styles = `
 .d2-act:not(.is-visible) .d2-doc{opacity:1;transform:none;}
 .d2-arrival-inner>*{opacity:1;transform:none;animation:none;}
 .d2-concierge-orbit{display:none;}
+.d2-moment-par{transform:none !important;}
 .d2-ambient{display:none;}
 }
 `;
