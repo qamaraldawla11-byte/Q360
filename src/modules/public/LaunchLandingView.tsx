@@ -233,7 +233,7 @@ const QStatus = ({ working, done, time }: { working: string; done: string; time:
 
 const BrandMark = ({ size }: { size: number }) => (
     <img
-        src="/brand/q360-icon-v2-512.png"
+        src="/brand/q360-icon.svg"
         alt="Q360"
         width={size}
         height={size}
@@ -462,7 +462,7 @@ export const LaunchLandingView = () => {
                     onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     aria-label="Q360 — back to top"
                 >
-                    <BrandLogo height={34} />
+                    <BrandLogo height={34} theme={theme} />
                 </button>
                 <div className="d2-header-actions">
                     <button

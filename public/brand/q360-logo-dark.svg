@@ -1,21 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" role="img" aria-labelledby="title desc">
   <title id="title">Q360</title>
-  <desc id="desc">Q360 master logo in charcoal and momentum orange.</desc>
+  <desc id="desc">Q360 master logo for dark backgrounds.</desc>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Q: one circular intelligence loop with a deliberate lower-right opening -->
-    <path d="M156 162A72 72 0 1 1 202 126" stroke="#0F1115" stroke-width="15"/>
-    <!-- Momentum/action stroke -->
+    <path d="M156 162A72 72 0 1 1 202 126" stroke="#FFFFFF" stroke-width="15"/>
     <path d="M171 126L218 173" stroke="#FF6A00" stroke-width="15"/>
-
-    <!-- 3 -->
     <path d="M286 65C292 39 314 25 345 25C381 25 402 43 402 69C402 93 383 105 354 105H330M354 105C386 105 407 118 407 145C407 177 380 193 344 193C310 193 286 176 282 148"
-          stroke="#0F1115" stroke-width="14"/>
-
-    <!-- 6 -->
+          stroke="#FFFFFF" stroke-width="14"/>
     <path d="M521 47C509 31 491 24 469 24C426 24 408 62 408 111C408 160 432 193 474 193C509 193 533 171 533 140C533 109 510 89 476 89C444 89 420 105 410 128"
-          stroke="#0F1115" stroke-width="14"/>
-
-    <!-- 0 -->
-    <ellipse cx="633" cy="109" rx="68" ry="84" stroke="#0F1115" stroke-width="14"/>
+          stroke="#FFFFFF" stroke-width="14"/>
+    <ellipse cx="633" cy="109" rx="68" ry="84" stroke="#FFFFFF" stroke-width="14"/>
   </g>
 </svg>

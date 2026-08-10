@@ -917,7 +917,7 @@ export function GuestQConcierge({
       <section className="guest-q-modal" ref={modalRef}>
         <header className="guest-q-header">
           <div className="guest-q-brand">
-            <BrandLogo height={34} />
+            <BrandLogo height={34} theme={theme} />
           </div>
           <div className={'guest-q-header-status ' + (replyMode === 'ai' ? 'guest-q-status--ai' : '')}>
             <span className="guest-q-status-dot" aria-hidden="true" />

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-labelledby="title desc">
+  <title id="title">Q360 icon</title>
+  <desc id="desc">Circular Q360 intelligence mark with momentum stroke.</desc>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M87 158A68 68 0 1 1 137 125" stroke="#0F1115" stroke-width="15"/>
+    <path d="M105 123L151 169" stroke="#FF6A00" stroke-width="15"/>
+  </g>
+</svg>
