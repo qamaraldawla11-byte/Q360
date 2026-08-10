@@ -128,15 +128,15 @@ const DNA_INSIGHT: Record<DnaDimensionKey, string> = {
 };
 
 /** Node anchor points on the DNA map (percent of the map container, node centers).
- *  These values are tuned for the narrow 35 % desktop panel so the radial
- *  layout does not collide; a container query further scales typography and
- *  orbs at the smallest panel widths. */
+ *  Tuned for the approved 35 % desktop panel: large vertical separation
+ *  between the upper and lower node pairs, Goals clear below the center,
+ *  and no node text crossing the understanding ring. */
 const DNA_POS: Record<DnaDimensionKey, { x: number; y: number }> = {
-  business: { x: 16, y: 24 },
-  locations: { x: 84, y: 24 },
-  operations: { x: 16, y: 72 },
-  team: { x: 84, y: 72 },
-  goals: { x: 50, y: 90 },
+  business: { x: 16, y: 30 },
+  locations: { x: 84, y: 30 },
+  operations: { x: 16, y: 78 },
+  team: { x: 84, y: 78 },
+  goals: { x: 50, y: 88 },
 };
 
 const guestQStyles = [
@@ -207,8 +207,8 @@ const guestQStyles = [
   '.guest-q-dna-track{fill:none;stroke:var(--q-border-strong);stroke-width:9;}',
   '.guest-q-dna-arc{fill:none;stroke:var(--q-momentum);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
   '.guest-q-dna-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}',
-  '.guest-q-dna-percent{font-size:19px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
-  '.guest-q-dna-percent-label{font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
+  '.guest-q-dna-percent{font-size:22px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
+  '.guest-q-dna-percent-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
   '.guest-q-dna-core{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--q-accent-soft);box-shadow:0 0 0 9px color-mix(in srgb,var(--q-momentum) 7%,transparent),0 0 32px color-mix(in srgb,var(--q-momentum) 18%,transparent);}',
   '.guest-q-dna-q{display:block;width:30px;height:30px;color:var(--q-momentum);}',
   '.guest-q-dna-q svg{display:block;width:100%;height:100%;}',
@@ -250,7 +250,7 @@ const guestQStyles = [
   '@keyframes guestQDnaLink{to{stroke-dashoffset:-16;}}',
   '@keyframes guestQDnaPop{from{transform:scale(0);}to{transform:scale(1);}}',
   '@keyframes guestQDnaOrbPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--q-momentum) 32%,transparent);}50%{box-shadow:0 0 0 7px transparent;}}',
-  '@container dna-panel (max-width:420px){.guest-q-brief{gap:16px;padding:20px;}.guest-q-dna-map{height:340px;margin-top:4px;}.guest-q-dna-ring{width:72px;height:72px;}.guest-q-dna-track,.guest-q-dna-arc{stroke-width:8;}.guest-q-dna-percent{font-size:15px;}.guest-q-dna-percent-label{font-size:7.5px;letter-spacing:.08em;}.guest-q-dna-core{width:50px;height:50px;box-shadow:0 0 0 6px color-mix(in srgb,var(--q-momentum) 7%,transparent),0 0 20px color-mix(in srgb,var(--q-momentum) 18%,transparent);}.guest-q-dna-q{width:22px;height:22px;}.guest-q-node{width:84px;gap:2px;}.guest-q-node-orb{width:36px;height:36px;}.guest-q-node-orb svg{width:15px;height:15px;}.guest-q-node-name{font-size:11px;}.guest-q-node-status{font-size:9.5px;}.guest-q-node-facts i{font-size:9px;padding:1px 5px;max-width:76px;}.guest-q-insight{padding:11px 13px;}.guest-q-insight-title{font-size:12.5px;}.guest-q-insight-body{font-size:11.5px;}.guest-q-dna-principle{font-size:11.5px;}}',
+  '@container dna-panel (max-width:420px){.guest-q-brief{gap:16px;padding:20px;}.guest-q-dna-map{height:400px;margin-top:4px;}.guest-q-dna-ring{width:64px;height:64px;}.guest-q-dna-track,.guest-q-dna-arc{stroke-width:7;}.guest-q-dna-percent{font-size:19px;}.guest-q-dna-percent-label{font-size:9px;letter-spacing:.08em;}.guest-q-dna-core{width:46px;height:46px;box-shadow:0 0 0 5px color-mix(in srgb,var(--q-momentum) 7%,transparent),0 0 18px color-mix(in srgb,var(--q-momentum) 18%,transparent);}.guest-q-dna-q{width:20px;height:20px;}.guest-q-node{width:84px;gap:2px;}.guest-q-node-orb{width:36px;height:36px;}.guest-q-node-orb svg{width:15px;height:15px;}.guest-q-node-facts i{padding:1px 5px;max-width:76px;}.guest-q-insight{padding:11px 13px;}.guest-q-insight-title{font-size:12.5px;}.guest-q-insight-body{font-size:11.5px;}.guest-q-dna-principle{font-size:11.5px;}}',
   '@media(max-width:900px){.guest-q-dna-map{height:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px 14px;margin-top:10px;padding-bottom:4px;}.guest-q-dna-links{display:none;}.guest-q-dna-ringwrap{position:static;transform:none;order:-2;}.guest-q-dna-ring{width:64px;height:64px;}.guest-q-dna-percent{font-size:14px;}.guest-q-dna-core{position:static;transform:none;order:-1;width:42px;height:42px;box-shadow:0 0 0 6px color-mix(in srgb,var(--q-momentum) 7%,transparent);}.guest-q-dna-core .guest-q-dna-q{width:20px;height:20px;}.guest-q-node{position:static;transform:none;width:auto;min-width:60px;gap:2px;}.guest-q-node-orb{width:32px;height:32px;}.guest-q-node-orb svg{width:14px;height:14px;}.guest-q-node-name{font-size:10.5px;}.guest-q-node-status{font-size:9px;}.guest-q-node-facts{display:none;}}',
   '@media(max-width:900px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;grid-template-columns:none;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:46dvh;min-height:220px;overflow-y:auto;border-left:0;border-top:1px solid var(--q-border);padding:20px;}.guest-q-message{max-width:92%;}.guest-q-header{padding:14px 18px;}.guest-q-brand-text{font-size:18px;}.guest-q-plan-title{font-size:26px;}}',
 ].join('');
@@ -1151,7 +1151,7 @@ export function GuestQConcierge({
                     </span>
                     {node.facts.length > 0 ? (
                       <span className="guest-q-node-facts">
-                        {node.facts.map((fact) => (
+                        {node.facts.slice(0, 1).map((fact) => (
                           <i key={fact}>{fact}</i>
                         ))}
                       </span>
