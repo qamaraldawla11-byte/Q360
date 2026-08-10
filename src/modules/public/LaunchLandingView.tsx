@@ -451,7 +451,6 @@ export const LaunchLandingView = () => {
                             <p className="d2-chapter">
                                 <span className="d2-chapter-num">01</span> — Meet Q
                             </p>
-                            <p className="d2-direction-line d2-direction-dim">Q learns how your business works.</p>
                         </div>
                         <button
                             type="button"
@@ -686,11 +685,9 @@ const d2Styles = `
 .d2-chip:nth-child(4) .d2-chip-tick{animation-delay:2.1s;}
 .d2-chip:nth-child(5) .d2-chip-tick{animation-delay:2.8s;}
 
-.d2-direction{margin:30px auto 0;}
-.d2-direction-line{margin:0;font-size:15.5px;font-weight:600;letter-spacing:.01em;line-height:1.65;color:var(--ink);}
-.d2-direction-dim{color:var(--soft);font-weight:500;}
+.d2-direction{margin:26px auto 0;}
 
-.d2-scrollcue{display:inline-flex;align-items:center;gap:8px;margin:20px auto 0;background:none;border:0;color:var(--soft);font:inherit;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:8px 4px;transition:color .2s ease;}
+.d2-scrollcue{display:inline-flex;align-items:center;gap:8px;margin:12px auto 0;background:none;border:0;color:var(--soft);font:inherit;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:8px 4px;transition:color .2s ease;}
 .d2-scrollcue:hover{color:var(--orange);}
 .d2-scrollcue svg{animation:d2Cue 2.2s ease-in-out infinite;}
 
