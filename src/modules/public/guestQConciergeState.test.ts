@@ -997,63 +997,71 @@ describe('business DNA selectors', () => {
     const journey = initialJourney();
     const dimensions = dimensionStates(setup, journey);
     assert.equal(understandingPercent(setup, journey), 0);
-    assert.deepEqual(dimensions.map((d) => d.key), ['business', 'operations', 'goals']);
+    assert.deepEqual(dimensions.map((d) => d.key), ['business', 'locations', 'operations', 'team', 'goals']);
     assert.ok(dimensions.every((d) => d.status === 'next'));
+    assert.ok(dimensions.every((d) => d.facts.length === 0));
     assert.equal(activeDimension(setup, journey, null), null);
   });
 
-  it('normal flow moves a dimension from learning to understood as fields confirm', () => {
+  it('normal flow: confirmed facts appear as compact pills under their dimension', () => {
     const setup = baseSetup();
     const journey = syncJourney(setup, initialJourney(), 'businessType', false, true);
     const business = dimensionStates(setup, journey).find((d) => d.key === 'business');
     assert.equal(business?.status, 'learning');
-    const percent = understandingPercent(setup, journey);
-    assert.ok(percent > 0 && percent < 100);
-    assert.equal(activeDimension(setup, journey, 'country'), 'business');
-    assert.equal(activeDimension(setup, journey, null), 'business');
+    assert.deepEqual(business?.facts, ['Restaurant']);
+    assert.equal(activeDimension(setup, journey, 'country'), 'locations');
+    assert.equal(activeDimension(setup, journey, 'teamSize'), 'team');
 
     const confirmedJourney = {
       ...journey,
       businessName: 'confirmed' as FieldStatus,
-      country: 'confirmed' as FieldStatus,
       email: 'confirmed' as FieldStatus,
     };
     const understood = dimensionStates(setup, confirmedJourney).find((d) => d.key === 'business');
     assert.equal(understood?.status, 'understood');
+    assert.deepEqual(understood?.facts, ['Restaurant', 'Noor']);
   });
 
-  it('restaurant-specific fields create a service dimension that resolves', () => {
+  it('operations carries service facts for restaurant-like businesses', () => {
     const setup = mergeSetup(initialSetup('Hello'), { businessType: 'restaurant', services: ['dine-in'], tables: 12 });
     const journey = {
       ...initialJourney(),
       serviceMode: 'confirmed' as FieldStatus,
       tables: 'confirmed' as FieldStatus,
     };
-    const dimensions = dimensionStates(setup, journey);
-    const service = dimensions.find((d) => d.key === 'service');
-    assert.deepEqual(service?.fields, ['serviceMode', 'tables']);
-    assert.equal(service?.status, 'understood');
+    const operations = dimensionStates(setup, journey).find((d) => d.key === 'operations');
+    assert.equal(operations?.status, 'learning');
+    assert.deepEqual(operations?.facts, ['Dine-in only', '12 tables']);
   });
 
-  it('non-restaurant businesses omit the service dimension entirely', () => {
+  it('non-restaurant businesses keep operations to stock and bookings', () => {
     const setup = mergeSetup(initialSetup('Hello'), { businessType: 'retail shop' });
     const journey = syncJourney(setup, initialJourney(), 'businessType', false, true);
     const dimensions = dimensionStates(setup, journey);
-    assert.deepEqual(dimensions.map((d) => d.key), ['business', 'operations', 'goals']);
+    const operations = dimensions.find((d) => d.key === 'operations');
+    assert.deepEqual(operations?.fields, ['stockConcerns', 'bookings']);
     assert.equal(understandingPercent(setup, journey), 11);
   });
 
-  it('skipped fields count as resolved decisions', () => {
-    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'cafe', employees: 3 });
+  it('team facts render in compact staff wording', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'cafe', employees: 12 });
+    const journey = { ...initialJourney(), teamSize: 'confirmed' as FieldStatus };
+    const team = dimensionStates(setup, journey).find((d) => d.key === 'team');
+    assert.equal(team?.status, 'understood');
+    assert.deepEqual(team?.facts, ['12 staff']);
+  });
+
+  it('skipped fields count as resolved decisions without inventing facts', () => {
+    const setup = mergeSetup(initialSetup('Hello'), { businessType: 'retail shop' });
     const journey = {
       ...initialJourney(),
-      teamSize: 'confirmed' as FieldStatus,
       stockConcerns: 'skipped' as FieldStatus,
       bookings: 'skipped' as FieldStatus,
     };
     const operations = dimensionStates(setup, journey).find((d) => d.key === 'operations');
     assert.equal(operations?.status, 'understood');
-    assert.equal(understandingPercent(setup, journey), 27);
+    assert.deepEqual(operations?.facts, []);
+    assert.equal(understandingPercent(setup, journey), 22);
   });
 
   it('completion state reaches 100% with every dimension understood', () => {
@@ -1084,8 +1092,10 @@ describe('business DNA selectors', () => {
     };
     assert.equal(understandingPercent(setup, journey), 100);
     const dimensions = dimensionStates(setup, journey);
-    assert.equal(dimensions.length, 4);
+    assert.equal(dimensions.length, 5);
     assert.ok(dimensions.every((d) => d.status === 'understood'));
+    assert.deepEqual(dimensions.find((d) => d.key === 'team')?.facts, ['4 staff']);
+    assert.deepEqual(dimensions.find((d) => d.key === 'locations')?.facts, ['Spain']);
     assert.equal(activeDimension(setup, journey, null), null);
   });
 });

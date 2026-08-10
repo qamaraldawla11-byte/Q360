@@ -729,7 +729,7 @@ export const hasInlineSkip = (field: FieldKey): boolean =>
 /* Business DNA — derived, read-only views over the existing journey state.    */
 /* -------------------------------------------------------------------------- */
 
-export type DnaDimensionKey = 'business' | 'service' | 'operations' | 'goals';
+export type DnaDimensionKey = 'business' | 'locations' | 'operations' | 'team' | 'goals';
 
 export type DnaDimensionStatus = 'understood' | 'learning' | 'next';
 
@@ -739,12 +739,15 @@ export type DnaDimension = {
   /** Applicable fields for the current setup, in field order. */
   fields: FieldKey[];
   status: DnaDimensionStatus;
+  /** Up to two compact facts from owner-confirmed fields only. */
+  facts: string[];
 };
 
 const DNA_DIMENSION_DEFS: Array<{ key: DnaDimensionKey; title: string; fields: FieldKey[] }> = [
-  { key: 'business', title: 'Business', fields: ['businessType', 'businessName', 'country', 'email'] },
-  { key: 'service', title: 'Service & locations', fields: ['serviceMode', 'tables'] },
-  { key: 'operations', title: 'Operations', fields: ['teamSize', 'stockConcerns', 'bookings'] },
+  { key: 'business', title: 'Business', fields: ['businessType', 'businessName', 'email'] },
+  { key: 'locations', title: 'Locations', fields: ['country'] },
+  { key: 'operations', title: 'Operations', fields: ['serviceMode', 'tables', 'stockConcerns', 'bookings'] },
+  { key: 'team', title: 'Team', fields: ['teamSize'] },
   { key: 'goals', title: 'Goals', fields: ['priorities', 'otherPreferences'] },
 ];
 
@@ -756,10 +759,44 @@ const dnaFieldResolved = (journey: Record<FieldKey, FieldStatus>, key: FieldKey)
 const dnaFieldKnown = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>, key: FieldKey) =>
   fieldDefByKey[key].hasValue(setup) && (journey[key] === 'confirmed' || journey[key] === 'captured');
 
+/** Compact display text for a confirmed fact. */
+const dnaFactText = (setup: GuestSetup, key: FieldKey): string => {
+  switch (key) {
+    case 'businessType':
+      return setup.businessType ? setup.businessType.charAt(0).toUpperCase() + setup.businessType.slice(1) : '';
+    case 'businessName':
+      return setup.businessName;
+    case 'country':
+      return setup.country;
+    case 'serviceMode':
+      return serviceDisplayFromServices(setup.services) || setup.serviceMode || '';
+    case 'tables':
+      return setup.tables ? `${setup.tables} tables` : '';
+    case 'teamSize':
+      return setup.employees === undefined ? '' : setup.employees === 1 ? 'Just the owner' : `${setup.employees} staff`;
+    case 'stockConcerns':
+      return setup.stockConcerns ? 'Track stock' : '';
+    case 'bookings':
+      return setup.bookings ? 'Take bookings' : '';
+    case 'priorities':
+      return setup.priorities.join(', ');
+    default:
+      return '';
+  }
+};
+
+const dnaFacts = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>, fields: FieldKey[]): string[] =>
+  fields
+    .filter((key) => journey[key] === 'confirmed' && fieldDefByKey[key].hasValue(setup))
+    .map((key) => dnaFactText(setup, key))
+    .filter(Boolean)
+    .slice(0, 2);
+
 /**
- * Per-dimension understanding states, derived from the same journey model the
- * concierge already maintains. Dimensions with no applicable fields (e.g.
- * Service & locations for a retail shop) are omitted entirely.
+ * Per-dimension understanding states with owner-confirmed fact pills, derived
+ * from the same journey model the concierge already maintains. Dimensions with
+ * no applicable fields (e.g. restaurant-only fields for a retail shop) keep
+ * only their applicable subset.
  */
 export const dimensionStates = (setup: GuestSetup, journey: Record<FieldKey, FieldStatus>): DnaDimension[] =>
   DNA_DIMENSION_DEFS.map((def) => ({
@@ -774,7 +811,7 @@ export const dimensionStates = (setup: GuestSetup, journey: Record<FieldKey, Fie
         dimension.fields.filter((key) => dnaFieldKnown(setup, journey, key) || journey[key] === 'skipped').length;
       const status: DnaDimensionStatus =
         resolved === dimension.fields.length ? 'understood' : touched > 0 ? 'learning' : 'next';
-      return { ...dimension, status };
+      return { ...dimension, status, facts: dnaFacts(setup, journey, dimension.fields) };
     });
 
 /**

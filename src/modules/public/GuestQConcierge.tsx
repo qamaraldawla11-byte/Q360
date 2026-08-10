@@ -2,25 +2,15 @@ import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, us
 import {
   ArrowDown,
   ArrowRight,
-  BarChart3,
-  BookOpen,
-  Calendar,
   Check,
-  ChefHat,
-  CircleDollarSign,
-  ClipboardList,
   Copy,
-  LayoutDashboard,
-  LayoutGrid,
+  Lightbulb,
   Lock,
   MapPin,
-  Package,
   Send,
   Settings,
-  Sparkles,
   Store,
   Target,
-  TrendingUp,
   Users,
   X,
 } from 'lucide-react';
@@ -55,6 +45,7 @@ import {
   parseActiveAnswer,
   requiredComplete,
   requiredFields,
+  requiredProgress,
   replyAsksField,
   syncJourney,
   textOf,
@@ -118,38 +109,31 @@ const fieldKeyForUpdateKey = (key: keyof GuestSetup): FieldKey | undefined => {
   }
 };
 
-const moduleIcon = (moduleName: string) => {
-  const key = moduleName.toLowerCase().replace(/[^a-z]/g, '');
-  if (key.includes('dashboard')) return LayoutDashboard;
-  if (key.includes('sales')) return TrendingUp;
-  if (key.includes('kitchen') || key === 'kds') return ChefHat;
-  if (key.includes('menu')) return BookOpen;
-  if (key.includes('tables') || key === 'pos') return LayoutGrid;
-  if (key.includes('stock')) return Package;
-  if (key.includes('customers') || key.includes('team')) return Users;
-  if (key.includes('reports')) return BarChart3;
-  if (key.includes('finance')) return CircleDollarSign;
-  if (key.includes('orders')) return ClipboardList;
-  if (key.includes('bookings')) return Calendar;
-  if (key.includes('settings')) return Settings;
-  if (key.includes('qassistant') || key.includes('assistant')) return Sparkles;
-  return Store;
-};
-
 const DNA_RING_C = 2 * Math.PI * 62;
 
 const dnaIcon = (key: DnaDimensionKey) => {
   if (key === 'business') return Store;
-  if (key === 'service') return MapPin;
+  if (key === 'locations') return MapPin;
   if (key === 'operations') return Settings;
+  if (key === 'team') return Users;
   return Target;
 };
 
 const DNA_INSIGHT: Record<DnaDimensionKey, string> = {
   business: 'Q is learning your business.',
-  service: 'Q is learning your service and locations.',
+  locations: 'Q is learning your locations.',
   operations: 'Q is learning your operations.',
+  team: 'Q is learning your team.',
   goals: 'Q is learning your goals.',
+};
+
+/** Node anchor points on the DNA map (percent of the map container, node centers). */
+const DNA_POS: Record<DnaDimensionKey, { x: number; y: number }> = {
+  business: { x: 15, y: 27 },
+  locations: { x: 85, y: 27 },
+  operations: { x: 16, y: 64 },
+  team: { x: 84, y: 64 },
+  goals: { x: 50, y: 86 },
 };
 
 const guestQStyles = [
@@ -163,8 +147,8 @@ const guestQStyles = [
   '.guest-q-header-status{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--q-text-secondary);}',
   '.guest-q-status-dot{width:8px;height:8px;border-radius:50%;background:var(--q-accent);}',
   '.guest-q-close{margin-left:auto;border:0;background:transparent;color:inherit;cursor:pointer;padding:8px;border-radius:10px;color:var(--q-text-secondary);}.guest-q-close:hover{background:var(--q-surface);color:var(--q-text);}',
-  '.guest-q-content{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,0.9fr);flex:1 1 0;height:0;min-height:0;overflow:hidden;}',
-  '.guest-q-chat{height:100%;max-height:100%;min-height:0;display:flex;flex-direction:column;padding:26px 28px 22px;gap:18px;overflow:hidden;}',
+  '.guest-q-content{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(320px,0.7fr);flex:1 1 0;height:0;min-height:0;overflow:hidden;}',
+  '.guest-q-chat{height:100%;max-height:100%;min-height:0;display:flex;flex-direction:column;padding:30px 34px 24px;gap:18px;overflow:hidden;}',
   '.guest-q-messages-wrap{position:relative;display:flex;flex:1 1 0;flex-direction:column;min-height:0;max-height:100%;}',
   '.guest-q-messages{display:flex;flex:1 1 0;flex-direction:column;gap:22px;min-height:0;max-height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable;padding-right:6px;}',
   '.guest-q-message{display:flex;gap:12px;max-width:88%;animation:guestQIn .2s ease-out both;}',
@@ -186,7 +170,7 @@ const guestQStyles = [
   '.guest-q-typing{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:12px 16px;border:1px solid var(--q-border-strong);border-radius:18px;border-bottom-left-radius:5px;background:var(--q-q-bubble);animation:guestQIn .18s ease-out both;}.guest-q-typing span{width:7px;height:7px;border-radius:50%;background:#8ba1bd;animation:guestQTyping 1.2s ease-in-out infinite;}.guest-q-typing span:nth-child(2){animation-delay:.15s;}.guest-q-typing span:nth-child(3){animation-delay:.3s;}',
   '@keyframes guestQIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}',
   '@keyframes guestQTyping{0%,60%,100%{transform:translateY(0);opacity:.45;}30%{transform:translateY(-4px);opacity:1;}}',
-  '@media(prefers-reduced-motion:reduce){.guest-q-bubble,.guest-q-chip,.guest-q-action,.guest-q-typing,.guest-q-typing span,.guest-q-message,.guest-q-module,.guest-q-dna-q,.guest-q-dna-q-sweep,.guest-q-dna-pulse,.guest-q-dna-dim{animation:none !important;}.guest-q-dna-arc{transition:none !important;}}',
+  '@media(prefers-reduced-motion:reduce){.guest-q-bubble,.guest-q-chip,.guest-q-action,.guest-q-typing,.guest-q-typing span,.guest-q-message,.guest-q-dna-q,.guest-q-dna-q-sweep,.guest-q-dna-link,.guest-q-node-orb,.guest-q-node-badge{animation:none !important;}.guest-q-dna-arc{transition:none !important;}}',
   '.guest-q-form{position:relative;flex:0 0 auto;display:flex;align-items:flex-end;gap:12px;padding-top:6px;}',
   '.guest-q-input{min-width:0;flex:1;border:0;border-bottom:1px solid var(--q-border-strong);border-radius:0;background:transparent;color:var(--q-text);padding:16px 52px 16px 0;font:inherit;font-size:17px;line-height:1.45;}.guest-q-input:focus{outline:none;border-bottom-color:var(--q-accent);}.guest-q-input::placeholder{color:#9aa5b8;}',
   '.guest-q-send{position:absolute;right:0;bottom:4px;display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:var(--q-accent);color:#fff;cursor:pointer;transition:transform .1s ease,background .15s ease;}.guest-q-send:hover{background:#c75c00;}.guest-q-send:disabled{opacity:.45;cursor:not-allowed;}.guest-q-send:focus-visible{outline:2px solid var(--q-focus);outline-offset:2px;}',
@@ -203,26 +187,26 @@ const guestQStyles = [
   '.guest-q-meta-item{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--q-text);}',
   '.guest-q-meta-item svg{width:18px;height:18px;color:var(--q-accent);flex-shrink:0;}',
   '.guest-q-section-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--q-text-secondary);margin-bottom:10px;}',
-  '.guest-q-draft{display:flex;flex-direction:column;gap:2px;}',
-  '.guest-q-draft-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--q-border);font-size:14px;}',
-  '.guest-q-draft-row:last-child{border-bottom:0;}',
-  '.guest-q-draft-label{color:var(--q-text-secondary);}',
-  '.guest-q-draft-value{font-weight:700;color:var(--q-text);text-align:right;}',
-  '.guest-q-draft-missing{color:var(--q-accent);font-weight:700;text-align:right;}',
-  '.guest-q-modules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}',
-  '.guest-q-module{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--q-bg);border:1px solid var(--q-border);font-size:14px;font-weight:600;color:var(--q-text);animation:guestQModuleIn .4s cubic-bezier(.16,1,.3,1) both;}.guest-q-module:nth-child(2){animation-delay:.05s;}.guest-q-module:nth-child(3){animation-delay:.1s;}.guest-q-module:nth-child(4){animation-delay:.15s;}.guest-q-module:nth-child(5){animation-delay:.2s;}.guest-q-module:nth-child(6){animation-delay:.25s;}.guest-q-module:nth-child(7){animation-delay:.3s;}.guest-q-module:nth-child(8){animation-delay:.35s;}.guest-q-module:nth-child(n+9){animation-delay:.4s;}',
   '.guest-q-module svg{width:17px;height:17px;color:var(--q-accent);flex-shrink:0;}',
   '.guest-q-brief-actions{display:flex;flex-direction:column;gap:10px;margin-top:auto;}.guest-q-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--q-border-strong);border-radius:14px;background:var(--q-bg);color:var(--q-text);padding:12px 14px;font:inherit;font-weight:700;cursor:pointer;}.guest-q-button:disabled{opacity:.45;cursor:not-allowed;}.guest-q-button--primary{border-color:var(--q-text);background:var(--q-text);color:#fff;padding:16px 18px;font-size:16px;}.guest-q-button--primary:hover{background:#1a1a1a;border-color:#1a1a1a;color:#fff;}.guest-q-button:focus-visible{outline:2px solid var(--q-focus);outline-offset:2px;}',
   '.guest-q-note{font-size:13px;color:var(--q-text-secondary);line-height:1.5;}',
   '.guest-q-dna-subtitle{margin:2px 0 0;font-size:14px;line-height:1.5;color:var(--q-text-secondary);}',
-  '.guest-q-dna-ringwrap{display:flex;justify-content:center;padding:4px 0;}',
+  '.guest-q-dna-map{position:relative;height:430px;margin-top:6px;}',
+  '.guest-q-dna-links{position:absolute;inset:0;width:100%;height:100%;}',
+  '.guest-q-dna-link{stroke:var(--q-border-strong);stroke-width:1.5;stroke-dasharray:3 5;opacity:.75;transition:stroke .3s ease;}',
+  '.guest-q-dna-link.is-live{stroke:color-mix(in srgb,var(--q-momentum) 55%,transparent);}',
+  '.guest-q-dna-link.is-active{stroke:var(--q-momentum);animation:guestQDnaLink 2.4s linear infinite;}',
+  '.guest-q-dna-ringwrap{position:absolute;left:50%;top:0;transform:translateX(-50%);}',
   '.guest-q-dna-ringwrap.is-learning .guest-q-dna-arc{filter:drop-shadow(0 0 6px rgba(255,106,0,.5));}',
   '.guest-q-dna-ringwrap.is-prepared .guest-q-dna-arc{filter:drop-shadow(0 0 8px rgba(255,106,0,.55));}',
-  '.guest-q-dna-ring{position:relative;width:148px;height:148px;}',
+  '.guest-q-dna-ring{position:relative;width:94px;height:94px;}',
   '.guest-q-dna-ring>svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}',
-  '.guest-q-dna-track{fill:none;stroke:var(--q-border-strong);stroke-width:7;}',
-  '.guest-q-dna-arc{fill:none;stroke:var(--q-momentum);stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
-  '.guest-q-dna-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}',
+  '.guest-q-dna-track{fill:none;stroke:var(--q-border-strong);stroke-width:9;}',
+  '.guest-q-dna-arc{fill:none;stroke:var(--q-momentum);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.16,1,.3,1);}',
+  '.guest-q-dna-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}',
+  '.guest-q-dna-percent{font-size:19px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
+  '.guest-q-dna-percent-label{font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
+  '.guest-q-dna-core{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--q-accent-soft);box-shadow:0 0 0 9px color-mix(in srgb,var(--q-momentum) 7%,transparent),0 0 32px color-mix(in srgb,var(--q-momentum) 18%,transparent);}',
   '.guest-q-dna-q{display:block;width:30px;height:30px;color:var(--q-momentum);}',
   '.guest-q-dna-q svg{display:block;width:100%;height:100%;}',
   '.guest-q-dna-q-base,.guest-q-dna-q-tail{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;}',
@@ -233,30 +217,38 @@ const guestQStyles = [
   '.guest-q-dna-q.is-learning .guest-q-dna-q-sweep{opacity:1;animation:guestQDnaSweep 2.2s linear infinite;}',
   '.guest-q-dna-q.is-prepared{filter:drop-shadow(0 0 12px rgba(255,106,0,.45));}',
   '.guest-q-dna-q.is-prepared .guest-q-dna-q-base{stroke-opacity:1;}',
-  '.guest-q-dna-percent{font-size:26px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:var(--q-text);}',
-  '.guest-q-dna-percent-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--q-text-secondary);}',
-  '.guest-q-dna-insight{display:flex;align-items:center;justify-content:center;gap:8px;margin:-4px 0 0;font-size:13px;font-weight:600;line-height:1.5;text-align:center;color:var(--q-text-secondary);}',
-  '.guest-q-dna-dims{display:flex;flex-direction:column;gap:6px;}',
-  '.guest-q-dna-dim{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--q-border);border-radius:13px;background:var(--q-bg);transition:border-color .3s ease;animation:guestQDnaDimIn .45s cubic-bezier(.16,1,.3,1) both;}',
-  '.guest-q-dna-dim.is-active{border-color:var(--q-accent);}',
-  '.guest-q-dna-dim-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--q-accent-soft);color:var(--q-accent);flex:0 0 auto;}',
-  '.guest-q-dna-dim-icon svg{width:16px;height:16px;}',
-  '.guest-q-dna-dim-title{flex:1;min-width:0;font-size:14px;font-weight:650;color:var(--q-text);}',
-  '.guest-q-dna-dim-status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;white-space:nowrap;}',
-  '.guest-q-dna-dim.is-understood .guest-q-dna-dim-status{color:var(--q-success);}',
-  '.guest-q-dna-dim.is-learning .guest-q-dna-dim-status{color:var(--q-accent);}',
-  '.guest-q-dna-dim.is-next .guest-q-dna-dim-status{color:var(--q-text-secondary);font-weight:600;}',
-  '.guest-q-dna-pulse{width:7px;height:7px;border-radius:50%;background:var(--q-momentum);animation:guestQDnaPulse 1.5s ease-in-out infinite;}',
-  '.guest-q-dna-hollow{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--q-text-secondary);opacity:.55;}',
-  '.guest-q-draft-unset{color:var(--q-text-secondary);font-weight:500;text-align:right;}',
+  '.guest-q-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:104px;text-align:center;}',
+  '.guest-q-node-orb{position:relative;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--q-bg);border:1px solid var(--q-border-strong);color:var(--q-text-secondary);transition:border-color .3s ease,color .3s ease;}',
+  '.guest-q-node-orb svg{width:19px;height:19px;}',
+  '.guest-q-node-badge{position:absolute;bottom:-2px;right:-2px;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--q-success);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);animation:guestQDnaPop .5s cubic-bezier(.16,1,.3,1) both;}',
+  '.guest-q-node.is-learning .guest-q-node-orb{border-color:var(--q-momentum);color:var(--q-momentum);animation:guestQDnaOrbPulse 2.4s ease-in-out infinite;}',
+  '.guest-q-node.is-understood .guest-q-node-orb{color:var(--q-success);}',
+  '.guest-q-node.is-next{opacity:.72;}',
+  '.guest-q-node-name{font-size:12.5px;font-weight:700;color:var(--q-text);}',
+  '.guest-q-node-status{font-size:11px;font-weight:700;letter-spacing:.04em;}',
+  '.guest-q-node.is-understood .guest-q-node-status{color:var(--q-success);}',
+  '.guest-q-node.is-learning .guest-q-node-status{color:var(--q-momentum);}',
+  '.guest-q-node.is-next .guest-q-node-status{color:var(--q-text-secondary);font-weight:600;}',
+  '.guest-q-node-facts{display:flex;flex-direction:column;gap:3px;align-items:center;}',
+  '.guest-q-node-facts i{font-style:normal;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--q-accent-soft);color:var(--q-accent);white-space:nowrap;}',
+  '.guest-q-insight{display:flex;gap:10px;align-items:flex-start;padding:13px 15px;border-radius:14px;background:var(--q-accent-soft);border:1px solid color-mix(in srgb,var(--q-momentum) 18%,transparent);}',
+  '.guest-q-insight svg{flex:0 0 auto;color:var(--q-momentum);margin-top:1px;}',
+  '.guest-q-insight-title{margin:0;font-size:13.5px;font-weight:700;color:var(--q-text);line-height:1.4;}',
+  '.guest-q-insight-body{margin:3px 0 0;font-size:12.5px;line-height:1.5;color:var(--q-text-secondary);}',
   '.guest-q-dna-principle{padding-top:4px;font-size:12.5px;font-weight:700;letter-spacing:.05em;text-align:center;color:var(--q-text-secondary);}',
+  '.guest-q-setup-row{display:flex;align-items:center;gap:14px;}',
+  '.guest-q-setup-count{font-size:13px;font-weight:800;color:var(--q-text);white-space:nowrap;}',
+  '.guest-q-setup-rail{position:relative;display:flex;align-items:center;justify-content:space-between;flex:1;padding:2px 0;}',
+  '.guest-q-setup-rail::before{content:"";position:absolute;left:4px;right:4px;top:50%;height:2px;transform:translateY(-50%);background:var(--q-border-strong);border-radius:2px;}',
+  '.guest-q-setup-rail i{position:relative;z-index:1;width:9px;height:9px;border-radius:50%;background:var(--q-bg);border:1.5px solid var(--q-border-strong);}',
+  '.guest-q-setup-rail i.is-done{background:var(--q-momentum);border-color:var(--q-momentum);box-shadow:0 0 8px color-mix(in srgb,var(--q-momentum) 45%,transparent);}',
   '@keyframes guestQDnaBreath{0%,100%{opacity:.7;transform:scale(1);}50%{opacity:1;transform:scale(1.06);}}',
-  '@keyframes guestQDnaPulse{0%,100%{transform:scale(1);opacity:.6;}50%{transform:scale(1.4);opacity:1;}}',
   '@keyframes guestQDnaSweep{to{transform:rotate(360deg);}}',
-  '@keyframes guestQDnaDimIn{from{opacity:.35;transform:translateY(4px);border-color:color-mix(in srgb,var(--q-momentum) 55%,transparent);}to{opacity:1;transform:translateY(0);}}',
-  '@keyframes guestQModuleIn{from{opacity:0;transform:translateY(8px);border-color:color-mix(in srgb,var(--q-momentum) 65%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--q-momentum) 14%,transparent);}to{opacity:1;transform:translateY(0);box-shadow:none;}}',
-  '@media(max-width:900px){.guest-q-dna-ring{width:126px;height:126px;}.guest-q-dna-percent{font-size:22px;}.guest-q-dna-q{width:26px;height:26px;}}',
-  '@media(max-width:900px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;grid-template-columns:none;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:36dvh;min-height:220px;overflow-y:auto;border-left:0;border-top:1px solid var(--q-border);padding:20px;}.guest-q-message{max-width:92%;}.guest-q-header{padding:14px 18px;}.guest-q-brand-text{font-size:18px;}.guest-q-plan-title{font-size:26px;}}',
+  '@keyframes guestQDnaLink{to{stroke-dashoffset:-16;}}',
+  '@keyframes guestQDnaPop{from{transform:scale(0);}to{transform:scale(1);}}',
+  '@keyframes guestQDnaOrbPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--q-momentum) 32%,transparent);}50%{box-shadow:0 0 0 7px transparent;}}',
+  '@media(max-width:900px){.guest-q-dna-map{height:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px 14px;margin-top:10px;padding-bottom:4px;}.guest-q-dna-links{display:none;}.guest-q-dna-ringwrap{position:static;transform:none;order:-2;}.guest-q-dna-ring{width:64px;height:64px;}.guest-q-dna-percent{font-size:14px;}.guest-q-dna-core{position:static;transform:none;order:-1;width:42px;height:42px;box-shadow:0 0 0 6px color-mix(in srgb,var(--q-momentum) 7%,transparent);}.guest-q-dna-core .guest-q-dna-q{width:20px;height:20px;}.guest-q-node{position:static;transform:none;width:auto;min-width:60px;gap:2px;}.guest-q-node-orb{width:32px;height:32px;}.guest-q-node-orb svg{width:14px;height:14px;}.guest-q-node-name{font-size:10.5px;}.guest-q-node-status{font-size:9px;}.guest-q-node-facts{display:none;}}',
+  '@media(max-width:900px){.guest-q-overlay{padding:0;align-items:stretch;overflow:hidden;}.guest-q-modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;}.guest-q-content{display:flex;flex:1 1 0;flex-direction:column;height:0;min-height:0;overflow:hidden;grid-template-columns:none;}.guest-q-chat{flex:1 1 0;height:auto;max-height:none;min-height:0;overflow:hidden;padding:18px;}.guest-q-messages{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:3px;}.guest-q-brief{flex:0 0 auto;max-height:46dvh;min-height:220px;overflow-y:auto;border-left:0;border-top:1px solid var(--q-border);padding:20px;}.guest-q-message{max-width:92%;}.guest-q-header{padding:14px 18px;}.guest-q-brand-text{font-size:18px;}.guest-q-plan-title{font-size:26px;}}',
 ].join('');
 
 export function GuestQConcierge({
@@ -803,11 +795,7 @@ export function GuestQConcierge({
   const dnaPercent = reviewReady ? 100 : dnaPercentPeak;
   const dnaActive = activeDimension(setup, journey, activeField);
   const qMood: 'idle' | 'learning' | 'prepared' = reviewReady ? 'prepared' : isSending ? 'learning' : 'idle';
-  const showModules =
-    modules.length > 0 && (recommendedModules.length > 0 || fieldDefByKey.businessType.hasValue(setup));
-  const snapshotUnsetRows = FIELD_ORDER.filter(
-    (key) => fieldDefByKey[key].applicable(setup) && !fieldDefByKey[key].hasValue(setup),
-  );
+  const setupProgress = requiredProgress(setup, journey);
 
   const continueHint = !emailPattern.test(setup.email)
     ? 'Share your email in the chat to unlock secure sign-in.'
@@ -898,11 +886,6 @@ export function GuestQConcierge({
       setError('Your browser could not copy the brief. You can select and copy it manually.');
     }
   };
-
-  const confirmedRows = FIELD_ORDER.filter((key) => {
-    const def = fieldDefByKey[key];
-    return def.applicable(setup) && fieldDefByKey[key].hasValue(setup);
-  });
 
   return (
     <div
@@ -1077,129 +1060,127 @@ export function GuestQConcierge({
 
           <aside className="guest-q-brief" aria-label="Your business DNA">
             <div>
-              <div className="guest-q-plan-label">{reviewReady ? 'Workspace prepared' : 'Your Business DNA'}</div>
-              <p className="guest-q-dna-subtitle">
-                {reviewReady ? 'Review what Q learned.' : 'Q is learning what makes your business unique.'}
-              </p>
+              <div className="guest-q-plan-label">Your Business DNA</div>
+              <p className="guest-q-dna-subtitle">Q is learning how your business works.</p>
             </div>
 
-            <div className={'guest-q-dna-ringwrap is-' + qMood}>
-              <div
-                className="guest-q-dna-ring"
-                role="img"
-                aria-label={`Q understands ${dnaPercent}% of your business so far`}
-              >
-                <svg viewBox="0 0 148 148" aria-hidden="true">
-                  <circle className="guest-q-dna-track" cx="74" cy="74" r="62" />
-                  <circle
-                    className="guest-q-dna-arc"
-                    cx="74"
-                    cy="74"
-                    r="62"
-                    style={{
-                      strokeDasharray: DNA_RING_C,
-                      strokeDashoffset: DNA_RING_C * (1 - dnaPercent / 100),
-                    }}
+            <div className="guest-q-dna-map">
+              <svg className="guest-q-dna-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <line
+                  className="guest-q-dna-link"
+                  x1="50"
+                  y1="16"
+                  x2="50"
+                  y2="42"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {dnaDimensions.map((node) => (
+                  <line
+                    key={node.key}
+                    x1="50"
+                    y1="52"
+                    x2={DNA_POS[node.key].x}
+                    y2={DNA_POS[node.key].y}
+                    className={
+                      'guest-q-dna-link' +
+                      (node.status !== 'next' ? ' is-live' : '') +
+                      (node.key === dnaActive ? ' is-active' : '')
+                    }
+                    vectorEffect="non-scaling-stroke"
                   />
-                </svg>
-                <div className="guest-q-dna-center">
-                  <span className={'guest-q-dna-q is-' + qMood}>
-                    <svg viewBox="0 0 48 48" aria-hidden="true">
-                      <circle className="guest-q-dna-q-base" cx="22" cy="22" r="15" />
-                      <path className="guest-q-dna-q-tail" d="M31.5 31.5 L39.5 39.5" />
-                      <circle className="guest-q-dna-q-sweep" cx="22" cy="22" r="15" pathLength={100} />
-                    </svg>
-                  </span>
-                  <span className="guest-q-dna-percent">{dnaPercent}%</span>
-                  <span className="guest-q-dna-percent-label">understood</span>
+                ))}
+              </svg>
+              <div className={'guest-q-dna-ringwrap is-' + qMood}>
+                <div
+                  className="guest-q-dna-ring"
+                  role="img"
+                  aria-label={`Q understands ${dnaPercent}% of your business so far`}
+                >
+                  <svg viewBox="0 0 148 148" aria-hidden="true">
+                    <circle className="guest-q-dna-track" cx="74" cy="74" r="62" />
+                    <circle
+                      className="guest-q-dna-arc"
+                      cx="74"
+                      cy="74"
+                      r="62"
+                      style={{
+                        strokeDasharray: DNA_RING_C,
+                        strokeDashoffset: DNA_RING_C * (1 - dnaPercent / 100),
+                      }}
+                    />
+                  </svg>
+                  <div className="guest-q-dna-center">
+                    <span className="guest-q-dna-percent">{dnaPercent}%</span>
+                    <span className="guest-q-dna-percent-label">understood</span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <p className="guest-q-dna-insight">
-              {qMood === 'learning' ? <span className="guest-q-dna-pulse" aria-hidden="true" /> : null}
-              {reviewReady
-                ? 'Workspace prepared — review what Q learned.'
-                : dnaActive
-                  ? DNA_INSIGHT[dnaActive]
-                  : 'Q is ready when you are.'}
-            </p>
-
-            <div className="guest-q-dna-dims">
-              {dnaDimensions.map((dimension) => {
-                const Icon = dnaIcon(dimension.key);
+              <div className="guest-q-dna-core">
+                <span className={'guest-q-dna-q is-' + qMood}>
+                  <svg viewBox="0 0 48 48" aria-hidden="true">
+                    <circle className="guest-q-dna-q-base" cx="22" cy="22" r="15" />
+                    <path className="guest-q-dna-q-tail" d="M31.5 31.5 L39.5 39.5" />
+                    <circle className="guest-q-dna-q-sweep" cx="22" cy="22" r="15" pathLength={100} />
+                  </svg>
+                </span>
+              </div>
+              {dnaDimensions.map((node) => {
+                const Icon = dnaIcon(node.key);
+                const pos = DNA_POS[node.key];
                 return (
                   <div
-                    key={dimension.key + ':' + dimension.status}
-                    className={
-                      'guest-q-dna-dim is-' + dimension.status + (dimension.key === dnaActive ? ' is-active' : '')
-                    }
+                    key={node.key + ':' + node.status}
+                    className={'guest-q-node is-' + node.status + (node.key === dnaActive ? ' is-active' : '')}
+                    style={{ left: pos.x + '%', top: pos.y + '%' }}
                   >
-                    <span className="guest-q-dna-dim-icon" aria-hidden="true">
+                    <span className="guest-q-node-orb">
                       <Icon />
+                      {node.status === 'understood' ? (
+                        <span className="guest-q-node-badge">
+                          <Check size={9} />
+                        </span>
+                      ) : null}
                     </span>
-                    <span className="guest-q-dna-dim-title">{dimension.title}</span>
-                    <span className="guest-q-dna-dim-status">
-                      {dimension.status === 'understood' ? (
-                        <>
-                          <Check size={13} /> Understood
-                        </>
-                      ) : dimension.status === 'learning' ? (
-                        <>
-                          <span className="guest-q-dna-pulse" aria-hidden="true" /> Learning
-                        </>
-                      ) : (
-                        <>
-                          <span className="guest-q-dna-hollow" aria-hidden="true" /> Next
-                        </>
-                      )}
+                    <span className="guest-q-node-name">{node.title}</span>
+                    <span className="guest-q-node-status">
+                      {node.status === 'understood' ? 'Understood' : node.status === 'learning' ? 'Learning' : 'Next'}
                     </span>
+                    {node.facts.length > 0 ? (
+                      <span className="guest-q-node-facts">
+                        {node.facts.map((fact) => (
+                          <i key={fact}>{fact}</i>
+                        ))}
+                      </span>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
 
-            <div>
-              <div className="guest-q-section-title">Business snapshot</div>
-              <div className="guest-q-draft">
-                {confirmedRows.map((key) => {
-                  const def = fieldDefByKey[key];
-                  const value = formatFieldValue(key, setup);
-                  return (
-                    <div key={key} className="guest-q-draft-row">
-                      <span className="guest-q-draft-label">{def.label}</span>
-                      <span className="guest-q-draft-value">{value}</span>
-                    </div>
-                  );
-                })}
-                {snapshotUnsetRows.map((key) => (
-                  <div key={key} className="guest-q-draft-row">
-                    <span className="guest-q-draft-label">{fieldDefByKey[key].label}</span>
-                    <span className="guest-q-draft-unset">Not set</span>
-                  </div>
-                ))}
+            <div className="guest-q-insight">
+              <Lightbulb size={17} aria-hidden="true" />
+              <div>
+                <p className="guest-q-insight-title">
+                  {reviewReady ? 'Workspace prepared.' : dnaActive ? DNA_INSIGHT[dnaActive] : 'Q is ready when you are.'}
+                </p>
+                <p className="guest-q-insight-body">
+                  {reviewReady
+                    ? 'Review what Q learned.'
+                    : 'This helps me tailor the right workflow and prepare the right workspace.'}
+                </p>
               </div>
             </div>
 
-            <div>
-              <div className="guest-q-section-title">
-                {reviewReady ? 'Prepared for your workspace' : 'Q is preparing'}
+            <div className="guest-q-setup">
+              <div className="guest-q-section-title">Setup progress</div>
+              <div className="guest-q-setup-row">
+                <span className="guest-q-setup-count">{`${setupProgress.done} of ${setupProgress.total}`}</span>
+                <span className="guest-q-setup-rail" aria-hidden="true">
+                  {Array.from({ length: setupProgress.total }, (_, index) => (
+                    <i key={index} className={index < setupProgress.done ? 'is-done' : ''} />
+                  ))}
+                </span>
               </div>
-              {showModules ? (
-                <div className="guest-q-modules">
-                  {modules.map((module) => {
-                    const Icon = moduleIcon(module);
-                    return (
-                      <div key={module} className="guest-q-module">
-                        <Icon />
-                        {module}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="guest-q-note">Modules appear here as Q learns about your business.</p>
-              )}
             </div>
 
             <div className="guest-q-dna-principle">Q learns. Q prepares. You decide.</div>
