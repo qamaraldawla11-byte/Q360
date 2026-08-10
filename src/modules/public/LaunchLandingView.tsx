@@ -718,13 +718,17 @@ const d2Styles = `
 .d2-stage{position:relative;max-width:1200px;margin:0 auto;padding:36px 0 64px;}
 .d2-stage .d2-doc-brief{margin:0 auto;}
 .d2-moment-par{position:absolute;width:244px;z-index:2;transform:translate(calc((var(--lx) - 50%) * var(--depth,.05)),calc((var(--ly) - 50%) * var(--depth,.05)));will-change:transform;}
-.d2-moment-par--business{left:2.5%;top:2%;--enter-x:-30px;}
-.d2-moment-par--relationships{right:0;top:30%;--enter-x:30px;}
-.d2-moment-par--attention{left:6%;bottom:-2%;--enter-x:-24px;}
+.d2-moment-par--business{left:3.5%;top:2%;--enter-x:-30px;width:212px;}
+.d2-moment-par--relationships{right:5%;top:27%;--enter-x:30px;}
+.d2-moment-par--attention{left:6%;bottom:-2%;--enter-x:-24px;width:212px;}
 .d2-moment{max-width:none;padding:22px 24px;border-radius:var(--r-card);text-align:left;}
 .d2-moment--business{--tilt:-.5deg;--float-y:-9px;--float-r:.12deg;}
 .d2-moment--relationships{--tilt:.5deg;--float-y:-7px;--float-r:-.14deg;}
 .d2-moment--attention{--tilt:-.3deg;--float-y:-11px;--float-r:.1deg;}
+.d2-moment--business,.d2-moment--attention{--doc-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 12px 30px rgba(96,74,44,.08),var(--shx,0px) 44px 80px rgba(96,74,44,.05);--lift-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--shx,0px) 18px 40px rgba(96,74,44,.07),var(--shx,0px) 54px 96px rgba(96,74,44,.04);}
+.d2-page[data-d2-theme='dark'] .d2-moment--business,.d2-page[data-d2-theme='dark'] .d2-moment--attention{--doc-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 16px 36px rgba(0,0,0,.38),0 56px 100px rgba(0,0,0,.3);--lift-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 22px 44px rgba(0,0,0,.34),0 64px 116px rgba(0,0,0,.26);}
+.d2-moment--business,.d2-moment--attention{padding:18px 20px;}
+.d2-moment--business .d2-moment-row,.d2-moment--attention .d2-moment-row{font-size:12.5px;}
 .d2-act.is-visible .d2-moment--business{animation:d2MomentFloat 5.6s ease-in-out 1.4s infinite alternate;}
 .d2-act.is-visible .d2-moment--relationships{animation:d2MomentFloat 6.6s ease-in-out 1.8s infinite alternate;}
 .d2-act.is-visible .d2-moment--attention{animation:d2MomentFloat 4.8s ease-in-out 2.2s infinite alternate;}
